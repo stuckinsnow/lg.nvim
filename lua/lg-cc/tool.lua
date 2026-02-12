@@ -1,12 +1,11 @@
 --- CodeCompanion tool definition for paint_edit
---- The LLM calls this tool to edit only painted regions
+--- Edits are shown as inline diffs with accept/reject
 
 local paint = require("lg-cc.paint")
+local diff = require("lg-cc.diff")
 
 local M = {}
 
---- Build the system prompt dynamically with current painted regions
---- @return string
 local function build_system_prompt()
   local regions = paint.get_all()
   if #regions == 0 then
@@ -32,11 +31,10 @@ local function build_system_prompt()
   return table.concat(parts, "\n")
 end
 
---- @return table CodeCompanion tool definition
 function M.definition()
   return {
     description = "Edit painted code regions",
-    opts = { require_approval_before = true },
+    opts = { require_approval_before = false },
     callback = {
       name = "paint_edit",
 
@@ -69,9 +67,6 @@ function M.definition()
       end,
 
       cmds = {
-        --- @param self table
-        --- @param args table { region_id: number, new_code: string }
-        --- @return { status: string, data: string }
         function(self, args, _)
           local regions = paint.get_all()
           local idx = (args.region_id or -1) + 1
@@ -90,62 +85,23 @@ function M.definition()
           end
 
           local new_lines = vim.split(args.new_code, "\n")
-
-          vim.schedule(function()
-            vim.api.nvim_buf_set_lines(region.bufnr, region.start_line - 1, region.end_line, false, new_lines)
-          end)
+          diff.store(region.bufnr, region.start_line - 1, region.end_line, new_lines)
 
           local fname = region.file ~= "" and vim.fn.fnamemodify(region.file, ":~:.") or "[buffer]"
           return {
             status = "success",
-            data = string.format("Region %d updated (%s:%d–%d, %d lines → %d lines)",
-              args.region_id, fname, region.start_line, region.end_line,
-              #region.lines, #new_lines),
+            data = string.format("Region %d updated (%s:%d–%d) — use ga to accept, gr to reject",
+              args.region_id, fname, region.start_line, region.end_line),
           }
         end,
       },
 
       output = {
-        --- @param self table
-        --- @param tools table
-        --- @return string
-        prompt = function(self, tools)
-          local regions = paint.get_all()
-          local idx = (self.args.region_id or -1) + 1
-          if idx < 1 or idx > #regions then
-            return "Edit invalid region?"
-          end
-          local r = regions[idx]
-          local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[buffer]"
-          return string.format("Edit region %d (%s lines %d–%d)?", self.args.region_id, fname, r.start_line, r.end_line)
-        end,
-
-        --- @param self table
-        --- @param tools table
-        --- @param cmd table
-        --- @param stdout table
         success = function(self, tools, cmd, stdout)
           tools.chat:add_tool_output(self, stdout[1])
         end,
-
-        --- @param self table
-        --- @param tools table
-        --- @param cmd table
-        --- @param stderr table
         error = function(self, tools, cmd, stderr)
           tools.chat:add_tool_output(self, "Error: " .. (stderr[1] or "unknown"))
-        end,
-
-        --- @param self table
-        --- @param tools table
-        rejected = function(self, tools, cmd)
-          tools.chat:add_tool_output(self, "User rejected editing region " .. tostring(self.args.region_id))
-        end,
-
-        --- @param self table
-        --- @param tools table
-        cancelled = function(self, tools, cmd)
-          tools.chat:add_tool_output(self, "User cancelled paint_edit")
         end,
       },
     },
