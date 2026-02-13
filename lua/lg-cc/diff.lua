@@ -74,10 +74,20 @@ function M.apply_all(regions, edits)
   end
 end
 
---- @param bufnr? number defaults to current buffer
+--- @param bufnr? number defaults to all tracked buffers
 function M.clear(bufnr)
-  bufnr = bufnr or vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+  if bufnr then
+    vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+    return
+  end
+  for buf, _ in pairs(attached_bufs) do
+    if vim.api.nvim_buf_is_valid(buf) then
+      vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    end
+  end
+  -- Also clear current buffer even if not tracked
+  local cur = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_clear_namespace(cur, ns, 0, -1)
 end
 
 return M
