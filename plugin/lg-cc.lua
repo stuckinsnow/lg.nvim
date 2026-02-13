@@ -24,6 +24,18 @@ vim.api.nvim_create_user_command("LgCCClearSession", function()
   require("lg-cc").clear_session()
 end, { desc = "Clear kiro-cli session (start fresh)" })
 
+vim.api.nvim_create_user_command("LgCCContext", function()
+  require("lg-cc").context_paint()
+end, { range = true, desc = "Paint visual selection as read-only context" })
+
+vim.api.nvim_create_user_command("LgCCClearContext", function()
+  require("lg-cc").clear_context()
+end, { desc = "Clear all context regions" })
+
+vim.api.nvim_create_user_command("LgCCClearAll", function()
+  require("lg-cc").clear_all()
+end, { desc = "Clear all paint + context" })
+
 vim.api.nvim_create_user_command("LgCCToggle", function()
   require("lg-cc").toggle_window()
 end, { desc = "Toggle lg-cc side panel" })

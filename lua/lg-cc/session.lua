@@ -238,11 +238,12 @@ end
 --- Send a prompt with painted regions
 --- @param prompt string
 --- @param regions table[]
-function M.send(prompt, regions)
+--- @param context_regions? table[]
+function M.send(prompt, regions, context_regions)
   local s = connect()
   if not s then return end
 
-  local messages = protocol.build_prompt(regions, prompt)
+  local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 
   vim.notify("lg-cc: sending prompt...", vim.log.levels.INFO)
 

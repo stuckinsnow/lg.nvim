@@ -1,0 +1,71 @@
+--- Context paint: read-only regions included as reference in prompts
+--- Same structure as paint.lua but different highlights and namespace
+
+local M = {}
+
+local ns = vim.api.nvim_create_namespace("lg_cc_context")
+
+--- @type LgCC.Region[]
+local regions = {}
+
+local function ensure_highlights()
+  vim.api.nvim_set_hl(0, "LgCCContextLine", { bg = "#1a2a3a", default = true })
+  vim.api.nvim_set_hl(0, "LgCCContextSign", { fg = "#61afef", default = true })
+end
+
+--- @param bufnr number
+--- @param start_line number 1-indexed
+--- @param end_line number 1-indexed
+function M.add(bufnr, start_line, end_line)
+  ensure_highlights()
+  for row = start_line - 1, end_line - 1 do
+    vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+      end_line = row + 1, hl_group = "LgCCContextLine", hl_eol = true, priority = 105,
+    })
+    vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+      sign_text = "▎", sign_hl_group = "LgCCContextSign", priority = 105,
+    })
+  end
+  table.insert(regions, { bufnr = bufnr, start_line = start_line, end_line = end_line })
+end
+
+--- @return { bufnr: number, start_line: number, end_line: number, lines: string[], file: string }[]
+function M.get_all()
+  local result = {}
+  for _, r in ipairs(regions) do
+    if vim.api.nvim_buf_is_valid(r.bufnr) then
+      table.insert(result, {
+        bufnr = r.bufnr,
+        start_line = r.start_line,
+        end_line = r.end_line,
+        lines = vim.api.nvim_buf_get_lines(r.bufnr, r.start_line - 1, r.end_line, false),
+        file = vim.api.nvim_buf_get_name(r.bufnr),
+      })
+    end
+  end
+  return result
+end
+
+function M.count() return #regions end
+
+function M.clear()
+  for _, r in ipairs(regions) do
+    if vim.api.nvim_buf_is_valid(r.bufnr) then
+      vim.api.nvim_buf_clear_namespace(r.bufnr, ns, 0, -1)
+    end
+  end
+  regions = {}
+end
+
+function M.clear_last()
+  if #regions == 0 then return end
+  local r = table.remove(regions)
+  if vim.api.nvim_buf_is_valid(r.bufnr) then
+    local marks = vim.api.nvim_buf_get_extmarks(r.bufnr, ns, { r.start_line - 1, 0 }, { r.end_line - 1, -1 }, {})
+    for _, mark in ipairs(marks) do
+      vim.api.nvim_buf_del_extmark(r.bufnr, ns, mark[1])
+    end
+  end
+end
+
+return M

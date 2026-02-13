@@ -50,11 +50,24 @@ local function render()
 
   -- Painted regions
   local regions = paint.get_all()
-  table.insert(lines, "── Painted Regions (" .. #regions .. ") ──")
+  table.insert(lines, "── Editable Regions (" .. #regions .. ") ──")
   if #regions == 0 then
     table.insert(lines, "  (none)")
   else
     for i, r in ipairs(regions) do
+      local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
+      table.insert(lines, string.format("  [%d] %s:%d-%d", i - 1, fname, r.start_line, r.end_line))
+    end
+  end
+  table.insert(lines, "")
+
+  -- Context regions
+  local ctx_regions = require("lg-cc.context").get_all()
+  table.insert(lines, "── Context (" .. #ctx_regions .. ") ──")
+  if #ctx_regions == 0 then
+    table.insert(lines, "  (none)")
+  else
+    for i, r in ipairs(ctx_regions) do
       local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
       table.insert(lines, string.format("  [%d] %s:%d-%d", i - 1, fname, r.start_line, r.end_line))
     end
