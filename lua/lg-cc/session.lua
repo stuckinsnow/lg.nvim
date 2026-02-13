@@ -2,15 +2,9 @@
 --- Handles: spawn, initialize, session/new, session/prompt lifecycle.
 
 local protocol = require("lg-cc.protocol")
+local status = require("lg-cc.status")
 
 local M = {}
-
---- @class LgCC.Session
---- @field proc vim.SystemObj?
---- @field next_id number
---- @field pending table<number, {result:any, error:any}?>
---- @field session_id string?
---- @field stdout_buf string
 
 --- @type LgCC.Session?
 local state = nil
@@ -28,13 +22,12 @@ function M.setup(user_opts)
     mcp_servers = {},
     provider = "kiro",
   }, user_opts or {})
-  -- Apply provider cmd if using a named provider
   if providers[opts.provider] then
     opts.cmd = providers[opts.provider].cmd
   end
 end
 
---- @param s LgCC.Session
+--- @param s table
 --- @param msg table
 local function write(s, msg)
   if s.proc then
@@ -42,8 +35,7 @@ local function write(s, msg)
   end
 end
 
---- Send request and busy-wait for response
---- @param s LgCC.Session
+--- @param s table
 --- @param method string
 --- @param params table
 --- @return table?
@@ -60,34 +52,27 @@ local function rpc_request(s, method, params)
       local resp = s.pending[id]
       s.pending[id] = nil
       if resp.error then
-        vim.notify("lg-cc: " .. method .. " error: " .. vim.inspect(resp.error), vim.log.levels.ERROR)
+        status.stop("Error: " .. method)
         return nil
       end
       return resp.result
     end
   end
-  vim.notify("lg-cc: " .. method .. " timed out", vim.log.levels.ERROR)
+  status.stop("Timeout: " .. method)
   return nil
 end
 
---- Handle a parsed JSON-RPC message
---- @param s LgCC.Session
+--- @param s table
 --- @param msg table
 local function handle_message(s, msg)
-  -- Response to our request
   if msg.id and not msg.method then
     s.pending[msg.id] = { result = msg.result, error = msg.error }
-
-    -- Check if prompt completed (has stopReason)
     if msg.result and msg.result.stopReason then
-      vim.schedule(function()
-        vim.notify("lg-cc: turn complete (" .. msg.result.stopReason .. ")", vim.log.levels.INFO)
-      end)
+      vim.schedule(function() status.stop("Done") end)
     end
     return
   end
 
-  -- Notifications from agent
   local method = msg.method or ""
 
   if method == "session/update" then
@@ -103,13 +88,12 @@ local function handle_message(s, msg)
       elseif update.sessionUpdate == "tool_call" then
         vim.schedule(function()
           local title = update.title or update.toolCallId or "unknown"
-          vim.notify("lg-cc: tool call — " .. title, vim.log.levels.INFO)
+          status.update("Tool: " .. title)
         end)
       end
     end
 
   elseif method == "session/request_permission" then
-    -- Auto-approve everything
     local tool_options = msg.params and msg.params.options or {}
     local option_id
     for _, opt in ipairs(tool_options) do
@@ -123,8 +107,7 @@ local function handle_message(s, msg)
     if option_id and msg.id then
       vim.schedule(function()
         local tc = msg.params and msg.params.toolCall
-        local title = tc and tc.title or "permission"
-        vim.notify("lg-cc: auto-approved — " .. title, vim.log.levels.INFO)
+        status.update("Approved: " .. (tc and tc.title or ""))
       end)
       write(s, {
         jsonrpc = "2.0",
@@ -136,6 +119,9 @@ local function handle_message(s, msg)
   elseif method == "fs/read_text_file" then
     local path = msg.params and msg.params.path
     if path and msg.id then
+      vim.schedule(function()
+        status.update("Reading: " .. vim.fn.fnamemodify(path, ":t"))
+      end)
       local content = ""
       local f = io.open(path, "r")
       if f then content = f:read("*a"); f:close() end
@@ -147,12 +133,11 @@ local function handle_message(s, msg)
     local content = msg.params and msg.params.content or ""
     if path and msg.id then
       vim.schedule(function()
-        vim.notify("lg-cc: writing " .. vim.fn.fnamemodify(path, ":~:."), vim.log.levels.INFO)
+        status.update("Writing: " .. vim.fn.fnamemodify(path, ":t"))
       end)
       local f = io.open(path, "w")
       if f then f:write(content); f:close() end
       write(s, { jsonrpc = "2.0", id = msg.id, result = vim.NIL })
-      -- Reload buffer if open
       vim.schedule(function()
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
           if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == path then
@@ -162,14 +147,12 @@ local function handle_message(s, msg)
       end)
     end
 
-  -- Ignore kiro-internal notifications
-  elseif method:match("^_kiro") then
-    -- silently ignore
+  elseif method:match("^_kiro") or method:match("^_opencode") then
+    -- silently ignore internal notifications
   end
 end
 
---- Buffer stdout and dispatch
---- @param s LgCC.Session
+--- @param s table
 --- @param data string
 local function on_stdout(s, data)
   s.stdout_buf = s.stdout_buf .. data
@@ -185,12 +168,11 @@ local function on_stdout(s, data)
   end
 end
 
---- Spawn kiro-cli and establish session
---- @return LgCC.Session?
+--- @return table?
 local function connect()
   if state and state.proc then return state end
 
-  vim.notify("lg-cc: starting kiro-cli...", vim.log.levels.INFO)
+  status.start("Connecting...")
 
   local s = {
     proc = nil,
@@ -207,7 +189,7 @@ local function connect()
     stdout = vim.schedule_wrap(function(_, data)
       if data then on_stdout(s, data) end
     end),
-    stderr = vim.schedule_wrap(function(_, data) end),
+    stderr = vim.schedule_wrap(function(_, _) end),
   }, vim.schedule_wrap(function(_)
     s.proc = nil
     s.session_id = nil
@@ -216,7 +198,7 @@ local function connect()
   s.proc = proc
   state = s
 
-  -- Initialize
+  status.update("Initializing...")
   local init = rpc_request(s, "initialize", {
     protocolVersion = 1,
     clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
@@ -226,21 +208,20 @@ local function connect()
     M.clear()
     return nil
   end
-  vim.notify("lg-cc: initialized (agent: " .. (init.agentInfo and init.agentInfo.name or "?") .. ")", vim.log.levels.INFO)
 
-  -- Session new (mcpServers must be an array!)
+  status.update("Creating session...")
   local session_result = rpc_request(s, "session/new", {
     cwd = vim.fn.getcwd(),
     mcpServers = opts.mcp_servers,
   })
   if not session_result or not session_result.sessionId then
-    vim.notify("lg-cc: failed to create session", vim.log.levels.ERROR)
+    status.stop("Failed to create session")
     M.clear()
     return nil
   end
   s.session_id = session_result.sessionId
   s.models = session_result.models
-  vim.notify("lg-cc: session ready", vim.log.levels.INFO)
+  status.stop("Session ready")
 
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = vim.api.nvim_create_augroup("lgcc_session", { clear = true }),
@@ -250,7 +231,6 @@ local function connect()
   return s
 end
 
---- Send a prompt with painted regions
 --- @param prompt string
 --- @param regions table[]
 --- @param context_regions? table[]
@@ -260,9 +240,8 @@ function M.send(prompt, regions, context_regions)
 
   local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 
-  vim.notify("lg-cc: sending prompt...", vim.log.levels.INFO)
+  status.start("Thinking...")
 
-  -- Async: send prompt, don't block
   local id = s.next_id
   s.next_id = id + 1
   write(s, {
@@ -279,7 +258,6 @@ function M.clear()
     pcall(function() state.proc:kill(9) end)
   end
   state = nil
-  vim.notify("lg-cc: session cleared", vim.log.levels.INFO)
 end
 
 --- @return boolean
@@ -287,7 +265,6 @@ function M.is_active()
   return state ~= nil and state.proc ~= nil
 end
 
---- Select model via vim.ui.select (uses ACP's model list)
 function M.select_model()
   local s = connect()
   if not s or not s.models then
@@ -307,7 +284,6 @@ function M.select_model()
   vim.ui.select(names, { prompt = "lg-cc model (current: " .. (s.models.currentModelId or "?") .. "):" }, function(choice)
     if not choice then return end
     local model_id = choice:gsub(" %(current%)$", "")
-    -- Send session/set_model
     local id = s.next_id
     s.next_id = id + 1
     write(s, {
@@ -321,7 +297,7 @@ function M.select_model()
   end)
 end
 
---- @return string? current model id
+--- @return string?
 function M.current_model()
   if state and state.models then
     return state.models.currentModelId
@@ -329,7 +305,6 @@ function M.current_model()
   return nil
 end
 
---- Select provider (kills current session, starts new one)
 function M.select_provider()
   local names = {}
   for key, p in pairs(providers) do
