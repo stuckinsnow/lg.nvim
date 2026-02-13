@@ -38,6 +38,19 @@ function M.add_result(text)
   M.refresh()
 end
 
+--- Append streaming text from agent
+--- @param chunk string
+function M.append_agent_text(chunk)
+  -- Find or create the current agent message entry
+  local last = state.history[#state.history]
+  if not last or last.type ~= "agent" then
+    table.insert(state.history, { type = "agent", text = chunk })
+  else
+    last.text = last.text .. chunk
+  end
+  M.refresh()
+end
+
 --- Build buffer content from current state
 --- @return string[]
 local function render()
@@ -82,8 +95,12 @@ local function render()
     for _, entry in ipairs(state.history) do
       if entry.type == "prompt" then
         table.insert(lines, "  > " .. entry.text)
-      else
+      elseif entry.type == "result" then
         table.insert(lines, "  ✓ " .. entry.text)
+      elseif entry.type == "agent" then
+        for _, l in ipairs(vim.split(entry.text, "\n")) do
+          table.insert(lines, "  " .. l)
+        end
       end
     end
   end

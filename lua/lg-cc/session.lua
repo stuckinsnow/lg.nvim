@@ -84,7 +84,12 @@ local function handle_message(s, msg)
     local update = msg.params and msg.params.update
     if update then
       if update.sessionUpdate == "agent_message_chunk" then
-        -- Streaming text from agent (could show in window later)
+        local content = update.content
+        if content and content.type == "text" and content.text then
+          vim.schedule(function()
+            require("lg-cc.window").append_agent_text(content.text)
+          end)
+        end
       elseif update.sessionUpdate == "tool_call" then
         vim.schedule(function()
           local title = update.title or update.toolCallId or "unknown"
