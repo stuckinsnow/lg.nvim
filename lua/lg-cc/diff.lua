@@ -1,12 +1,29 @@
 --- AI edit application with gutter markers
---- apply_all handles multi-region edits in one shot (no AI ordering dependency)
+--- Markers auto-clear when you edit those lines
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("lg_cc_marks")
+local attached_bufs = {}
 
 local function ensure_highlights()
   vim.api.nvim_set_hl(0, "LgCCSign", { fg = "#e5c07b", default = true })
+  vim.api.nvim_set_hl(0, "LgCCLine", { bg = "#2a2a3a", default = true })
+end
+
+local function attach_listener(bufnr)
+  if attached_bufs[bufnr] then return end
+  attached_bufs[bufnr] = true
+
+  vim.api.nvim_buf_attach(bufnr, false, {
+    on_lines = function(_, buf, _, first, last_old, last_new)
+      -- Remove any marks on the changed lines
+      local marks = vim.api.nvim_buf_get_extmarks(buf, ns, { first, 0 }, { last_old - 1, -1 }, {})
+      for _, m in ipairs(marks) do
+        vim.api.nvim_buf_del_extmark(buf, ns, m[1])
+      end
+    end,
+  })
 end
 
 --- @param bufnr number
@@ -16,6 +33,7 @@ end
 function M.apply(bufnr, start_row, end_row, new_lines)
   vim.api.nvim_buf_set_lines(bufnr, start_row, end_row, false, new_lines)
   ensure_highlights()
+  attach_listener(bufnr)
   local last = start_row + #new_lines - 1
   for i = start_row, last do
     local sign
@@ -31,6 +49,7 @@ function M.apply(bufnr, start_row, end_row, new_lines)
     vim.api.nvim_buf_set_extmark(bufnr, ns, i, 0, {
       sign_text = sign,
       sign_hl_group = "LgCCSign",
+      line_hl_group = "LgCCLine",
       priority = 100,
     })
   end
