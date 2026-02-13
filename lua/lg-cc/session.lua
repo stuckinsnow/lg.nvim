@@ -16,12 +16,22 @@ local M = {}
 local state = nil
 local opts = {}
 
+local providers = {
+  kiro = { cmd = { "kiro-cli", "acp" }, name = "Kiro" },
+  opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
+}
+
 function M.setup(user_opts)
   opts = vim.tbl_deep_extend("force", {
     cmd = { "kiro-cli", "acp" },
     timeout = 30000,
     mcp_servers = {},
+    provider = "kiro",
   }, user_opts or {})
+  -- Apply provider cmd if using a named provider
+  if providers[opts.provider] then
+    opts.cmd = providers[opts.provider].cmd
+  end
 end
 
 --- @param s LgCC.Session
@@ -294,7 +304,7 @@ function M.select_model()
     table.insert(names, label)
   end
 
-  vim.ui.select(names, { prompt = "lg-cc model:" }, function(choice)
+  vim.ui.select(names, { prompt = "lg-cc model (current: " .. (s.models.currentModelId or "?") .. "):" }, function(choice)
     if not choice then return end
     local model_id = choice:gsub(" %(current%)$", "")
     -- Send session/set_model
@@ -317,6 +327,30 @@ function M.current_model()
     return state.models.currentModelId
   end
   return nil
+end
+
+--- Select provider (kills current session, starts new one)
+function M.select_provider()
+  local names = {}
+  for key, p in pairs(providers) do
+    local label = p.name
+    if opts.provider == key then label = label .. " (current)" end
+    table.insert(names, { key = key, label = label })
+  end
+  table.sort(names, function(a, b) return a.label < b.label end)
+
+  local labels = vim.tbl_map(function(n) return n.label end, names)
+
+  vim.ui.select(labels, { prompt = "lg-cc provider (current: " .. (providers[opts.provider].name or "?") .. "):" }, function(choice, idx)
+    if not choice or not idx then return end
+    local picked = names[idx].key
+    if picked == opts.provider and state then return end
+    opts.provider = picked
+    opts.cmd = providers[picked].cmd
+    M.clear()
+    vim.notify("lg-cc: provider → " .. providers[picked].name, vim.log.levels.INFO)
+    vim.schedule(function() M.select_model() end)
+  end)
 end
 
 return M

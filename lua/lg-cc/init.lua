@@ -100,5 +100,6 @@ end
 
 function M.toggle_window() window.toggle() end
 function M.select_model() session.select_model() end
+function M.select_provider() session.select_provider() end
 
 return M
