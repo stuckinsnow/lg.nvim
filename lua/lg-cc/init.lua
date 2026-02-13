@@ -128,4 +128,27 @@ function M.toggle_window() window.toggle() end
 function M.select_model() session.select_model() end
 function M.select_provider() session.select_provider() end
 
+--- Visual select → paint → prompt → send as isolated oneshot session
+function M.quick_edit()
+  local buf = vim.api.nvim_get_current_buf()
+  local start_line = vim.fn.getpos("'<")[2]
+  local end_line = vim.fn.getpos("'>")[2]
+  paint.add(buf, start_line, end_line)
+  window.refresh()
+
+  local regions = { paint.get_all()[#paint.get_all()] } -- just the one we added
+
+  require("lg-cc.prompt").open(function(prompt)
+    if not prompt or prompt == "" then return end
+    start_spinners(regions)
+    session.send_oneshot(prompt, regions, {}, function()
+      vim.schedule(function()
+        stop_spinners()
+        paint.clear_last()
+        window.refresh()
+      end)
+    end)
+  end)
+end
+
 return M

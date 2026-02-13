@@ -39,3 +39,7 @@ end, { desc = "Clear all paint + context" })
 vim.api.nvim_create_user_command("LgCCToggle", function()
   require("lg-cc").toggle_window()
 end, { desc = "Toggle lg-cc side panel" })
+
+vim.api.nvim_create_user_command("LgCCQuickEdit", function()
+  require("lg-cc").quick_edit()
+end, { range = true, desc = "Quick edit: paint + prompt + isolated session" })

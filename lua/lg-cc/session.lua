@@ -335,4 +335,41 @@ function M.select_provider()
   end)
 end
 
+--- Spawn an ephemeral session, send one prompt, call on_done when finished.
+--- Does not touch the main `state`.
+function M.send_oneshot(prompt, regions, context_regions, on_done)
+  local s = {
+    proc = nil, next_id = 1, pending = {}, session_id = nil, stdout_buf = "", _on_done = on_done,
+  }
+
+  local proc = vim.system(opts.cmd, {
+    stdin = true, cwd = vim.fn.getcwd(),
+    stdout = vim.schedule_wrap(function(_, data) if data then on_stdout(s, data) end end),
+    stderr = vim.schedule_wrap(function(_, _) end),
+  }, vim.schedule_wrap(function(_) s.proc = nil end))
+  s.proc = proc
+
+  local init = rpc_request(s, "initialize", {
+    protocolVersion = 1,
+    clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
+    clientInfo = { name = "lg-cc-quick", version = "2.0.0" },
+  })
+  if not init then pcall(function() proc:kill(9) end); return end
+
+  local sr = rpc_request(s, "session/new", { cwd = vim.fn.getcwd(), mcpServers = opts.mcp_servers })
+  if not sr or not sr.sessionId then pcall(function() proc:kill(9) end); return end
+  s.session_id = sr.sessionId
+
+  -- Wrap on_done to also kill the ephemeral process
+  s._on_done = function()
+    if on_done then on_done() end
+    vim.defer_fn(function() pcall(function() proc:kill(9) end) end, 500)
+  end
+
+  local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
+  status.start("Quick edit...")
+  local id = s.next_id; s.next_id = id + 1
+  write(s, { jsonrpc = "2.0", id = id, method = "session/prompt", params = { sessionId = s.session_id, prompt = messages } })
+end
+
 return M
