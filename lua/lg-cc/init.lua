@@ -9,6 +9,11 @@ local window = require("lg-cc.window")
 
 local M = {}
 
+local ns_spinner = vim.api.nvim_create_namespace("lg_cc_spinner")
+
+--- @type table[] active spinner pairs
+local active_spinners = {}
+
 function M.setup(opts)
   opts = opts or {}
   paint.setup(opts.paint or {})
@@ -63,6 +68,35 @@ function M.context_paint()
   window.refresh()
 end
 
+--- Stop all active spinners
+local function stop_spinners()
+  for _, s in ipairs(active_spinners) do
+    s.block:stop()
+    s.center:stop()
+  end
+  active_spinners = {}
+end
+
+--- Start block spinners on all painted regions
+local function start_spinners(regions)
+  stop_spinners()
+  local BlockSpinner = require("lg-cc.block-spinner")
+  local Spinner = require("lg-cc.spinner")
+  for _, r in ipairs(regions) do
+    local ns = vim.api.nvim_create_namespace("lg_cc_spinner_" .. r.bufnr .. "_" .. r.start_line)
+    local block = BlockSpinner.new({
+      bufnr = r.bufnr, ns_id = ns, start_line = r.start_line, end_line = r.end_line,
+    })
+    local mid = r.start_line + math.floor((r.end_line - r.start_line) / 2)
+    local center = Spinner.new({
+      bufnr = r.bufnr, ns_id = ns, line_num = mid, width = block.width,
+    })
+    block:start()
+    center:start()
+    table.insert(active_spinners, { block = block, center = center })
+  end
+end
+
 --- Send painted regions + prompt to kiro-cli
 --- @param opts? { prompt?: string }
 function M.send(opts)
@@ -76,7 +110,10 @@ function M.send(opts)
   local function do_send(prompt)
     if not prompt or prompt == "" then return end
     window.add_prompt(prompt)
-    session.send(prompt, regions, context.get_all())
+    start_spinners(regions)
+    session.send(prompt, regions, context.get_all(), function()
+      vim.schedule(stop_spinners)
+    end)
   end
 
   if opts.prompt then

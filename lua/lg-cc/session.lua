@@ -68,7 +68,10 @@ local function handle_message(s, msg)
   if msg.id and not msg.method then
     s.pending[msg.id] = { result = msg.result, error = msg.error }
     if msg.result and msg.result.stopReason then
-      vim.schedule(function() status.stop("Done") end)
+      vim.schedule(function()
+        status.stop("Done")
+        if s._on_done then s._on_done(); s._on_done = nil end
+      end)
     end
     return
   end
@@ -234,13 +237,17 @@ end
 --- @param prompt string
 --- @param regions table[]
 --- @param context_regions? table[]
-function M.send(prompt, regions, context_regions)
+--- @param on_done? fun() called when turn completes
+function M.send(prompt, regions, context_regions, on_done)
   local s = connect()
   if not s then return end
 
   local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 
   status.start("Thinking...")
+
+  -- Store on_done for when turn completes
+  s._on_done = on_done
 
   local id = s.next_id
   s.next_id = id + 1
