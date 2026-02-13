@@ -67,7 +67,7 @@ end
 function M.start()
   if server then return sock_path end
 
-  sock_path = string.format("/tmp/lg-cc-%d.sock", vim.fn.getpid())
+  sock_path = string.format("/dev/shm/lg-cc-%d.sock", vim.fn.getpid())
   -- Clean up stale socket
   vim.fn.delete(sock_path)
 

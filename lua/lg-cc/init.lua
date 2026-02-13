@@ -1,15 +1,20 @@
---- lg-cc: Paint regions + CodeCompanion tool for constrained AI editing
+--- lg-cc: Paint regions + direct kiro-cli ACP for constrained AI editing
 
 local paint = require("lg-cc.paint")
 local diff = require("lg-cc.diff")
-local tool = require("lg-cc.tool")
+local session = require("lg-cc.session")
 local server = require("lg-cc.server")
+local window = require("lg-cc.window")
 
 local M = {}
 
 function M.setup(opts)
   opts = opts or {}
   paint.setup(opts.paint or {})
+  session.setup(opts.session or {})
+  window.setup(opts.window or {})
+
+  -- Start unix socket server so MCP Go binary can reach us
   server.start()
 
   -- Write MCP config so kiro-cli discovers the server
@@ -44,32 +49,48 @@ function M.setup(opts)
   })
 end
 
+--- Paint current visual selection
 function M.paint()
   local buf = vim.api.nvim_get_current_buf()
   local start_line = vim.fn.getpos("'<")[2]
   local end_line = vim.fn.getpos("'>")[2]
   paint.add(buf, start_line, end_line)
+  window.refresh()
 end
 
-function M.clear()
-  paint.clear()
+--- Send painted regions + prompt to kiro-cli
+--- @param opts? { prompt?: string }
+function M.send(opts)
+  opts = opts or {}
+  local regions = paint.get_all()
+  if #regions == 0 then
+    vim.notify("lg-cc: no painted regions", vim.log.levels.WARN)
+    return
+  end
+
+  local function do_send(prompt)
+    if not prompt or prompt == "" then return end
+    window.add_prompt(prompt)
+    session.send(prompt, regions)
+  end
+
+  if opts.prompt then
+    do_send(opts.prompt)
+  else
+    require("lg-cc.prompt").open(do_send)
+  end
 end
 
-function M.clear_last()
-  paint.clear_last()
+function M.clear() paint.clear(); window.refresh() end
+function M.clear_last() paint.clear_last(); window.refresh() end
+function M.clear_marks() diff.clear() end
+
+function M.clear_session()
+  session.clear()
+  window.clear_history()
 end
 
---- Clear AI edit markers from current buffer
-function M.clear_marks()
-  diff.clear()
-end
-
-function M.codecompanion_tool()
-  return tool.definition()
-end
-
-function M.sock_path()
-  return server.get_sock_path()
-end
+function M.toggle_window() window.toggle() end
+function M.select_model() session.select_model() end
 
 return M

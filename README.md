@@ -1,13 +1,25 @@
 # lg-cc
 
-Paint regions in Neovim, then let AI edit **only** those regions via [CodeCompanion.nvim](https://github.com/olimorris/codecompanion.nvim) + ACP.
+Paint regions in Neovim, then let kiro-cli edit **only** those regions via ACP.
 
 ## How it works
 
 1. Visually select code → paint it as an editable region
-2. Open CodeCompanion chat, reference `@{paint_edit}` in your prompt
-3. The AI can **only** edit painted regions — enforced structurally via tool schema
-4. You get an approval prompt before each edit is applied
+2. Trigger send with a prompt
+3. kiro-cli edits painted regions automatically — no approval prompts
+4. Session persists between edits (clear when you want fresh context)
+
+## Architecture
+
+```
+lua/lg-cc/
+├── init.lua      -- Entry point, thin orchestrator
+├── paint.lua     -- Visual region painting with extmarks
+├── diff.lua      -- Buffer editing + gutter markers
+├── session.lua   -- kiro-cli ACP subprocess lifecycle
+├── protocol.lua  -- ACP/JSON-RPC message building
+└── window.lua    -- Optional side panel (regions + history)
+```
 
 ## Installation
 
@@ -16,48 +28,36 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   "your-user/lg-cc",
-  dependencies = { "olimorris/codecompanion.nvim" },
   config = function()
     local lgcc = require("lg-cc")
     lgcc.setup()
 
-    -- Paint keymaps (visual mode)
-    vim.keymap.set("v", "<leader>pp", function()
-      -- exit visual mode so '< '> marks are set
+    -- Paint (visual mode)
+    vim.keymap.set("v", "<leader>ap", function()
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
       vim.schedule(function() lgcc.paint() end)
     end, { desc = "Paint region" })
 
-    vim.keymap.set("n", "<leader>pc", function() lgcc.clear() end, { desc = "Clear all paint" })
-    vim.keymap.set("n", "<leader>pu", function() lgcc.clear_last() end, { desc = "Undo last paint" })
+    -- Send painted regions to kiro-cli
+    vim.keymap.set("n", "<leader>ae", function() lgcc.send() end, { desc = "Send to kiro-cli" })
+
+    -- Management
+    vim.keymap.set("n", "<leader>aP", function() lgcc.clear() end, { desc = "Clear all paint" })
+    vim.keymap.set("n", "<leader>au", function() lgcc.clear_last() end, { desc = "Undo last paint" })
+    vim.keymap.set("n", "<leader>am", function() lgcc.clear_marks() end, { desc = "Clear edit markers" })
+    vim.keymap.set("n", "<leader>aX", function() lgcc.clear_session() end, { desc = "Clear session" })
+    vim.keymap.set("n", "<leader>aW", function() lgcc.toggle_window() end, { desc = "Toggle panel" })
   end,
 }
 ```
 
-## CodeCompanion setup
-
-Add the `paint_edit` tool to your CodeCompanion config:
-
-```lua
-require("codecompanion").setup({
-  interactions = {
-    chat = {
-      adapter = "kiro_cli", -- or claude_code, opencode, etc.
-      tools = {
-        paint_edit = require("lg-cc").codecompanion_tool(),
-      },
-    },
-  },
-})
-```
-
 ## Usage
 
-1. Select lines in visual mode → `<leader>pp` to paint them
+1. Select lines in visual mode → `<leader>ap` to paint them
 2. Paint more regions if needed (across files too)
-3. `:CodeCompanionChat` to open chat
-4. Type: `Use @{paint_edit} to implement error handling in the painted regions`
-5. AI calls `paint_edit` for each region → you approve each edit
+3. `<leader>ae` → type your prompt → edits applied automatically
+4. Session persists — next edit has conversation context
+5. `<leader>aX` to clear session and start fresh
 
 ## Commands
 
@@ -66,7 +66,21 @@ require("codecompanion").setup({
 | `:LgCCPaint` | Paint current visual selection |
 | `:LgCCClear` | Clear all painted regions |
 | `:LgCCClearLast` | Clear the last painted region |
+| `:LgCCSend [prompt]` | Send painted regions to kiro-cli |
+| `:LgCCClearSession` | Kill session, start fresh |
+| `:LgCCToggle` | Toggle side panel |
 
-## Why this approach?
+## Config
 
-The AI is **structurally constrained** — the tool schema only accepts a `region_id` and `new_code`. There's no way for it to edit outside painted areas. This is fundamentally different from prompt-based instructions like "only edit between lines X and Y" which the AI can ignore.
+```lua
+lgcc.setup({
+  session = {
+    cmd = "kiro-cli",    -- CLI command
+    args = { "acp" },    -- ACP mode
+  },
+  window = {
+    width = 50,
+    position = "right",  -- "right" or "left"
+  },
+})
+```
