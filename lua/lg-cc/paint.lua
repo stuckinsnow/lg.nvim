@@ -87,6 +87,20 @@ function M.count()
   return #regions
 end
 
+--- Shift regions in the same buffer after an edit changes line count
+--- @param bufnr number
+--- @param edit_start number 1-indexed start line of the edit
+--- @param delta number lines added (positive) or removed (negative)
+function M.shift_after(bufnr, edit_start, delta)
+  if delta == 0 then return end
+  for _, r in ipairs(regions) do
+    if r.bufnr == bufnr and r.start_line > edit_start then
+      r.start_line = r.start_line + delta
+      r.end_line = r.end_line + delta
+    end
+  end
+end
+
 function M.clear()
   for _, r in ipairs(regions) do
     if vim.api.nvim_buf_is_valid(r.bufnr) then

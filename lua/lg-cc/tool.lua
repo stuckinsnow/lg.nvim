@@ -1,5 +1,5 @@
---- CodeCompanion tool definition for paint_edit
---- Edits are shown as inline diffs with accept/reject
+--- CodeCompanion tool: paint_edit
+--- Single call, all region edits at once. No AI ordering dependency.
 
 local paint = require("lg-cc.paint")
 local diff = require("lg-cc.diff")
@@ -14,8 +14,8 @@ local function build_system_prompt()
 
   local parts = {
     "## Paint Edit Tool (`paint_edit`)\n",
-    "You can ONLY edit painted regions. Do NOT attempt to edit anything outside these regions.",
-    "Call the tool once per region you want to edit.\n",
+    "You can ONLY edit painted regions.",
+    "Call the tool ONCE with ALL edits in the `edits` array.\n",
     "### Available Regions:\n",
   }
 
@@ -42,20 +42,31 @@ function M.definition()
         type = "function",
         ["function"] = {
           name = "paint_edit",
-          description = "Replace code in a painted region. Only painted regions can be edited. Call once per region.",
+          description = "Replace code in painted regions. Send ALL edits in one call.",
           parameters = {
             type = "object",
             properties = {
-              region_id = {
-                type = "integer",
-                description = "0-based index of the painted region to edit",
-              },
-              new_code = {
-                type = "string",
-                description = "The complete replacement code for this region",
+              edits = {
+                type = "array",
+                description = "Array of edits, one per region",
+                items = {
+                  type = "object",
+                  properties = {
+                    region_id = {
+                      type = "integer",
+                      description = "0-based index of the painted region",
+                    },
+                    new_code = {
+                      type = "string",
+                      description = "Complete replacement code for this region",
+                    },
+                  },
+                  required = { "region_id", "new_code" },
+                  additionalProperties = false,
+                },
               },
             },
-            required = { "region_id", "new_code" },
+            required = { "edits" },
             additionalProperties = false,
           },
           strict = true,
@@ -69,29 +80,29 @@ function M.definition()
       cmds = {
         function(self, args, _)
           local regions = paint.get_all()
-          local idx = (args.region_id or -1) + 1
+          local edits = args.edits or {}
 
-          if idx < 1 or idx > #regions then
-            return {
-              status = "error",
-              data = string.format("Invalid region_id %s. Valid range: 0–%d", tostring(args.region_id), #regions - 1),
-            }
+          if #edits == 0 then
+            return { status = "error", data = "No edits provided" }
           end
 
-          local region = regions[idx]
-
-          if not vim.api.nvim_buf_is_valid(region.bufnr) then
-            return { status = "error", data = "Buffer is no longer valid" }
+          -- Validate all region_ids before applying anything
+          for _, e in ipairs(edits) do
+            local idx = (e.region_id or -1) + 1
+            if idx < 1 or idx > #regions then
+              return {
+                status = "error",
+                data = string.format("Invalid region_id %s", tostring(e.region_id)),
+              }
+            end
           end
 
-          local new_lines = vim.split(args.new_code, "\n")
-          diff.store(region.bufnr, region.start_line - 1, region.end_line, new_lines)
+          diff.apply_all(regions, edits)
+          paint.clear()
 
-          local fname = region.file ~= "" and vim.fn.fnamemodify(region.file, ":~:.") or "[buffer]"
           return {
             status = "success",
-            data = string.format("Region %d updated (%s:%d–%d) — use ga to accept, gr to reject",
-              args.region_id, fname, region.start_line, region.end_line),
+            data = string.format("%d region(s) updated", #edits),
           }
         end,
       },
