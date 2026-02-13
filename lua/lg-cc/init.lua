@@ -70,30 +70,19 @@ end
 
 --- Stop all active spinners
 local function stop_spinners()
-  for _, s in ipairs(active_spinners) do
-    s.block:stop()
-    s.center:stop()
-  end
+  for _, s in ipairs(active_spinners) do s:stop() end
   active_spinners = {}
 end
 
---- Start block spinners on all painted regions
+--- Start hint spinners on all painted regions
 local function start_spinners(regions)
   stop_spinners()
-  local BlockSpinner = require("lg-cc.block-spinner")
-  local Spinner = require("lg-cc.spinner")
+  local HintSpinner = require("lg-cc.hint-spinner")
   for _, r in ipairs(regions) do
     local ns = vim.api.nvim_create_namespace("lg_cc_spinner_" .. r.bufnr .. "_" .. r.start_line)
-    local block = BlockSpinner.new({
-      bufnr = r.bufnr, ns_id = ns, start_line = r.start_line, end_line = r.end_line,
-    })
-    local mid = r.start_line + math.floor((r.end_line - r.start_line) / 2)
-    local center = Spinner.new({
-      bufnr = r.bufnr, ns_id = ns, line_num = mid, width = block.width,
-    })
-    block:start()
-    center:start()
-    table.insert(active_spinners, { block = block, center = center })
+    local hint = HintSpinner.new({ bufnr = r.bufnr, ns_id = ns, start_line = r.start_line, end_line = r.end_line })
+    hint:start()
+    table.insert(active_spinners, hint)
   end
 end
 
