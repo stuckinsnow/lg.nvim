@@ -12,16 +12,21 @@ local M = {}
 --- @type table[] active spinner pairs
 local active_spinners = {}
 
+local config = {
+	spinner_type = "hint", -- "hint", "block", or "center"
+}
+
 function M.setup(opts)
 	opts = opts or {}
+	config = vim.tbl_deep_extend("force", config, opts)
 	paint.setup(opts.paint or {})
 	session.setup(opts.session or {})
 	window.setup(opts.window or {})
 
 	server.start()
 
-	local mcp_bin = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h") .. "/mcp/lg-cc-mcp"
-	local mcp_config_dir = (os.getenv("HOME") or "") .. "/.kiro/settings"
+	local mcp_bin = vim.fn.stdpath("data") .. "/mcp/lg-cc-mcp"
+	local mcp_config_dir = vim.fn.stdpath("config") .. "/kiro/settings"
 	local mcp_config_path = mcp_config_dir .. "/mcp.json"
 
 	local existing = {}
@@ -84,12 +89,17 @@ end
 --- Start hint spinners on all painted regions
 local function start_spinners(regions)
 	stop_spinners()
-	local HintSpinner = require("lg-cc.hint-spinner")
+	local spinner_module = config.spinner_type == "block" and "lg-cc.block-spinner"
+		or config.spinner_type == "center" and "lg-cc.spinner"
+		or "lg-cc.hint-spinner"
+	local Spinner = require(spinner_module)
 	for _, r in ipairs(regions) do
 		local ns = vim.api.nvim_create_namespace("lg_cc_spinner_" .. r.bufnr .. "_" .. r.start_line)
-		local hint = HintSpinner.new({ bufnr = r.bufnr, ns_id = ns, start_line = r.start_line, end_line = r.end_line })
-		hint:start()
-		table.insert(active_spinners, hint)
+		local spinner = Spinner.new({ bufnr = r.bufnr, ns_id = ns, start_line = r.start_line, end_line = r.end_line })
+		if spinner then
+			spinner:start()
+			table.insert(active_spinners, spinner)
+		end
 	end
 end
 
@@ -211,10 +221,22 @@ function M.quick_edit()
 
 	local regions = { paint.get_all()[#paint.get_all()] } -- just the one we added
 
-	require("lg-cc.prompt").open(function(prompt)
+	require("lg-cc.prompt").open(function(prompt, has_lsp)
 		if not prompt or prompt == "" then
 			return
 		end
+
+		if has_lsp then
+			local lsp = require("lg-cc.lsp")
+			local r = regions[1]
+			if vim.api.nvim_buf_is_valid(r.bufnr) then
+				local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
+				if info ~= "" then
+					prompt = prompt .. "\n\nLSP Information:\n" .. info
+				end
+			end
+		end
+
 		start_spinners(regions)
 		session.send_oneshot(prompt, regions, {}, function()
 			vim.schedule(function()
