@@ -292,7 +292,7 @@ function M.open()
   setup_chat_keymaps(chat_buf)
   M.refresh()
 
-  pcall(vim.api.nvim_set_current_win, prev_win)
+  pcall(vim.api.nvim_set_current_win, state.wins.chat)
 end
 
 function M.close()

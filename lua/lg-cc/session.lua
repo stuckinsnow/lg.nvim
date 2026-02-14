@@ -14,6 +14,21 @@ local providers = {
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
 }
 
+local state_path = "/dev/shm/lg-cc-state.json"
+
+local function load_state()
+	local f = io.open(state_path, "r")
+	if not f then return {} end
+	local ok, data = pcall(vim.json.decode, f:read("*a"))
+	f:close()
+	return ok and data or {}
+end
+
+local function save_state(t)
+	local f = io.open(state_path, "w")
+	if f then f:write(vim.json.encode(t)); f:close() end
+end
+
 function M.setup(user_opts)
 	opts = vim.tbl_deep_extend("force", {
 		cmd = { "kiro-cli", "acp" },
@@ -21,6 +36,13 @@ function M.setup(user_opts)
 		mcp_servers = {},
 		provider = "kiro",
 	}, user_opts or {})
+
+	-- Restore persisted provider
+	local saved = load_state()
+	if saved.provider and providers[saved.provider] then
+		opts.provider = saved.provider
+	end
+
 	if providers[opts.provider] then
 		opts.cmd = providers[opts.provider].cmd
 	end
@@ -69,6 +91,7 @@ local function handle_message(s, msg)
 		if msg.result and msg.result.stopReason then
 			vim.schedule(function()
 				status.stop("Done")
+				vim.api.nvim_exec_autocmds("User", { pattern = "LgCCRequestFinished" })
 				if s._on_done then
 					s._on_done()
 					s._on_done = nil
@@ -94,6 +117,7 @@ local function handle_message(s, msg)
 				vim.schedule(function()
 					local title = update.title or update.toolCallId or "unknown"
 					status.update("Tool: " .. title)
+					vim.api.nvim_exec_autocmds("User", { pattern = "LgCCToolCall", data = { title = title } })
 				end)
 			end
 		end
@@ -243,6 +267,26 @@ local function connect()
 	end
 	s.session_id = session_result.sessionId
 	s.models = session_result.models
+
+	-- Restore persisted model
+	local saved = load_state()
+	if saved.model and s.models then
+		for _, m in ipairs(s.models.availableModels or {}) do
+			if m.modelId == saved.model then
+				local id = s.next_id
+				s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0",
+					id = id,
+					method = "session/set_model",
+					params = { sessionId = s.session_id, modelId = saved.model },
+				})
+				s.models.currentModelId = saved.model
+				break
+			end
+		end
+	end
+
 	status.stop("Session ready")
 
 	vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -268,6 +312,7 @@ function M.send(prompt, regions, context_regions, on_done)
 	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 
 	status.start("Thinking...")
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgCCRequestStarted" })
 
 	-- Store on_done for when turn completes
 	s._on_done = on_done
@@ -332,6 +377,7 @@ function M.select_model()
 				params = { sessionId = s.session_id, modelId = model_id },
 			})
 			s.models.currentModelId = model_id
+			save_state({ provider = opts.provider, model = model_id })
 			vim.notify("lg-cc: model → " .. model_id, vim.log.levels.INFO)
 		end
 	)
@@ -342,7 +388,12 @@ function M.current_model()
 	if state and state.models then
 		return state.models.currentModelId
 	end
-	return nil
+	local saved = load_state()
+	return saved.model
+end
+
+function M.current_provider()
+	return opts.provider
 end
 
 function M.select_provider()
@@ -376,6 +427,7 @@ function M.select_provider()
 			opts.provider = picked
 			opts.cmd = providers[picked].cmd
 			M.clear()
+			save_state({ provider = picked, model = M.current_model() })
 			vim.notify("lg-cc: provider → " .. providers[picked].name, vim.log.levels.INFO)
 			vim.schedule(function()
 				M.select_model()
@@ -449,6 +501,7 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 
 	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 	status.start("Quick edit...")
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgCCRequestStarted" })
 	local id = s.next_id
 	s.next_id = id + 1
 	write(
