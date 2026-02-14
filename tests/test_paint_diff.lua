@@ -1,12 +1,12 @@
---- Tests for lg-cc paint + diff (no kiro-cli needed)
+--- Tests for lg paint + diff (no kiro-cli needed)
 --- Run: nvim --headless -u NONE -c "luafile tests/test_paint_diff.lua" -c "qa"
 
 -- Bootstrap: add plugin to runtimepath
 local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h")
 vim.opt.rtp:prepend(plugin_root)
 
-local paint = require("lg-cc.paint")
-local diff = require("lg-cc.diff")
+local paint = require("lg.paint")
+local diff = require("lg.diff")
 
 local pass, fail = 0, 0
 
@@ -27,7 +27,7 @@ local function make_buf(lines)
   return buf
 end
 
-print("\n=== lg-cc paint + diff tests ===\n")
+print("\n=== lg paint + diff tests ===\n")
 
 test("paint adds region and get_all returns it", function()
   paint.clear()

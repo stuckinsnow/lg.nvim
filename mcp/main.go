@@ -72,7 +72,7 @@ type nvimBatchRequest struct {
 var sockPath string
 
 func init() {
-	sockPath = os.Getenv("LGCC_SOCK")
+	sockPath = os.Getenv("LG_SOCK")
 }
 
 func sendToNeovim(req any) ([]byte, error) {
@@ -217,7 +217,7 @@ func handleToolsList() any {
 
 func main() {
 	if sockPath == "" {
-		fmt.Fprintf(os.Stderr, "LGCC_SOCK not set\n")
+		fmt.Fprintf(os.Stderr, "LG_SOCK not set\n")
 		os.Exit(1)
 	}
 
@@ -247,7 +247,7 @@ func main() {
 			resp.Result = map[string]any{
 				"protocolVersion": "2024-11-05",
 				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "lg-cc-mcp", "version": "0.2.0"},
+				"serverInfo":      map[string]any{"name": "lg-mcp", "version": "0.2.0"},
 			}
 		case "notifications/initialized":
 			continue

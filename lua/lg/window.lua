@@ -1,7 +1,7 @@
 --- Window: side column with stacked section windows + interactive markdown chat
 
-local paint = require("lg-cc.paint")
-local session = require("lg-cc.session")
+local paint = require("lg.paint")
+local session = require("lg.session")
 
 local M = {}
 
@@ -35,7 +35,7 @@ end
 
 local function ensure_buf(key, ft)
   if buf_valid(state.bufs[key]) then return state.bufs[key] end
-  state.bufs[key] = make_buf("lg-cc://" .. key, ft)
+  state.bufs[key] = make_buf("lg://" .. key, ft)
   return state.bufs[key]
 end
 
@@ -52,18 +52,18 @@ local function set_win_opts(w)
 end
 
 local function ensure_highlights()
-  vim.api.nvim_set_hl(0, "LgCCTitle", { link = "Title", default = true })
-  vim.api.nvim_set_hl(0, "LgCCSeparator", { link = "Comment", default = true })
-  vim.api.nvim_set_hl(0, "LgCCRegionId", { link = "Number", default = true })
-  vim.api.nvim_set_hl(0, "LgCCFile", { link = "Directory", default = true })
-  vim.api.nvim_set_hl(0, "LgCCStatus", { link = "DiagnosticOk", default = true })
+  vim.api.nvim_set_hl(0, "LgTitle", { link = "Title", default = true })
+  vim.api.nvim_set_hl(0, "LgSeparator", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "LgRegionId", { link = "Number", default = true })
+  vim.api.nvim_set_hl(0, "LgFile", { link = "Directory", default = true })
+  vim.api.nvim_set_hl(0, "LgStatus", { link = "DiagnosticOk", default = true })
 end
 
 local function set_buf_content(buf, lines, hls)
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   if hls then
-    local ns = vim.api.nvim_create_namespace("lg_cc_" .. buf)
+    local ns = vim.api.nvim_create_namespace("lg_" .. buf)
     vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
     for _, hl in ipairs(hls) do
       local line, cs, ce, hg = hl[1], hl[2], hl[3], hl[4]
@@ -78,7 +78,7 @@ end
 
 local function render_status()
   local status = session.is_active() and "● active" or "○ idle"
-  return { "Session: " .. status }, { { 0, 0, -1, "LgCCStatus" } }
+  return { "Session: " .. status }, { { 0, 0, -1, "LgStatus" } }
 end
 
 local function render_regions()
@@ -87,18 +87,18 @@ local function render_regions()
   local hls = {}
   local regions = paint.get_all()
   table.insert(lines, "Editable Regions (" .. #regions .. ")")
-  table.insert(hls, { 0, 0, -1, "LgCCTitle" })
+  table.insert(hls, { 0, 0, -1, "LgTitle" })
   if #regions == 0 then
     table.insert(lines, "  (none)")
-    table.insert(hls, { 1, 0, -1, "LgCCSeparator" })
+    table.insert(hls, { 1, 0, -1, "LgSeparator" })
   else
     for i, r in ipairs(regions) do
       local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
       local txt = string.format("  [%d] %s:%d-%d", i - 1, fname, r.start_line, r.end_line)
       table.insert(lines, txt)
       local idx = #lines - 1
-      table.insert(hls, { idx, 2, 2 + #tostring(i - 1) + 2, "LgCCRegionId" })
-      table.insert(hls, { idx, 2 + #tostring(i - 1) + 3, -1, "LgCCFile" })
+      table.insert(hls, { idx, 2, 2 + #tostring(i - 1) + 2, "LgRegionId" })
+      table.insert(hls, { idx, 2 + #tostring(i - 1) + 3, -1, "LgFile" })
     end
   end
   return lines, hls
@@ -108,20 +108,20 @@ local function render_context()
   ensure_highlights()
   local lines = {}
   local hls = {}
-  local ctx = require("lg-cc.context").get_all()
+  local ctx = require("lg.context").get_all()
   table.insert(lines, "Context (" .. #ctx .. ")")
-  table.insert(hls, { 0, 0, -1, "LgCCTitle" })
+  table.insert(hls, { 0, 0, -1, "LgTitle" })
   if #ctx == 0 then
     table.insert(lines, "  (none)")
-    table.insert(hls, { 1, 0, -1, "LgCCSeparator" })
+    table.insert(hls, { 1, 0, -1, "LgSeparator" })
   else
     for i, r in ipairs(ctx) do
       local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
       local txt = string.format("  [%d] %s:%d-%d", i - 1, fname, r.start_line, r.end_line)
       table.insert(lines, txt)
       local idx = #lines - 1
-      table.insert(hls, { idx, 2, 2 + #tostring(i - 1) + 2, "LgCCRegionId" })
-      table.insert(hls, { idx, 2 + #tostring(i - 1) + 3, -1, "LgCCFile" })
+      table.insert(hls, { idx, 2, 2 + #tostring(i - 1) + 2, "LgRegionId" })
+      table.insert(hls, { idx, 2 + #tostring(i - 1) + 3, -1, "LgFile" })
     end
   end
   return lines, hls
@@ -206,7 +206,7 @@ function M.submit()
   if text == "" then return end
 
   -- Trigger send via init.lua
-  require("lg-cc").send({ prompt = text })
+  require("lg").send({ prompt = text })
 end
 
 --- Focus the chat window input area
@@ -235,7 +235,7 @@ function M.refresh()
   for _, key in ipairs(sections) do
     if win_valid(state.wins[key]) then
       local lines, hls = renderers[key]()
-      set_buf_content(ensure_buf(key, "lgcc"), lines, hls)
+      set_buf_content(ensure_buf(key, "lg"), lines, hls)
       vim.api.nvim_win_set_height(state.wins[key], #lines)
     end
   end
@@ -267,17 +267,17 @@ function M.open()
 
   vim.cmd(cmd .. " " .. opts.width .. "vsplit")
   state.wins.status = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.wins.status, ensure_buf("status", "lgcc"))
+  vim.api.nvim_win_set_buf(state.wins.status, ensure_buf("status", "lg"))
   set_win_opts(state.wins.status)
 
   vim.cmd("belowright 1split")
   state.wins.regions = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.wins.regions, ensure_buf("regions", "lgcc"))
+  vim.api.nvim_win_set_buf(state.wins.regions, ensure_buf("regions", "lg"))
   set_win_opts(state.wins.regions)
 
   vim.cmd("belowright 1split")
   state.wins.context = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.wins.context, ensure_buf("context", "lgcc"))
+  vim.api.nvim_win_set_buf(state.wins.context, ensure_buf("context", "lg"))
   set_win_opts(state.wins.context)
 
   vim.cmd("belowright split")

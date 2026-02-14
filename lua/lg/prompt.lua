@@ -22,7 +22,7 @@ function M.open(cb)
 		col = math.floor((ui.width - width) / 2),
 		style = "minimal",
 		border = "rounded",
-		title = " lg-cc prompt (ctrl-s to send, q/esc to cancel) ",
+		title = " lg prompt (ctrl-s to send, q/esc to cancel) ",
 		title_pos = "center",
 	})
 

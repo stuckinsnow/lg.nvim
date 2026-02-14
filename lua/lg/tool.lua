@@ -1,8 +1,8 @@
 --- CodeCompanion tool: paint_edit
 --- Single call, all region edits at once. No AI ordering dependency.
 
-local paint = require("lg-cc.paint")
-local diff = require("lg-cc.diff")
+local paint = require("lg.paint")
+local diff = require("lg.diff")
 
 local M = {}
 

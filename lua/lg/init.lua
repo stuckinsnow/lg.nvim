@@ -1,11 +1,11 @@
---- lg-cc: Paint regions + direct kiro-cli ACP for constrained AI editing
+--- lg: Paint regions + direct kiro-cli ACP for constrained AI editing
 
-local paint = require("lg-cc.paint")
-local context = require("lg-cc.context")
-local diff = require("lg-cc.diff")
-local session = require("lg-cc.session")
-local server = require("lg-cc.server")
-local window = require("lg-cc.window")
+local paint = require("lg.paint")
+local context = require("lg.context")
+local diff = require("lg.diff")
+local session = require("lg.session")
+local server = require("lg.server")
+local window = require("lg.window")
 
 local M = {}
 
@@ -61,12 +61,12 @@ end
 --- Start hint spinners on all painted regions
 local function start_spinners(regions)
 	stop_spinners()
-	local spinner_module = config.spinner_type == "block" and "lg-cc.block-spinner"
-		or config.spinner_type == "center" and "lg-cc.spinner"
-		or "lg-cc.hint-spinner"
+	local spinner_module = config.spinner_type == "block" and "lg.block-spinner"
+		or config.spinner_type == "center" and "lg.spinner"
+		or "lg.hint-spinner"
 	local Spinner = require(spinner_module)
 	for _, r in ipairs(regions) do
-		local ns = vim.api.nvim_create_namespace("lg_cc_spinner_" .. r.bufnr .. "_" .. r.start_line)
+		local ns = vim.api.nvim_create_namespace("lg_spinner_" .. r.bufnr .. "_" .. r.start_line)
 		local spinner = Spinner.new({
 			bufnr = r.bufnr,
 			ns_id = ns,
@@ -87,7 +87,7 @@ function M.send(opts)
 	opts = opts or {}
 	local regions = paint.get_all()
 	if #regions == 0 then
-		vim.notify("lg-cc: no painted regions", vim.log.levels.WARN)
+		vim.notify("lg: no painted regions", vim.log.levels.WARN)
 		return
 	end
 
@@ -97,7 +97,7 @@ function M.send(opts)
 		end
 
 		if has_lsp then
-			local lsp = require("lg-cc.lsp")
+			local lsp = require("lg.lsp")
 			for _, r in ipairs(regions) do
 				if vim.api.nvim_buf_is_valid(r.bufnr) then
 					local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
@@ -124,7 +124,7 @@ function M.send(opts)
 	if opts.prompt then
 		do_send(opts.prompt, false)
 	else
-		require("lg-cc.prompt").open(do_send)
+		require("lg.prompt").open(do_send)
 	end
 end
 
@@ -174,11 +174,11 @@ end
 function M.add_lsp_context()
 	local regions = paint.get_all()
 	if #regions == 0 then
-		vim.notify("lg-cc: no painted regions", vim.log.levels.WARN)
+		vim.notify("lg: no painted regions", vim.log.levels.WARN)
 		return
 	end
 
-	local lsp = require("lg-cc.lsp")
+	local lsp = require("lg.lsp")
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
@@ -202,13 +202,13 @@ function M.quick_edit()
 
 	local regions = { paint.get_all()[#paint.get_all()] } -- just the one we added
 
-	require("lg-cc.prompt").open(function(prompt, has_lsp)
+	require("lg.prompt").open(function(prompt, has_lsp)
 		if not prompt or prompt == "" then
 			return
 		end
 
 		if has_lsp then
-			local lsp = require("lg-cc.lsp")
+			local lsp = require("lg.lsp")
 			local r = regions[1]
 			if vim.api.nvim_buf_is_valid(r.bufnr) then
 				local info = lsp.gather(r.bufnr, r.start_line, r.end_line)

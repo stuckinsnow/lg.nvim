@@ -1,7 +1,7 @@
 --- Paint module: manages painted regions with extmarks
 --- Regions are visual selections that constrain where AI can edit
 
---- @class LgCC.Region
+--- @class Lg.Region
 --- @field bufnr number
 --- @field start_line number 1-indexed
 --- @field end_line number 1-indexed
@@ -9,9 +9,9 @@
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("lg_cc_paint")
+local ns = vim.api.nvim_create_namespace("lg_paint")
 
---- @type LgCC.Region[]
+--- @type Lg.Region[]
 local regions = {}
 
 local function ensure_highlights()
@@ -20,8 +20,8 @@ local function ensure_highlights()
   local r = math.min(255, math.floor(bg / 0x10000) + 30)
   local g = math.min(255, math.floor((bg / 0x100) % 0x100) + 30)
   local b = math.min(255, math.floor(bg % 0x100) + 30)
-  vim.api.nvim_set_hl(0, "LgCCPaintLine", { bg = r * 0x10000 + g * 0x100 + b, default = true })
-  vim.api.nvim_set_hl(0, "LgCCPaintSign", { fg = "#e5c07b", default = true })
+  vim.api.nvim_set_hl(0, "LgPaintLine", { bg = r * 0x10000 + g * 0x100 + b, default = true })
+  vim.api.nvim_set_hl(0, "LgPaintSign", { fg = "#e5c07b", default = true })
 end
 
 --- @param bufnr number
@@ -45,13 +45,13 @@ function M.add(bufnr, start_line, end_line)
 
     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
       end_line = row + 1,
-      hl_group = "LgCCPaintLine",
+      hl_group = "LgPaintLine",
       hl_eol = true,
       priority = 110,
     })
     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
       sign_text = sign,
-      sign_hl_group = "LgCCPaintSign",
+      sign_hl_group = "LgPaintSign",
       priority = 110,
     })
   end

@@ -1,8 +1,8 @@
 --- Session: manages a persistent kiro-cli ACP subprocess
 --- Handles: spawn, initialize, session/new, session/prompt lifecycle.
 
-local protocol = require("lg-cc.protocol")
-local status = require("lg-cc.status")
+local protocol = require("lg.protocol")
+local status = require("lg.status")
 
 local M = {}
 
@@ -14,7 +14,7 @@ local providers = {
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
 }
 
-local state_path = "/dev/shm/lg-cc-state.json"
+local state_path = "/dev/shm/lg-state.json"
 
 local function load_state()
 	local f = io.open(state_path, "r")
@@ -91,7 +91,7 @@ local function handle_message(s, msg)
 		if msg.result and msg.result.stopReason then
 			vim.schedule(function()
 				status.stop("Done")
-				vim.api.nvim_exec_autocmds("User", { pattern = "LgCCRequestFinished" })
+				vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 				if s._on_done then
 					s._on_done()
 					s._on_done = nil
@@ -110,14 +110,14 @@ local function handle_message(s, msg)
 				local content = update.content
 				if content and content.type == "text" and content.text then
 					vim.schedule(function()
-						require("lg-cc.window").append_agent_text(content.text)
+						require("lg.window").append_agent_text(content.text)
 					end)
 				end
 			elseif update.sessionUpdate == "tool_call" then
 				vim.schedule(function()
 					local title = update.title or update.toolCallId or "unknown"
 					status.update("Tool: " .. title)
-					vim.api.nvim_exec_autocmds("User", { pattern = "LgCCToolCall", data = { title = title } })
+					vim.api.nvim_exec_autocmds("User", { pattern = "LgToolCall", data = { title = title } })
 				end)
 			end
 		end
@@ -248,7 +248,7 @@ local function connect()
 	local init = rpc_request(s, "initialize", {
 		protocolVersion = 1,
 		clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
-		clientInfo = { name = "lg-cc", version = "2.0.0" },
+		clientInfo = { name = "lg", version = "2.0.0" },
 	})
 	if not init then
 		M.clear()
@@ -290,7 +290,7 @@ local function connect()
 	status.stop("Session ready")
 
 	vim.api.nvim_create_autocmd("VimLeavePre", {
-		group = vim.api.nvim_create_augroup("lgcc_session", { clear = true }),
+		group = vim.api.nvim_create_augroup("lg_session", { clear = true }),
 		callback = function()
 			M.clear()
 		end,
@@ -312,7 +312,7 @@ function M.send(prompt, regions, context_regions, on_done)
 	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 
 	status.start("Thinking...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgCCRequestStarted" })
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
 
 	-- Store on_done for when turn completes
 	s._on_done = on_done
@@ -347,7 +347,7 @@ end
 function M.select_model()
 	local s = connect()
 	if not s or not s.models then
-		vim.notify("lg-cc: no models available", vim.log.levels.WARN)
+		vim.notify("lg: no models available", vim.log.levels.WARN)
 		return
 	end
 
@@ -362,7 +362,7 @@ function M.select_model()
 
 	vim.ui.select(
 		names,
-		{ prompt = "lg-cc model (current: " .. (s.models.currentModelId or "?") .. "):" },
+		{ prompt = "lg model (current: " .. (s.models.currentModelId or "?") .. "):" },
 		function(choice)
 			if not choice then
 				return
@@ -378,7 +378,7 @@ function M.select_model()
 			})
 			s.models.currentModelId = model_id
 			save_state({ provider = opts.provider, model = model_id })
-			vim.notify("lg-cc: model → " .. model_id, vim.log.levels.INFO)
+			vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
 		end
 	)
 end
@@ -415,7 +415,7 @@ function M.select_provider()
 
 	vim.ui.select(
 		labels,
-		{ prompt = "lg-cc provider (current: " .. (providers[opts.provider].name or "?") .. "):" },
+		{ prompt = "lg provider (current: " .. (providers[opts.provider].name or "?") .. "):" },
 		function(choice, idx)
 			if not choice or not idx then
 				return
@@ -428,7 +428,7 @@ function M.select_provider()
 			opts.cmd = providers[picked].cmd
 			M.clear()
 			save_state({ provider = picked, model = M.current_model() })
-			vim.notify("lg-cc: provider → " .. providers[picked].name, vim.log.levels.INFO)
+			vim.notify("lg: provider → " .. providers[picked].name, vim.log.levels.INFO)
 			vim.schedule(function()
 				M.select_model()
 			end)
@@ -469,7 +469,7 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 	local init = rpc_request(s, "initialize", {
 		protocolVersion = 1,
 		clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
-		clientInfo = { name = "lg-cc-quick", version = "2.0.0" },
+		clientInfo = { name = "lg-quick", version = "2.0.0" },
 	})
 	if not init then
 		pcall(function()
@@ -501,7 +501,7 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 
 	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
 	status.start("Quick edit...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgCCRequestStarted" })
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
 	local id = s.next_id
 	s.next_id = id + 1
 	write(

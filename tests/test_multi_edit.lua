@@ -5,8 +5,8 @@
 local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h")
 vim.opt.rtp:prepend(plugin_root)
 
-local paint = require("lg-cc.paint")
-local diff = require("lg-cc.diff")
+local paint = require("lg.paint")
+local diff = require("lg.diff")
 
 local pass = 0
 local fail = 0

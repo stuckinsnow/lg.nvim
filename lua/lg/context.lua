@@ -3,14 +3,14 @@
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("lg_cc_context")
+local ns = vim.api.nvim_create_namespace("lg_context")
 
---- @type LgCC.Region[]
+--- @type Lg.Region[]
 local regions = {}
 
 local function ensure_highlights()
-  vim.api.nvim_set_hl(0, "LgCCContextLine", { bg = "#1a2a3a", default = true })
-  vim.api.nvim_set_hl(0, "LgCCContextSign", { fg = "#61afef", default = true })
+  vim.api.nvim_set_hl(0, "LgContextLine", { bg = "#1a2a3a", default = true })
+  vim.api.nvim_set_hl(0, "LgContextSign", { fg = "#61afef", default = true })
 end
 
 --- @param bufnr number
@@ -20,10 +20,10 @@ function M.add(bufnr, start_line, end_line)
   ensure_highlights()
   for row = start_line - 1, end_line - 1 do
     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
-      end_line = row + 1, hl_group = "LgCCContextLine", hl_eol = true, priority = 105,
+      end_line = row + 1, hl_group = "LgContextLine", hl_eol = true, priority = 105,
     })
     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
-      sign_text = "▎", sign_hl_group = "LgCCContextSign", priority = 105,
+      sign_text = "▎", sign_hl_group = "LgContextSign", priority = 105,
     })
   end
   table.insert(regions, { bufnr = bufnr, start_line = start_line, end_line = end_line })

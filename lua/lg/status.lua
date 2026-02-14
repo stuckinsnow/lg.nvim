@@ -26,8 +26,8 @@ function M.start(text)
   local Message = require("noice.message")
   local msg = Message("lsp", "progress")
   msg.opts.progress = {
-    client_id = "lgcc_" .. vim.uv.hrtime(),
-    client = "lg-cc",
+    client_id = "lg_" .. vim.uv.hrtime(),
+    client = "lg",
     id = vim.uv.hrtime(),
     message = text or "Processing...",
   }

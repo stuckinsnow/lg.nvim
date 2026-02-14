@@ -3,12 +3,12 @@
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("lg_cc_marks")
+local ns = vim.api.nvim_create_namespace("lg_marks")
 local attached_bufs = {}
 
 local function ensure_highlights()
-  vim.api.nvim_set_hl(0, "LgCCSign", { fg = "#e5c07b", default = true })
-  vim.api.nvim_set_hl(0, "LgCCLine", { bg = "#2a2a3a", default = true })
+  vim.api.nvim_set_hl(0, "LgSign", { fg = "#e5c07b", default = true })
+  vim.api.nvim_set_hl(0, "LgLine", { bg = "#2a2a3a", default = true })
 end
 
 local function attach_listener(bufnr)
@@ -48,8 +48,8 @@ function M.apply(bufnr, start_row, end_row, new_lines)
     end
     vim.api.nvim_buf_set_extmark(bufnr, ns, i, 0, {
       sign_text = sign,
-      sign_hl_group = "LgCCSign",
-      line_hl_group = "LgCCLine",
+      sign_hl_group = "LgSign",
+      line_hl_group = "LgLine",
       priority = 100,
     })
   end

@@ -11,7 +11,7 @@ local default_opts = {
 	extmark = { virt_text_pos = "overlay", priority = 1001 },
 }
 
---- @class LgCC.Spinner
+--- @class Lg.Spinner
 --- @field bufnr number
 --- @field ns_id number
 --- @field line_num number

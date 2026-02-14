@@ -1,3 +1,3 @@
-module lg-cc-mcp
+module lg-mcp
 
 go 1.21

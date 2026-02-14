@@ -1,8 +1,8 @@
 --- Unix socket server for receiving paint edits from MCP server
 --- All in-memory, no disk writes
 
-local diff = require("lg-cc.diff")
-local paint = require("lg-cc.paint")
+local diff = require("lg.diff")
+local paint = require("lg.paint")
 
 local M = {}
 
@@ -71,7 +71,7 @@ function M.start()
 		return sock_path
 	end
 
-	sock_path = "/dev/shm/lg-cc.sock"
+	sock_path = "/dev/shm/lg.sock"
 	vim.fn.delete(sock_path)
 
 	server = vim.uv.new_pipe(false)

@@ -10,7 +10,7 @@ local default_opts = {
 	patterns = { "╲  ", " ╲ ", "  ╲" },
 }
 
---- @class LgCC.BlockSpinner
+--- @class Lg.BlockSpinner
 --- @field bufnr number
 --- @field ns_id number
 --- @field start_line number 0-indexed
