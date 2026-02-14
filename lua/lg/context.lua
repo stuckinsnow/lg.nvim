@@ -19,11 +19,22 @@ end
 function M.add(bufnr, start_line, end_line)
   ensure_highlights()
   for row = start_line - 1, end_line - 1 do
+    local total = end_line - start_line + 1
+    local sign
+    if total == 1 then
+      sign = "│"
+    elseif row == start_line - 1 then
+      sign = "┌"
+    elseif row == end_line - 1 then
+      sign = "└"
+    else
+      sign = "│"
+    end
     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
       end_line = row + 1, hl_group = "LgContextLine", hl_eol = true, priority = 105,
     })
     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
-      sign_text = "▎", sign_hl_group = "LgContextSign", priority = 105,
+      sign_text = sign, sign_hl_group = "LgContextSign", priority = 105,
     })
   end
   table.insert(regions, { bufnr = bufnr, start_line = start_line, end_line = end_line })

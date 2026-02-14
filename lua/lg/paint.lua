@@ -15,12 +15,7 @@ local ns = vim.api.nvim_create_namespace("lg_paint")
 local regions = {}
 
 local function ensure_highlights()
-  local ok, vis = pcall(vim.api.nvim_get_hl, 0, { name = "Visual" })
-  local bg = (ok and vis and vis.bg) or 0x3a3a5c
-  local r = math.min(255, math.floor(bg / 0x10000) + 30)
-  local g = math.min(255, math.floor((bg / 0x100) % 0x100) + 30)
-  local b = math.min(255, math.floor(bg % 0x100) + 30)
-  vim.api.nvim_set_hl(0, "LgPaintLine", { bg = r * 0x10000 + g * 0x100 + b, default = true })
+  vim.api.nvim_set_hl(0, "LgPaintLine", { link = "Visual", default = true })
   vim.api.nvim_set_hl(0, "LgPaintSign", { fg = "#e5c07b", default = true })
 end
 
