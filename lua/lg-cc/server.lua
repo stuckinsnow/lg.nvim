@@ -7,115 +7,130 @@ local paint = require("lg-cc.paint")
 local M = {}
 
 local server = nil
+---@type string?
 local sock_path = nil
 
 --- Encode regions as JSON for MCP server to read
 --- @return string
 function M.encode_regions()
-  local regions = paint.get_all()
-  local out = {}
-  for i, r in ipairs(regions) do
-    out[i] = {
-      region_id = i - 1,
-      file = r.file,
-      start_line = r.start_line,
-      end_line = r.end_line,
-      lines = r.lines,
-    }
-  end
-  return vim.json.encode(out)
+	local regions = paint.get_all()
+	local out = {}
+	for i, r in ipairs(regions) do
+		out[i] = {
+			region_id = i - 1,
+			file = r.file,
+			start_line = r.start_line,
+			end_line = r.end_line,
+			lines = r.lines,
+		}
+	end
+	return vim.json.encode(out)
 end
 
 --- Handle a complete message from MCP server
 --- @param data string JSON: { "method": "get_regions" } or { "method": "apply_edit", "region_id": 0, "new_code": "..." }
 --- @return string JSON response
 function M.handle_message(data)
-  local ok, msg = pcall(vim.json.decode, data)
-  if not ok then
-    return vim.json.encode({ error = "invalid json" })
-  end
+	local ok, msg = pcall(vim.json.decode, data)
+	if not ok then
+		return vim.json.encode({ error = "invalid json" })
+	end
 
-  if msg.method == "get_regions" then
-    return M.encode_regions()
-  elseif msg.method == "apply_edit" then
-    -- Single-region edit (legacy / MCP per-call)
-    local regions = paint.get_all()
-    local idx = (msg.region_id or -1) + 1
-    if idx < 1 or idx > #regions then
-      return vim.json.encode({ error = "invalid region_id" })
-    end
-    local region = regions[idx]
-    if not vim.api.nvim_buf_is_valid(region.bufnr) then
-      return vim.json.encode({ error = "buffer invalid" })
-    end
-    local new_lines = vim.split(msg.new_code, "\n")
-    diff.apply(region.bufnr, region.start_line - 1, region.end_line, new_lines)
-    paint.shift_after(region.bufnr, region.start_line, #new_lines - (region.end_line - region.start_line + 1))
-    return vim.json.encode({ ok = true })
-  elseif msg.method == "apply_edits" then
-    -- Batch edit — all regions at once
-    local regions = paint.get_all()
-    local edits = msg.edits or {}
-    diff.apply_all(regions, edits)
-    paint.clear()
-    return vim.json.encode({ ok = true, count = #edits })
-  end
+	if msg.method == "get_regions" then
+		return M.encode_regions()
+	elseif msg.method == "apply_edit" then
+		local regions = paint.get_all()
+		local idx = (msg.region_id or -1) + 1
+		if idx < 1 or idx > #regions then
+			return vim.json.encode({ error = "invalid region_id" })
+		end
+		local region = regions[idx]
+		if not vim.api.nvim_buf_is_valid(region.bufnr) then
+			return vim.json.encode({ error = "buffer invalid" })
+		end
+		local new_lines = vim.split(msg.new_code, "\n")
+		diff.apply(region.bufnr, region.start_line - 1, region.end_line, new_lines)
+		paint.shift_after(region.bufnr, region.start_line, #new_lines - (region.end_line - region.start_line + 1))
+		return vim.json.encode({ ok = true })
+	elseif msg.method == "apply_edits" then
+		local regions = paint.get_all()
+		local edits = msg.edits or {}
+		diff.apply_all(regions, edits)
+		paint.clear()
+		return vim.json.encode({ ok = true, count = #edits })
+	end
 
-  return vim.json.encode({ error = "unknown method" })
+	return vim.json.encode({ error = "unknown method" })
 end
 
+--- @return string?
 function M.start()
-  if server then return sock_path end
+	if server then
+		return sock_path
+	end
 
-  sock_path = string.format("/dev/shm/lg-cc-%d.sock", vim.fn.getpid())
-  -- Clean up stale socket
-  vim.fn.delete(sock_path)
+	sock_path = string.format("/dev/shm/lg-cc-%d.sock", vim.fn.getpid())
+	vim.fn.delete(sock_path)
 
-  server = vim.uv.new_pipe(false)
-  server:bind(sock_path)
-  server:listen(8, function(err)
-    if err then return end
-    local client = vim.uv.new_pipe(false)
-    server:accept(client)
+	server = vim.uv.new_pipe(false)
+	if not server then
+		return nil
+	end
+	server:bind(sock_path)
+	server:listen(8, function(err)
+		if err or not server then
+			return
+		end
+		local client = vim.uv.new_pipe(false)
+		if not client then
+			return
+		end
+		server:accept(client)
 
-    local buf = ""
-    client:read_start(function(read_err, data)
-      if read_err or not data then
-        client:close()
-        return
-      end
-      buf = buf .. data
-      -- Protocol: newline-delimited JSON
-      while true do
-        local nl = buf:find("\n")
-        if not nl then break end
-        local line = buf:sub(1, nl - 1)
-        buf = buf:sub(nl + 1)
-        local response
-        vim.schedule(function()
-          response = M.handle_message(line)
-          client:write(response .. "\n")
-        end)
-      end
-    end)
-  end)
+		local buf = ""
+		client:read_start(function(read_err, data)
+			if read_err or not data then
+				if client then
+					client:close()
+				end
+				return
+			end
+			buf = buf .. data
+			while true do
+				local nl = buf:find("\n")
+				if not nl then
+					break
+				end
+				local line = buf:sub(1, nl - 1)
+				buf = buf:sub(nl + 1)
+				vim.schedule(function()
+					local response = M.handle_message(line)
+					if client then
+						client:write(response .. "\n")
+					end
+				end)
+			end
+		end)
+	end)
 
-  return sock_path
+	return sock_path
 end
 
 function M.stop()
-  if server then
-    server:close()
-    server = nil
-  end
-  if sock_path then
-    vim.fn.delete(sock_path)
-    sock_path = nil
-  end
+	if server then
+		---@diagnostic disable-next-line: undefined-field
+		server:close()
+		server = nil
+	end
+	if sock_path then
+		vim.fn.delete(sock_path)
+		sock_path = nil
+	end
 end
 
+--- @return string?
 function M.get_sock_path()
-  return sock_path
+	return sock_path
 end
 
 return M

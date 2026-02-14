@@ -96,7 +96,9 @@ local function render()
       if entry.type == "prompt" then
         table.insert(lines, "  > " .. entry.text)
       elseif entry.type == "result" then
-        table.insert(lines, "  ✓ " .. entry.text)
+        for _, l in ipairs(vim.split(entry.text, "\n")) do
+          table.insert(lines, "  ✓ " .. l)
+        end
       elseif entry.type == "agent" then
         for _, l in ipairs(vim.split(entry.text, "\n")) do
           table.insert(lines, "  " .. l)
