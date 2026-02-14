@@ -13,7 +13,7 @@ local M = {}
 local active_spinners = {}
 
 local config = {
-	spinner_type = "hint", -- "hint", "block", or "center"
+	spinner_type = "hint", -- "hint", "block", "center", or "wave"
 }
 
 function M.setup(opts)
@@ -63,6 +63,7 @@ local function start_spinners(regions)
 	stop_spinners()
 	local spinner_module = config.spinner_type == "block" and "lg.block-spinner"
 		or config.spinner_type == "center" and "lg.spinner"
+		or config.spinner_type == "wave" and "lg.wave-spinner"
 		or "lg.hint-spinner"
 	local Spinner = require(spinner_module)
 	for _, r in ipairs(regions) do
@@ -147,6 +148,7 @@ end
 function M.clear_all()
 	paint.clear()
 	context.clear()
+	diff.clear()
 	window.refresh()
 end
 function M.clear_marks()
