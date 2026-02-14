@@ -208,6 +208,7 @@ func handleToolsList() any {
 				InputSchema: toolSchema{
 					Type:       "object",
 					Properties: map[string]any{},
+					Required:   []string{},
 				},
 			},
 		},

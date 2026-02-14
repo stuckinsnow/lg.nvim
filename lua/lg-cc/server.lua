@@ -51,12 +51,14 @@ function M.handle_message(data)
 		local new_lines = vim.split(msg.new_code, "\n")
 		diff.apply(region.bufnr, region.start_line - 1, region.end_line, new_lines)
 		paint.shift_after(region.bufnr, region.start_line, #new_lines - (region.end_line - region.start_line + 1))
+		vim.cmd("redraw")
 		return vim.json.encode({ ok = true })
 	elseif msg.method == "apply_edits" then
 		local regions = paint.get_all()
 		local edits = msg.edits or {}
 		diff.apply_all(regions, edits)
 		paint.clear()
+		vim.cmd("redraw")
 		return vim.json.encode({ ok = true, count = #edits })
 	end
 
@@ -69,7 +71,7 @@ function M.start()
 		return sock_path
 	end
 
-	sock_path = string.format("/dev/shm/lg-cc-%d.sock", vim.fn.getpid())
+	sock_path = "/dev/shm/lg-cc.sock"
 	vim.fn.delete(sock_path)
 
 	server = vim.uv.new_pipe(false)

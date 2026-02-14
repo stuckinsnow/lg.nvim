@@ -1,12 +1,14 @@
 # lg-cc
 
-Paint regions in Neovim, then let kiro-cli edit **only** those regions via ACP.
+Paint regions in Neovim, then let an AI CLI edit **only** those regions via ACP.
+
+Supports **kiro-cli** and **opencode** as providers.
 
 ## How it works
 
 1. Visually select code → paint it as an editable region
 2. Trigger send with a prompt
-3. kiro-cli edits painted regions automatically — no approval prompts
+3. AI edits painted regions automatically — no approval prompts
 4. Session persists between edits (clear when you want fresh context)
 
 ## Architecture
@@ -16,9 +18,13 @@ lua/lg-cc/
 ├── init.lua      -- Entry point, thin orchestrator
 ├── paint.lua     -- Visual region painting with extmarks
 ├── diff.lua      -- Buffer editing + gutter markers
-├── session.lua   -- kiro-cli ACP subprocess lifecycle
+├── session.lua   -- ACP subprocess lifecycle
 ├── protocol.lua  -- ACP/JSON-RPC message building
+├── server.lua    -- Unix socket server for MCP bridge
 └── window.lua    -- Optional side panel (regions + history)
+
+mcp/
+└── main.go       -- MCP server (paint_edit + get_painted_regions tools)
 ```
 
 ## Installation
@@ -28,6 +34,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   "your-user/lg-cc",
+  build = "cd mcp && go build -o lg-cc-mcp .",
   config = function()
     local lgcc = require("lg-cc")
     lgcc.setup()
@@ -50,6 +57,45 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   end,
 }
 ```
+
+## MCP Server Setup
+
+lg-cc uses an MCP server to expose `paint_edit` and `get_painted_regions` tools to the AI CLI. The plugin starts a unix socket at `/dev/shm/lg-cc.sock` on startup — you just need to tell your CLI where to find the MCP binary.
+
+### kiro-cli
+
+Add to `~/.kiro/settings/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "lg-cc": {
+      "command": "/path/to/lg-cc/mcp/lg-cc-mcp",
+      "args": [],
+      "env": { "LGCC_SOCK": "/dev/shm/lg-cc.sock" }
+    }
+  }
+}
+```
+
+### opencode
+
+Add to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "lg-cc": {
+      "type": "local",
+      "command": ["/path/to/lg-cc/mcp/lg-cc-mcp"],
+      "environment": { "LGCC_SOCK": "/dev/shm/lg-cc.sock" },
+      "enabled": true
+    }
+  }
+}
+```
+
+Replace `/path/to/lg-cc` with the actual plugin install path (e.g. `~/.local/share/nvim/lazy/lg-cc`).
 
 ## Usage
 
@@ -75,8 +121,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 lgcc.setup({
   session = {
-    cmd = "kiro-cli",    -- CLI command
-    args = { "acp" },    -- ACP mode
+    provider = "kiro",   -- "kiro" or "opencode"
   },
   window = {
     width = 50,

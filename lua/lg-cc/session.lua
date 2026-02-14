@@ -147,13 +147,14 @@ local function handle_message(s, msg)
 			end
 			write(s, { jsonrpc = "2.0", id = msg.id, result = vim.NIL })
 			vim.schedule(function()
+				local lines = vim.split(content, "\n")
 				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 					if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == path then
-						vim.api.nvim_buf_call(buf, function()
-							vim.cmd("edit!")
-						end)
+						vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+						vim.bo[buf].modified = false
 					end
 				end
+				vim.cmd("redraw")
 			end)
 		end
 	elseif method:match("^_kiro") or method:match("^_opencode") then

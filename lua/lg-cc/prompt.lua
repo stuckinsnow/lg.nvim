@@ -12,6 +12,7 @@ function M.open(cb)
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].filetype = "markdown"
+	vim.diagnostic.enable(false, { bufnr = buf })
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",

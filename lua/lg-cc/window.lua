@@ -1,16 +1,18 @@
---- Window: side column with stacked section windows + markdown chat
+--- Window: side column with stacked section windows + interactive markdown chat
 
 local paint = require("lg-cc.paint")
 local session = require("lg-cc.session")
 
 local M = {}
 
+local PROMPT_MARKER = "❯ "
+local INPUT_SEPARATOR = "---"
+
 local state = {
-  -- bufs: status, regions, context, chat
   bufs = {},
-  -- wins: status, regions, context, chat
   wins = {},
   history = {},
+  input_line = nil, -- line number where user input starts
 }
 
 local opts = {}
@@ -27,6 +29,7 @@ local function make_buf(name, ft)
   vim.bo[buf].filetype = ft
   vim.bo[buf].modifiable = false
   pcall(vim.api.nvim_buf_set_name, buf, name)
+  vim.diagnostic.enable(false, { bufnr = buf })
   return buf
 end
 
@@ -56,7 +59,6 @@ local function ensure_highlights()
   vim.api.nvim_set_hl(0, "LgCCStatus", { link = "DiagnosticOk", default = true })
 end
 
---- Write lines + highlights into a buffer
 local function set_buf_content(buf, lines, hls)
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -125,29 +127,38 @@ local function render_context()
   return lines, hls
 end
 
+--- Build the chat buffer content: history + input area
 local function render_chat()
   local lines = {}
-  if #state.history == 0 then
-    table.insert(lines, "*No conversation yet.*")
-    return lines
-  end
   for i, entry in ipairs(state.history) do
     if i > 1 then
       table.insert(lines, "")
-      table.insert(lines, "---")
+      table.insert(lines, INPUT_SEPARATOR)
       table.insert(lines, "")
     end
     if entry.type == "prompt" then
       table.insert(lines, "")
-      table.insert(lines, "❯ " .. entry.text:gsub("\n", "\n  "))
+      for j, l in ipairs(vim.split(entry.text, "\n")) do
+        table.insert(lines, (j == 1 and PROMPT_MARKER or "  ") .. l)
+      end
     elseif entry.type == "result" then
-      table.insert(lines, "> ✓ " .. entry.text:gsub("\n", "\n> "))
+      for j, l in ipairs(vim.split(entry.text, "\n")) do
+        table.insert(lines, (j == 1 and "> ✓ " or "> ") .. l)
+      end
     elseif entry.type == "agent" then
       for _, l in ipairs(vim.split(entry.text, "\n")) do
         table.insert(lines, l)
       end
     end
   end
+  -- Input area
+  if #state.history > 0 then
+    table.insert(lines, "")
+    table.insert(lines, INPUT_SEPARATOR)
+    table.insert(lines, "")
+  end
+  state.input_line = #lines -- 0-indexed line where input starts
+  table.insert(lines, PROMPT_MARKER)
   return lines
 end
 
@@ -181,6 +192,39 @@ function M.append_agent_text(chunk)
   M.refresh()
 end
 
+--- Get user input from the chat buffer and send it
+function M.submit()
+  local buf = state.bufs.chat
+  if not buf_valid(buf) or not state.input_line then return end
+
+  local lines = vim.api.nvim_buf_get_lines(buf, state.input_line, -1, false)
+  -- Strip the prompt marker from first line
+  if lines[1] then
+    lines[1] = lines[1]:gsub("^" .. vim.pesc(PROMPT_MARKER), "")
+  end
+  local text = vim.trim(table.concat(lines, "\n"))
+  if text == "" then return end
+
+  -- Trigger send via init.lua
+  require("lg-cc").send({ prompt = text })
+end
+
+--- Focus the chat window input area
+function M.focus_input()
+  if not win_valid(state.wins.chat) then
+    M.open()
+  end
+  if win_valid(state.wins.chat) then
+    vim.api.nvim_set_current_win(state.wins.chat)
+    local buf = state.bufs.chat
+    if buf_valid(buf) then
+      local lc = vim.api.nvim_buf_line_count(buf)
+      vim.api.nvim_win_set_cursor(state.wins.chat, { lc, #PROMPT_MARKER })
+      vim.cmd("startinsert!")
+    end
+  end
+end
+
 function M.refresh()
   local sections = { "status", "regions", "context" }
   local renderers = {
@@ -192,7 +236,6 @@ function M.refresh()
     if win_valid(state.wins[key]) then
       local lines, hls = renderers[key]()
       set_buf_content(ensure_buf(key, "lgcc"), lines, hls)
-      -- Auto-fit height to content
       vim.api.nvim_win_set_height(state.wins[key], #lines)
     end
   end
@@ -200,10 +243,20 @@ function M.refresh()
   if win_valid(state.wins.chat) then
     local buf = ensure_buf("chat", "markdown")
     local lines = render_chat()
-    set_buf_content(buf, lines)
+    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     local lc = vim.api.nvim_buf_line_count(buf)
-    pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, 0 })
+    pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, #PROMPT_MARKER })
   end
+end
+
+local function setup_chat_keymaps(buf)
+  vim.keymap.set({ "n", "i" }, "<C-s>", function()
+    M.submit()
+  end, { buffer = buf, desc = "Send prompt" })
+  vim.keymap.set("n", "<CR>", function()
+    M.submit()
+  end, { buffer = buf, desc = "Send prompt" })
 end
 
 function M.open()
@@ -212,32 +265,31 @@ function M.open()
   local prev_win = vim.api.nvim_get_current_win()
   local cmd = opts.position == "left" and "topleft" or "botright"
 
-  -- First split creates the column
   vim.cmd(cmd .. " " .. opts.width .. "vsplit")
   state.wins.status = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.wins.status, ensure_buf("status", "lgcc"))
   set_win_opts(state.wins.status)
 
-  -- Regions
   vim.cmd("belowright 1split")
   state.wins.regions = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.wins.regions, ensure_buf("regions", "lgcc"))
   set_win_opts(state.wins.regions)
 
-  -- Context
   vim.cmd("belowright 1split")
   state.wins.context = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.wins.context, ensure_buf("context", "lgcc"))
   set_win_opts(state.wins.context)
 
-  -- Chat (takes remaining space)
   vim.cmd("belowright split")
   state.wins.chat = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.wins.chat, ensure_buf("chat", "markdown"))
+  local chat_buf = ensure_buf("chat", "markdown")
+  vim.api.nvim_win_set_buf(state.wins.chat, chat_buf)
   set_win_opts(state.wins.chat)
   vim.wo[state.wins.chat].winfixheight = false
   vim.wo[state.wins.chat].conceallevel = 2
+  vim.bo[chat_buf].modifiable = true
 
+  setup_chat_keymaps(chat_buf)
   M.refresh()
 
   pcall(vim.api.nvim_set_current_win, prev_win)

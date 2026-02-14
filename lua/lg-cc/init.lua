@@ -25,34 +25,6 @@ function M.setup(opts)
 
 	server.start()
 
-	local mcp_bin = vim.fn.stdpath("data") .. "/mcp/lg-cc-mcp"
-	local mcp_config_dir = vim.fn.stdpath("config") .. "/kiro/settings"
-	local mcp_config_path = mcp_config_dir .. "/mcp.json"
-
-	local existing = {}
-	local f = io.open(mcp_config_path, "r")
-	if f then
-		local ok, parsed = pcall(vim.json.decode, f:read("*a"))
-		f:close()
-		if ok and parsed then
-			existing = parsed
-		end
-	end
-
-	existing.mcpServers = existing.mcpServers or {}
-	existing.mcpServers["lg-cc"] = {
-		command = mcp_bin,
-		args = {},
-		env = { LGCC_SOCK = server.get_sock_path() },
-	}
-
-	vim.fn.mkdir(mcp_config_dir, "p")
-	f = io.open(mcp_config_path, "w")
-	if f then
-		f:write(vim.json.encode(existing))
-		f:close()
-	end
-
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		callback = function()
 			server.stop()
@@ -95,7 +67,13 @@ local function start_spinners(regions)
 	local Spinner = require(spinner_module)
 	for _, r in ipairs(regions) do
 		local ns = vim.api.nvim_create_namespace("lg_cc_spinner_" .. r.bufnr .. "_" .. r.start_line)
-		local spinner = Spinner.new({ bufnr = r.bufnr, ns_id = ns, start_line = r.start_line, end_line = r.end_line })
+		local spinner = Spinner.new({
+			bufnr = r.bufnr,
+			ns_id = ns,
+			line_num = r.start_line,
+			start_line = r.start_line,
+			end_line = r.end_line,
+		})
 		if spinner then
 			spinner:start()
 			table.insert(active_spinners, spinner)
@@ -182,6 +160,9 @@ end
 
 function M.toggle_window()
 	window.toggle()
+end
+function M.focus_chat()
+	window.focus_input()
 end
 function M.select_model()
 	session.select_model()
