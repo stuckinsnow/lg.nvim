@@ -130,35 +130,38 @@ end
 --- Build the chat buffer content: history + input area
 local function render_chat()
   local lines = {}
-  for i, entry in ipairs(state.history) do
-    if i > 1 then
-      table.insert(lines, "")
-      table.insert(lines, INPUT_SEPARATOR)
-      table.insert(lines, "")
-    end
+  for _, entry in ipairs(state.history) do
     if entry.type == "prompt" then
       table.insert(lines, "")
-      for j, l in ipairs(vim.split(entry.text, "\n")) do
-        table.insert(lines, (j == 1 and PROMPT_MARKER or "  ") .. l)
+      table.insert(lines, "# Me")
+      table.insert(lines, "")
+      for _, l in ipairs(vim.split(entry.text, "\n")) do
+        table.insert(lines, l)
       end
     elseif entry.type == "result" then
-      for j, l in ipairs(vim.split(entry.text, "\n")) do
-        table.insert(lines, (j == 1 and "> ✓ " or "> ") .. l)
+      table.insert(lines, "")
+      table.insert(lines, "# AI")
+      table.insert(lines, "")
+      for _, l in ipairs(vim.split(entry.text, "\n")) do
+        table.insert(lines, l)
       end
     elseif entry.type == "agent" then
+      if #lines == 0 or lines[#lines] ~= "" then
+        table.insert(lines, "")
+        table.insert(lines, "# AI")
+        table.insert(lines, "")
+      end
       for _, l in ipairs(vim.split(entry.text, "\n")) do
         table.insert(lines, l)
       end
     end
   end
   -- Input area
-  if #state.history > 0 then
-    table.insert(lines, "")
-    table.insert(lines, INPUT_SEPARATOR)
-    table.insert(lines, "")
-  end
+  table.insert(lines, "")
+  table.insert(lines, "# Me")
+  table.insert(lines, "")
   state.input_line = #lines -- 0-indexed line where input starts
-  table.insert(lines, PROMPT_MARKER)
+  table.insert(lines, "")
   return lines
 end
 
@@ -198,10 +201,6 @@ function M.submit()
   if not buf_valid(buf) or not state.input_line then return end
 
   local lines = vim.api.nvim_buf_get_lines(buf, state.input_line, -1, false)
-  -- Strip the prompt marker from first line
-  if lines[1] then
-    lines[1] = lines[1]:gsub("^" .. vim.pesc(PROMPT_MARKER), "")
-  end
   local text = vim.trim(table.concat(lines, "\n"))
   if text == "" then return end
 
@@ -219,7 +218,7 @@ function M.focus_input()
     local buf = state.bufs.chat
     if buf_valid(buf) then
       local lc = vim.api.nvim_buf_line_count(buf)
-      vim.api.nvim_win_set_cursor(state.wins.chat, { lc, #PROMPT_MARKER })
+      vim.api.nvim_win_set_cursor(state.wins.chat, { lc, 0 })
       vim.cmd("startinsert!")
     end
   end
@@ -246,7 +245,7 @@ function M.refresh()
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     local lc = vim.api.nvim_buf_line_count(buf)
-    pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, #PROMPT_MARKER })
+    pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, 0 })
   end
 end
 
