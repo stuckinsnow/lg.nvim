@@ -31,6 +31,7 @@ function M.open(cb)
 	local function submit()
 		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		local text = vim.trim(table.concat(lines, "\n"))
+		vim.cmd("stopinsert")
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
 		if text ~= "" then
