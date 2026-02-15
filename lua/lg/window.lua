@@ -129,10 +129,13 @@ local function render_context()
       end
     end
   end
+  local imgs = require("lg.context").get_files()
+  for _, img in ipairs(imgs) do
+    table.insert(lines, "  📎 " .. vim.fn.fnamemodify(img, ":~:."))
+    table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
+  end
   return lines, hls
 end
-
---- Build the chat buffer content: history + input area
 local function render_chat()
   local lines = {}
   for _, entry in ipairs(state.history) do

@@ -61,6 +61,20 @@ end
 
 function M.count() return #regions end
 
+--- @type string[]
+local files = {}
+
+function M.add_file(path)
+  path = vim.fn.fnamemodify(path, ":p")
+  if vim.fn.filereadable(path) == 0 then
+    vim.notify("lg: file not found: " .. path, vim.log.levels.WARN)
+    return
+  end
+  table.insert(files, path)
+end
+
+function M.get_files() return files end
+
 function M.clear()
   for _, r in ipairs(regions) do
     if vim.api.nvim_buf_is_valid(r.bufnr) then
@@ -68,6 +82,7 @@ function M.clear()
     end
   end
   regions = {}
+  files = {}
 end
 
 function M.clear_last()

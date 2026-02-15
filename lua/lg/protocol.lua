@@ -41,6 +41,16 @@ function M.build_prompt(regions, context_regions, user_prompt)
     table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
   end
 
+  -- File context
+  local files = require("lg.context").get_files()
+  if #files > 0 then
+    local ctx = { "### Files (read these for additional context):\n" }
+    for _, f in ipairs(files) do
+      table.insert(ctx, f)
+    end
+    table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
+  end
+
   -- User message
   table.insert(parts, { type = "text", text = user_prompt })
 
