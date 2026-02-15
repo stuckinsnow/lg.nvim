@@ -1,10 +1,11 @@
 --- lg semantic search via lg-index API
 local M = {}
+local status = require("lg.status")
 
 local config = {
 	api_url = "http://192.168.21.58:8081",
-	repo = nil, -- auto-detect from git remote
-	branch = nil, -- auto-detect from git
+	repo = nil,
+	branch = nil,
 }
 
 function M.setup(opts)
@@ -24,6 +25,15 @@ local function detect_branch()
 	return vim.trim(out)
 end
 
+local function curl_json(path, body, cb)
+	local cmd = string.format("curl -s %s%s -d '%s'", config.api_url, path, vim.json.encode(body))
+	vim.system({ "sh", "-c", cmd }, {}, vim.schedule_wrap(function(obj)
+		if obj.code ~= 0 then cb(nil) return end
+		local ok, data = pcall(vim.json.decode, obj.stdout)
+		if ok then cb(data) else cb(nil) end
+	end))
+end
+
 function M.find(query)
 	if not query or query == "" then
 		vim.ui.input({ prompt = "lg-find: " }, function(input)
@@ -39,59 +49,84 @@ function M.find(query)
 		return
 	end
 
-	local body = vim.json.encode({ repo = repo, branch = branch, query = query, top_n = 10 })
-	local cmd = string.format("curl -s %s/find -d '%s'", config.api_url, body)
+	status.start("Checking index…")
 
-	vim.system({ "sh", "-c", cmd }, {}, vim.schedule_wrap(function(obj)
-		if obj.code ~= 0 then
-			vim.notify("lg-find: request failed", vim.log.levels.ERROR)
+	curl_json("/status", { repo = repo, branch = branch }, function(st)
+		if not st then
+			status.stop("Can't reach indexer")
+			return
+		end
+		if st.indexing then
+			status.stop("Indexing in progress, try again shortly")
+			return
+		end
+		if not st.indexed then
+			status.stop("Not indexed — register with <leader>aR first")
 			return
 		end
 
-		local ok, results = pcall(vim.json.decode, obj.stdout)
-		if not ok or not results or #results == 0 then
-			if obj.stdout and obj.stdout:match("indexing in progress") then
-				vim.notify("lg-find: indexing in progress, try again shortly", vim.log.levels.INFO)
-			else
-				vim.notify("lg-find: no results", vim.log.levels.WARN)
+		status.update("Searching: " .. query)
+
+		curl_json("/find", { repo = repo, branch = branch, query = query, top_n = 10 }, function(results)
+			if not results or #results == 0 then
+				status.stop("No results")
+				return
 			end
-			return
-		end
 
-		local fzf = require("fzf-lua")
-		local entries = {}
-		for _, r in ipairs(results) do
-			table.insert(entries, string.format("%.2f  %s:%d-%d", r.score, r.file, r.start_line, r.end_line))
-		end
+			status.stop("Found " .. #results .. " results")
 
-		fzf.fzf_exec(entries, {
-			prompt = "lg-find❯ ",
-			actions = {
-				["default"] = function(selected)
-					local entry = selected[1]
-					local file, line = entry:match("%S+%s+(%S+):(%d+)")
-					if file and line then
-						vim.cmd("edit " .. file)
-						vim.api.nvim_win_set_cursor(0, { tonumber(line), 0 })
-					end
-				end,
-				["ctrl-p"] = function(selected)
-					local context = require("lg.context")
-					for _, entry in ipairs(selected) do
-						local file, start_l, end_l = entry:match("%S+%s+(%S+):(%d+)-(%d+)")
-						if file then
-							vim.cmd("edit " .. file)
-							local buf = vim.api.nvim_get_current_buf()
-							context.add(buf, tonumber(start_l), tonumber(end_l))
+			-- store results for preview/context
+			local result_map = {}
+			local fzf = require("fzf-lua")
+			local entries = {}
+			for _, r in ipairs(results) do
+				local key = string.format("%.2f  %s:%d-%d", r.score, r.file, r.start_line, r.end_line)
+				table.insert(entries, key)
+				result_map[key] = r
+			end
+
+			fzf.fzf_exec(entries, {
+				prompt = "lg-find❯ ",
+				winopts = { height = 0.4, width = 0.6 },
+				previewer = false,
+				preview = {
+					type = "cmd",
+					fn = function(items)
+						local r = result_map[items[1]]
+						if r and r.content then
+							return string.format("echo %s", vim.fn.shellescape(r.content))
 						end
-					end
-					require("lg.window").refresh()
-					vim.notify("lg-find: painted " .. #selected .. " regions as context")
-				end,
-			},
-			fzf_opts = { ["--multi"] = "" },
-		})
-	end))
+						return "echo 'no preview'"
+					end,
+				},
+				actions = {
+					["default"] = function(selected)
+						local file, line = selected[1]:match("%S+%s+(%S+):(%d+)")
+						if file and line then
+							vim.cmd("edit " .. file)
+							vim.api.nvim_win_set_cursor(0, { tonumber(line), 0 })
+						end
+					end,
+					["ctrl-p"] = function(selected)
+						local paint = require("lg.paint")
+						local count = 0
+						for _, entry in ipairs(selected) do
+							local file, start_l, end_l = entry:match("%S+%s+(%S+):(%d+)-(%d+)")
+							if file then
+								vim.cmd("edit " .. file)
+								local buf = vim.api.nvim_get_current_buf()
+								paint.mark(buf, tonumber(start_l), tonumber(end_l))
+								count = count + 1
+							end
+						end
+						require("lg.window").refresh()
+						vim.notify(string.format("lg-find: painted %d regions", count))
+					end,
+				},
+				fzf_opts = { ["--multi"] = "" },
+			})
+		end)
+	end)
 end
 
 function M.register()
@@ -102,16 +137,14 @@ function M.register()
 		return
 	end
 	local repo = detect_repo()
-	local body = vim.json.encode({ name = repo, git_url = remote })
-	local cmd = string.format("curl -s %s/repos -d '%s'", config.api_url, body)
-
-	vim.system({ "sh", "-c", cmd }, {}, vim.schedule_wrap(function(obj)
-		if obj.code ~= 0 then
-			vim.notify("lg-find: register failed", vim.log.levels.ERROR)
+	status.start("Registering " .. repo)
+	curl_json("/repos", { name = repo, git_url = remote }, function(data)
+		if not data then
+			status.stop("Register failed")
 			return
 		end
-		vim.notify("lg-find: registered " .. repo .. " — first search will index")
-	end))
+		status.stop("Registered " .. repo)
+	end)
 end
 
 return M
