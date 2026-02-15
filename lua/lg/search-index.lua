@@ -79,11 +79,17 @@ function M.find(query)
 			return
 		end
 		if st.indexing then
-			status.stop("Indexing in progress, try again shortly")
+			local msg = "Indexing in progress"
+			if st.progress and st.total then
+				msg = string.format("Indexing: %d/%d chunks", st.progress, st.total)
+			end
+			status.stop(msg)
 			return
 		end
 		if not st.indexed then
-			status.stop("Not indexed — register with <leader>aR first")
+			-- trigger indexing by hitting /find, server will start it
+			curl_json("/find", { repo = repo, branch = branch, query = query, top_n = 1 }, function() end)
+			status.stop("Indexing started — try again shortly")
 			return
 		end
 
