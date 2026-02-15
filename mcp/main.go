@@ -255,7 +255,7 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []textContent{{Type: "text", Text: string(data)}},
 		}, nil
 
-	case "search_codebase":
+	case "lg_search_codebase":
 		if indexURL == "" {
 			return toolResult{
 				Content: []textContent{{Type: "text", Text: "LG_INDEX_URL not set"}},
@@ -349,7 +349,7 @@ func handleToolsList() any {
 				},
 			},
 			{
-				Name:        "search_codebase",
+				Name:        "lg_search_codebase",
 				Description: "Semantic search across the codebase using embeddings. Returns top 5 matching code chunks with full content, plus additional file references (score >= 0.3) without content. Use this to find relevant code before making edits.",
 				InputSchema: toolSchema{
 					Type: "object",

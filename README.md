@@ -60,7 +60,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## MCP Server Setup
 
-lg uses an MCP server to expose `paint_edit` and `get_painted_regions` tools to the AI CLI. The plugin starts a unix socket at `/dev/shm/lg.sock` on startup — you just need to tell your CLI where to find the MCP binary.
+lg uses an MCP server to expose `paint_edit`, `get_painted_regions`, `lg_search_codebase`, and `get_diagnostics` tools to the AI CLI. The plugin starts a unix socket at `/dev/shm/lg.sock` on startup — you just need to tell your CLI where to find the MCP binary.
 
 ### kiro-cli
 
