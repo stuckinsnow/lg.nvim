@@ -156,8 +156,25 @@ function M.clear_marks()
 end
 
 function M.clear_session()
+	stop_spinners()
+	require("lg.status").stop("Session cleared")
+	paint.clear()
+	context.clear()
+	diff.clear()
 	session.clear()
 	window.clear_history()
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
+end
+
+function M.stop()
+	stop_spinners()
+	require("lg.status").stop("Stopped")
+	-- Kill the subprocess to stop generation, but don't clear history.
+	-- connect() will spawn a new one on next send.
+	if session.is_active() then
+		session.kill()
+	end
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 end
 
 function M.toggle_window()

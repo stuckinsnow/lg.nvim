@@ -339,6 +339,15 @@ function M.clear()
 	state = nil
 end
 
+function M.kill()
+	if not state then return end
+	if state.proc then
+		pcall(function() state.proc:kill(9) end)
+	end
+	state.proc = nil
+	state.session_id = nil
+end
+
 --- @return boolean
 function M.is_active()
 	return state ~= nil and state.proc ~= nil
