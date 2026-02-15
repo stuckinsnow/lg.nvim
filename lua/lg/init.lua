@@ -6,6 +6,7 @@ local diff = require("lg.diff")
 local session = require("lg.session")
 local server = require("lg.server")
 local window = require("lg.window")
+local status = require("lg.status")
 
 local M = {}
 
@@ -92,34 +93,60 @@ function M.send(opts)
 		return
 	end
 
-	local function do_send(prompt, has_lsp)
+	local function do_send(prompt, has_lsp, has_tsc)
 		if not prompt or prompt == "" then
 			return
 		end
 
+		local lsp_context = nil
 		if has_lsp then
+			prompt = prompt:gsub("@LSP%s*", "")
 			local lsp = require("lg.lsp")
+			local parts = {}
 			for _, r in ipairs(regions) do
 				if vim.api.nvim_buf_is_valid(r.bufnr) then
 					local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
 					if info ~= "" then
-						window.add_result(
-							"LSP info for "
-								.. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.")
-								.. ":\n"
-								.. info
-						)
+						local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.")
+						table.insert(parts, "LSP info for " .. fname .. ":\n" .. info)
+						window.add_result("LSP info for " .. fname .. ":\n" .. info)
 					end
 				end
 			end
+			if #parts > 0 then
+				lsp_context = table.concat(parts, "\n\n")
+			end
 			window.refresh()
+		end
+
+		local tsc_context = nil
+		if has_tsc then
+			prompt = prompt:gsub("@TSC%s*", "")
+			status.start("Running tsc…")
+			vim.system({ "tsc", "--noEmit" }, {}, vim.schedule_wrap(function(obj)
+				if obj.code ~= 0 and obj.stdout ~= "" then
+					tsc_context = obj.stdout
+					window.add_result("tsc --noEmit:\n" .. obj.stdout)
+				else
+					window.add_result("tsc: no errors")
+				end
+				window.refresh()
+				status.stop("tsc done")
+
+				window.add_prompt(prompt)
+				start_spinners(regions)
+				session.send(prompt, regions, context.get_all(), function()
+					vim.schedule(stop_spinners)
+				end, lsp_context, tsc_context)
+			end))
+			return
 		end
 
 		window.add_prompt(prompt)
 		start_spinners(regions)
 		session.send(prompt, regions, context.get_all(), function()
 			vim.schedule(stop_spinners)
-		end)
+		end, lsp_context, tsc_context)
 	end
 
 	if opts.prompt then

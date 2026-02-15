@@ -6,8 +6,10 @@ local M = {}
 --- @param regions table[] editable regions from paint.get_all()
 --- @param context_regions table[] read-only regions from context.get_all()
 --- @param user_prompt string
+--- @param lsp_context? string
+--- @param tsc_context? string
 --- @return table[] ACP prompt content blocks
-function M.build_prompt(regions, context_regions, user_prompt)
+function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_context)
   local parts = {}
 
   -- Editable regions
@@ -63,6 +65,16 @@ function M.build_prompt(regions, context_regions, user_prompt)
       table.insert(ctx, f)
     end
     table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
+  end
+
+  -- LSP diagnostics context
+  if lsp_context then
+    table.insert(parts, { type = "text", text = "### LSP diagnostics (from open buffers):\n" .. lsp_context })
+  end
+
+  -- TSC output
+  if tsc_context then
+    table.insert(parts, { type = "text", text = "### tsc --noEmit output (project-wide type errors):\n```\n" .. tsc_context .. "```" })
   end
 
   -- User message

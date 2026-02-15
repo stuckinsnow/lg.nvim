@@ -27,6 +27,36 @@ function M.encode_regions()
 	return vim.json.encode(out)
 end
 
+--- Encode diagnostics as JSON for MCP server
+--- @param bufnr? number specific buffer, or nil for all
+--- @param min_severity? number minimum severity (1=Error, 2=Warn, 3=Info, 4=Hint)
+--- @return string
+function M.encode_diagnostics(bufnr, min_severity)
+	min_severity = min_severity or 2 -- default: warnings and above
+	local bufs = bufnr and { bufnr } or vim.api.nvim_list_bufs()
+	local severity_names = { "Error", "Warning", "Info", "Hint" }
+	local out = {}
+	for _, b in ipairs(bufs) do
+		if vim.api.nvim_buf_is_loaded(b) then
+			local name = vim.api.nvim_buf_get_name(b)
+			if name ~= "" then
+				local diags = vim.diagnostic.get(b, { severity = { min = min_severity } })
+				for _, d in ipairs(diags) do
+					out[#out + 1] = {
+						file = name,
+						line = d.lnum + 1,
+						col = d.col + 1,
+						severity = severity_names[d.severity] or "Unknown",
+						message = d.message,
+						source = d.source or "",
+					}
+				end
+			end
+		end
+	end
+	return vim.json.encode(out)
+end
+
 --- Handle a complete message from MCP server
 --- @param data string JSON: { "method": "get_regions" } or { "method": "apply_edit", "region_id": 0, "new_code": "..." }
 --- @return string JSON response
@@ -38,6 +68,8 @@ function M.handle_message(data)
 
 	if msg.method == "get_regions" then
 		return M.encode_regions()
+	elseif msg.method == "get_diagnostics" then
+		return M.encode_diagnostics(msg.bufnr, msg.severity)
 	elseif msg.method == "apply_edit" then
 		local regions = paint.get_all()
 		local idx = (msg.region_id or -1) + 1

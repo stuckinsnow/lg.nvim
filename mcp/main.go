@@ -283,6 +283,27 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []textContent{{Type: "text", Text: data}},
 		}, nil
 
+	case "get_diagnostics":
+		var args struct {
+			Severity int `json:"severity"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			args.Severity = 2
+		}
+		if args.Severity == 0 {
+			args.Severity = 2
+		}
+		diags, err := getDiagnostics(args.Severity)
+		if err != nil {
+			return toolResult{
+				Content: []textContent{{Type: "text", Text: "failed to get diagnostics: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		return toolResult{
+			Content: []textContent{{Type: "text", Text: formatDiagnostics(diags)}},
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", call.Name)
 	}
@@ -337,6 +358,18 @@ func handleToolsList() any {
 						"top_n":  map[string]any{"type": "integer", "description": "Number of results to return (default 5)"},
 					},
 					Required:             []string{"query"},
+					AdditionalProperties: &f,
+				},
+			},
+			{
+				Name:        "get_diagnostics",
+				Description: "Get LSP diagnostics (errors, warnings) from all open buffers in Neovim. ONLY use when the user explicitly asks for diagnostics or when fixing a specific error requires knowing the exact diagnostic message. Do NOT call proactively.",
+				InputSchema: toolSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"severity": map[string]any{"type": "integer", "description": "Minimum severity: 1=Error, 2=Warning (default), 3=Info, 4=Hint"},
+					},
+					Required:             []string{},
 					AdditionalProperties: &f,
 				},
 			},

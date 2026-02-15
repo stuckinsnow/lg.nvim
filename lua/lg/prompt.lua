@@ -36,7 +36,8 @@ function M.open(cb)
 		vim.api.nvim_buf_delete(buf, { force = true })
 		if text ~= "" then
 			local has_lsp = text:match("@LSP") ~= nil
-			cb(text, has_lsp)
+			local has_tsc = text:match("@TSC") ~= nil
+			cb(text, has_lsp, has_tsc)
 		end
 	end
 

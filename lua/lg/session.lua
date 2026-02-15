@@ -303,13 +303,15 @@ end
 --- @param regions table[]
 --- @param context_regions? table[]
 --- @param on_done? fun() called when turn completes
-function M.send(prompt, regions, context_regions, on_done)
+--- @param lsp_context? string
+--- @param tsc_context? string
+function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_context)
 	local s = connect()
 	if not s then
 		return
 	end
 
-	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
+	local messages = protocol.build_prompt(regions, context_regions or {}, prompt, lsp_context, tsc_context)
 
 	status.start("Thinking...")
 	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
