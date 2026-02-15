@@ -96,10 +96,11 @@ function M.find(query)
 			local entries = {}
 			local root = vim.fn.systemlist("git rev-parse --show-toplevel")[1] or "."
 			local result_map = {}
+			local function strip_ansi(s) return s:gsub("\27%[[%d;]*m", "") end
 			for _, r in ipairs(results) do
 				local entry = string.format("\27[32m%.2f\27[0m  %s/%s  %d", r.score, root, r.file, r.start_line)
 				table.insert(entries, entry)
-				result_map[entry] = r
+				result_map[strip_ansi(entry)] = r
 			end
 
 			local preview_cmd =
@@ -112,29 +113,26 @@ function M.find(query)
 					["--ansi"] = "",
 					["--multi"] = "",
 					["--preview-window"] = "right:50%:wrap:+{3}-10",
+					["--header"] = ":: tab=select | ctrl-p=add as context | enter=open file",
 				},
 				actions = {
 					["default"] = function(selected)
-						local r = result_map[selected[1]]
+						local r = result_map[strip_ansi(selected[1])]
 						if r then
 							vim.cmd("edit " .. root .. "/" .. r.file)
 							vim.api.nvim_win_set_cursor(0, { r.start_line, 0 })
 						end
 					end,
 					["ctrl-p"] = function(selected)
-						local paint = require("lg.paint")
-						local count = 0
+						local context = require("lg.context")
+						local sel_results = {}
 						for _, entry in ipairs(selected) do
-							local r = result_map[entry]
-							if r then
-								vim.cmd("edit " .. root .. "/" .. r.file)
-								local buf = vim.api.nvim_get_current_buf()
-								paint.mark(buf, r.start_line, r.end_line)
-								count = count + 1
-							end
+							local r = result_map[strip_ansi(entry)]
+							if r then table.insert(sel_results, r) end
 						end
+						context.add_search(query, sel_results)
 						require("lg.window").refresh()
-						vim.notify(string.format("lg-find: painted %d regions", count))
+						vim.notify(string.format("lg-find: added %d results as context", #sel_results))
 					end,
 				},
 			})
