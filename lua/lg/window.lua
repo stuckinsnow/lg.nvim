@@ -117,11 +117,16 @@ local function render_context()
   else
     for i, r in ipairs(ctx) do
       local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
-      local txt = string.format("  [%d] %s:%d-%d", i - 1, fname, r.start_line, r.end_line)
-      table.insert(lines, txt)
+      local header = string.format("  [%d] %s:%d-%d", i - 1, fname, r.start_line, r.end_line)
+      if r.label then header = header .. "  search: " .. r.label end
+      table.insert(lines, header)
       local idx = #lines - 1
       table.insert(hls, { idx, 2, 2 + #tostring(i - 1) + 2, "LgRegionId" })
       table.insert(hls, { idx, 2 + #tostring(i - 1) + 3, -1, "LgFile" })
+      for _, l in ipairs(r.lines or {}) do
+        table.insert(lines, "    " .. l)
+        table.insert(hls, { #lines - 1, 0, -1, "LgSeparator" })
+      end
     end
   end
   return lines, hls

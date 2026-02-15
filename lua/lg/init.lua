@@ -166,6 +166,9 @@ end
 function M.focus_chat()
 	window.focus_input()
 end
+function M.search()
+	require("lg.search").open()
+end
 function M.select_model()
 	session.select_model()
 end

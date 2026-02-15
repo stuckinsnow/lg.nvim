@@ -16,7 +16,8 @@ end
 --- @param bufnr number
 --- @param start_line number 1-indexed
 --- @param end_line number 1-indexed
-function M.add(bufnr, start_line, end_line)
+--- @param label? string optional label (e.g. search term)
+function M.add(bufnr, start_line, end_line, label)
   ensure_highlights()
   for row = start_line - 1, end_line - 1 do
     local total = end_line - start_line + 1
@@ -37,7 +38,7 @@ function M.add(bufnr, start_line, end_line)
       sign_text = sign, sign_hl_group = "LgContextSign", priority = 105,
     })
   end
-  table.insert(regions, { bufnr = bufnr, start_line = start_line, end_line = end_line })
+  table.insert(regions, { bufnr = bufnr, start_line = start_line, end_line = end_line, label = label })
 end
 
 --- @return { bufnr: number, start_line: number, end_line: number, lines: string[], file: string }[]
@@ -51,6 +52,7 @@ function M.get_all()
         end_line = r.end_line,
         lines = vim.api.nvim_buf_get_lines(r.bufnr, r.start_line - 1, r.end_line, false),
         file = vim.api.nvim_buf_get_name(r.bufnr),
+        label = r.label,
       })
     end
   end
