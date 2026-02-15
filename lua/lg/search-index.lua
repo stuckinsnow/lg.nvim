@@ -49,6 +49,11 @@ local function curl_json(path, body, cb)
 	)
 end
 
+local function detect_head(branch)
+	local out = vim.fn.system("git rev-parse origin/" .. branch .. " 2>/dev/null")
+	return vim.trim(out)
+end
+
 function M.find(query)
 	if not query or query == "" then
 		vim.ui.input({ prompt = "lg-find: " }, function(input)
@@ -84,7 +89,7 @@ function M.find(query)
 
 		status.update("Searching: " .. query)
 
-		curl_json("/find", { repo = repo, branch = branch, query = query, top_n = 10 }, function(results)
+		curl_json("/find", { repo = repo, branch = branch, query = query, top_n = 10, head = detect_head(branch) }, function(results)
 			if not results or #results == 0 then
 				status.stop("No results")
 				return
