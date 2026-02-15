@@ -186,6 +186,14 @@ end
 function M.search()
 	require("lg.search").open()
 end
+
+function M.find(query)
+	require("lg.search-index").find(query)
+end
+
+function M.register_repo()
+	require("lg.search-index").register()
+end
 function M.add_file()
 	vim.ui.input({ prompt = "File path: ", completion = "file" }, function(path)
 		if not path or path == "" then return end
