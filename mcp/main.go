@@ -2,10 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -69,10 +73,94 @@ type nvimBatchRequest struct {
 	Edits  []nvimEdit `json:"edits"`
 }
 
-var sockPath string
+var (
+	sockPath string
+	indexURL string
+)
 
 func init() {
 	sockPath = os.Getenv("LG_SOCK")
+	indexURL = os.Getenv("LG_INDEX_URL")
+}
+
+func detectGitInfo() (repo, branch, head string) {
+	if out, err := exec.Command("git", "remote", "get-url", "origin").Output(); err == nil {
+		s := strings.TrimSpace(string(out))
+		if i := strings.LastIndex(s, "/"); i >= 0 {
+			repo = strings.TrimSuffix(s[i+1:], ".git")
+		}
+	}
+	if out, err := exec.Command("git", "branch", "--show-current").Output(); err == nil {
+		branch = strings.TrimSpace(string(out))
+	}
+	if branch != "" {
+		if out, err := exec.Command("git", "rev-parse", "origin/"+branch).Output(); err == nil {
+			head = strings.TrimSpace(string(out))
+		}
+	}
+	return
+}
+
+func searchIndex(query string, topN int) (string, error) {
+	repo, branch, head := detectGitInfo()
+	if repo == "" {
+		return "", fmt.Errorf("cannot detect git repo")
+	}
+	if topN == 0 {
+		topN = 15
+	}
+	body, _ := json.Marshal(map[string]any{
+		"repo": repo, "branch": branch, "query": query, "top_n": topN, "head": head,
+	})
+	resp, err := http.Post(indexURL+"/find", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("index API: %s", string(data))
+	}
+	var results []struct {
+		File      string  `json:"file"`
+		StartLine int     `json:"start_line"`
+		EndLine   int     `json:"end_line"`
+		Score     float64 `json:"score"`
+		Content   string  `json:"content"`
+	}
+	if err := json.Unmarshal(data, &results); err != nil {
+		return "", err
+	}
+	if len(results) == 0 {
+		return "No results found.", nil
+	}
+	var sb strings.Builder
+	fullCount := 5
+	if fullCount > len(results) {
+		fullCount = len(results)
+	}
+	for i := 0; i < fullCount; i++ {
+		r := results[i]
+		ext := ""
+		if i := strings.LastIndex(r.File, "."); i >= 0 {
+			ext = r.File[i+1:]
+		}
+		fmt.Fprintf(&sb, "### %s (lines %d-%d, score: %.2f)\n```%s\n%s\n```\n\n", r.File, r.StartLine, r.EndLine, r.Score, ext, r.Content)
+	}
+	var refs []string
+	for i := fullCount; i < len(results); i++ {
+		r := results[i]
+		if r.Score < 0.3 {
+			break
+		}
+		refs = append(refs, fmt.Sprintf("- %s (lines %d-%d, score: %.2f)", r.File, r.StartLine, r.EndLine, r.Score))
+	}
+	if len(refs) > 0 {
+		sb.WriteString("### Also relevant\n")
+		sb.WriteString(strings.Join(refs, "\n"))
+		sb.WriteString("\n")
+	}
+	return sb.String(), nil
 }
 
 func sendToNeovim(req any) ([]byte, error) {
@@ -167,6 +255,34 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []textContent{{Type: "text", Text: string(data)}},
 		}, nil
 
+	case "search_codebase":
+		if indexURL == "" {
+			return toolResult{
+				Content: []textContent{{Type: "text", Text: "LG_INDEX_URL not set"}},
+				IsError: true,
+			}, nil
+		}
+		var args struct {
+			Query string `json:"query"`
+			TopN  int    `json:"top_n"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			return toolResult{
+				Content: []textContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		data, err := searchIndex(args.Query, args.TopN)
+		if err != nil {
+			return toolResult{
+				Content: []textContent{{Type: "text", Text: "search failed: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		return toolResult{
+			Content: []textContent{{Type: "text", Text: data}},
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", call.Name)
 	}
@@ -209,6 +325,19 @@ func handleToolsList() any {
 					Type:       "object",
 					Properties: map[string]any{},
 					Required:   []string{},
+				},
+			},
+			{
+				Name:        "search_codebase",
+				Description: "Semantic search across the codebase using embeddings. Returns top 5 matching code chunks with full content, plus additional file references (score >= 0.3) without content. Use this to find relevant code before making edits.",
+				InputSchema: toolSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"query":  map[string]string{"type": "string", "description": "Natural language search query"},
+						"top_n":  map[string]any{"type": "integer", "description": "Number of results to return (default 5)"},
+					},
+					Required:             []string{"query"},
+					AdditionalProperties: &f,
 				},
 			},
 		},
