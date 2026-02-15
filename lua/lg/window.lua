@@ -204,8 +204,8 @@ function M.submit()
   local text = vim.trim(table.concat(lines, "\n"))
   if text == "" then return end
 
-  -- Trigger send via init.lua
-  require("lg").send({ prompt = text })
+  -- Trigger send via init.lua, bypassing region check
+  require("lg").send({ prompt = text, from_chat = true })
 end
 
 --- Focus the chat window input area

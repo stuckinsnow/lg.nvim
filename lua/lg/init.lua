@@ -83,11 +83,11 @@ local function start_spinners(regions)
 end
 
 --- Send painted regions + prompt to kiro-cli
---- @param opts? { prompt?: string }
+--- @param opts? { prompt?: string, from_chat?: boolean }
 function M.send(opts)
 	opts = opts or {}
 	local regions = paint.get_all()
-	if #regions == 0 then
+	if #regions == 0 and not opts.from_chat then
 		vim.notify("lg: no painted regions", vim.log.levels.WARN)
 		return
 	end
