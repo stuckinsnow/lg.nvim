@@ -63,4 +63,18 @@ function M.stop(text)
   end, 2000)
 end
 
+--- Show a brief standalone noice message (stacks alongside active spinner)
+--- @param text string
+--- @param ms? number display duration (default 3000)
+function M.flash(text, ms)
+  if not has_noice() then return end
+  local Message = require("noice.message")
+  local Format = require("noice.text.format")
+  local Manager = require("noice.message.manager")
+  local m = Message("lsp", "progress")
+  m.opts.progress = { client_id = "lg_flash", client = "lg", id = vim.uv.hrtime(), message = text }
+  Manager.add(Format.format(m, "lsp_progress"))
+  vim.defer_fn(function() Manager.remove(m) end, ms or 3000)
+end
+
 return M

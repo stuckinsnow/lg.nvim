@@ -83,11 +83,13 @@ function M.find(query)
 			if st.progress and st.total then
 				msg = string.format("Indexing: %d/%d chunks", st.progress, st.total)
 			end
-			status.stop(msg)
-			return
+			if not st.indexed then
+				status.stop(msg)
+				return
+			end
+			status.flash(msg)
 		end
 		if not st.indexed then
-			-- trigger indexing by hitting /find, server will start it
 			curl_json("/find", { repo = repo, branch = branch, query = query, top_n = 1 }, function() end)
 			status.stop("Indexing started — try again shortly")
 			return
@@ -128,6 +130,7 @@ function M.find(query)
 				},
 				actions = {
 					["default"] = function(selected)
+						if not selected or not selected[1] then return end
 						local r = result_map[strip_ansi(selected[1])]
 						if r then
 							vim.cmd("edit " .. root .. "/" .. r.file)
