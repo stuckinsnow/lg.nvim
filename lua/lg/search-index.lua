@@ -111,21 +111,26 @@ function M.find(query)
 			local result_map = {}
 			local function strip_ansi(s) return s:gsub("\27%[[%d;]*m", "") end
 			for _, r in ipairs(results) do
-				local entry = string.format("\27[32m%.2f\27[0m  %s/%s  %d", r.score, root, r.file, r.start_line)
+				local dir = vim.fn.fnamemodify(r.file, ":h")
+				local fname = vim.fn.fnamemodify(r.file, ":t")
+				local entry = string.format(
+					"\27[32m%.2f\27[0m  \27[1m%s\27[0m \27[90m%s\27[0m  \27[35m:%d\27[0m\t%s/%s\t%d",
+					r.score, fname, dir, r.start_line, root, r.file, r.start_line
+				)
 				table.insert(entries, entry)
 				result_map[strip_ansi(entry)] = r
 			end
 
-			local preview_cmd =
-				"bat --color=always --style=numbers --highlight-line={3} {2}"
-
 			fzf.fzf_exec(entries, {
 				prompt = "lg-find❯ ",
-				preview = preview_cmd,
+				winopts = { height = 0.6, width = 0.6 },
+				preview = "bat --color=always --style=numbers --highlight-line={-1} {-2}",
 				fzf_opts = {
 					["--ansi"] = "",
 					["--multi"] = "",
-					["--preview-window"] = "right:50%:wrap:+{3}-10",
+					["--delimiter"] = "\t",
+					["--with-nth"] = "1",
+					["--preview-window"] = "right:50%:wrap:+{-1}-10",
 					["--header"] = ":: tab=select | ctrl-p=add as context | enter=open file",
 				},
 				actions = {
