@@ -135,11 +135,17 @@ function M.find(query)
 				},
 				actions = {
 					["default"] = function(selected)
-						if not selected or not selected[1] then return end
-						local r = result_map[strip_ansi(selected[1])]
-						if r then
-							vim.cmd("edit " .. root .. "/" .. r.file)
-							vim.api.nvim_win_set_cursor(0, { r.start_line, 0 })
+						if not selected or #selected == 0 then return end
+						for i, entry in ipairs(selected) do
+							local r = result_map[strip_ansi(entry)]
+							if r then
+								local path = root .. "/" .. r.file
+								if i == 1 then
+									vim.cmd("edit +" .. r.start_line .. " " .. path)
+								else
+									vim.cmd("badd +" .. r.start_line .. " " .. path)
+								end
+							end
 						end
 					end,
 					["ctrl-p"] = function(selected)
