@@ -39,8 +39,9 @@ function M.open(cb)
 			local has_tsc = text:match("@TSC") ~= nil
 			local has_diag = text:match("@DIAG") ~= nil
 			local has_search = text:match("@SEARCH") ~= nil
-			local has_auto_paint = text:match("@AUTO_PAINT") ~= nil
-			cb(text, has_lsp, has_tsc, has_diag, has_search, has_auto_paint)
+			local has_auto_paint = text:match("@INFO") ~= nil
+			local has_git = text:match("@GIT") ~= nil
+			cb(text, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git)
 		end
 	end
 

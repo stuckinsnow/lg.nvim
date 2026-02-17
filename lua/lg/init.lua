@@ -59,6 +59,55 @@ local function stop_spinners()
 	active_spinners = {}
 end
 
+--- Snapshot git diff, return callback that populates quickfix with new changes
+local function git_snapshot_cb()
+	local baseline = nil
+	vim.system({ "git", "diff", "--unified=0" }, {}, function(obj)
+		baseline = (obj.code == 0 and obj.stdout) or ""
+	end)
+	return function()
+		vim.system({ "git", "diff", "--unified=0" }, {}, vim.schedule_wrap(function(obj)
+			local current = (obj.code == 0 and obj.stdout) or ""
+			if current == baseline then return end
+			-- Parse new hunks not in baseline
+			local cwd = vim.fn.getcwd() .. "/"
+			local items = {}
+			local file
+			for line in current:gmatch("[^\n]+") do
+				local f = line:match("^%+%+%+ b/(.+)")
+				if f then file = cwd .. f end
+				if file then
+					local s = line:match("^@@ .+ %+(%d+)")
+					if s then
+						table.insert(items, { file = file, line = tonumber(s) })
+					end
+				end
+			end
+			if #items > 0 then
+				local old_hunks = {}
+				local bf
+				for line in baseline:gmatch("[^\n]+") do
+					local f = line:match("^%+%+%+ b/(.+)")
+					if f then bf = cwd .. f end
+					if bf then
+						local s = line:match("^@@ .+ %+(%d+)")
+						if s then old_hunks[bf .. ":" .. s] = true end
+					end
+				end
+				local new_items = {}
+				for _, item in ipairs(items) do
+					if not old_hunks[item.file .. ":" .. item.line] then
+						table.insert(new_items, item)
+					end
+				end
+				if #new_items > 0 then
+					require("lg.changes").set(new_items)
+				end
+			end
+		end))
+	end
+end
+
 --- Start hint spinners on all painted regions
 local function start_spinners(regions)
 	stop_spinners()
@@ -93,27 +142,60 @@ function M.send(opts)
 		return
 	end
 
-	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint)
+	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git)
 		if not prompt or prompt == "" then
+			return
+		end
+
+		if has_git then
+			local git_prompt = prompt:gsub("@GIT%s*", "")
+			window.add_prompt(prompt)
+			status.start("Git analysis (Haiku)...")
+			session.send_git_subagent(
+				"You are a git analysis assistant. Use the git tools to investigate the user's question. Be concise and specific — your output will be used as context for another AI.\n\n" .. git_prompt,
+				function(result)
+					vim.schedule(function()
+						if result and result ~= "" then
+							-- Auto-inject into main session
+							local full_prompt = "The following git analysis was already shown to the user by a subagent — do NOT repeat or summarize it. Just act on the user's request using this context.\n\nGit analysis:\n" .. result .. "\n\nUser request:\n" .. git_prompt
+							local send_regions = opts.from_chat and {} or regions
+							session.send(full_prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
+								vim.schedule(function() stop_spinners() end)
+							end)
+						else
+							status.stop("Git analysis empty")
+						end
+					end)
+				end
+			)
 			return
 		end
 
 		local tool_hints = {}
 		if has_auto_paint then
-			prompt = prompt:gsub("@AUTO_PAINT%s*", "")
+			prompt = prompt:gsub("@INFO%s*", "")
 			local history = window.get_history()
 			if history ~= "" then
 				prompt = "Previous conversation:\n" .. history .. "\n\nNew request:\n" .. prompt
 			end
-			table.insert(tool_hints, "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.")
+			table.insert(
+				tool_hints,
+				"Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification."
+			)
 		end
 		if has_diag then
 			prompt = prompt:gsub("@DIAG%s*", "")
-			table.insert(tool_hints, "Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits.")
+			table.insert(
+				tool_hints,
+				"Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits."
+			)
 		end
 		if has_search then
 			prompt = prompt:gsub("@SEARCH%s*", "")
-			table.insert(tool_hints, "Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed.")
+			table.insert(
+				tool_hints,
+				"Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed."
+			)
 		end
 		if #tool_hints > 0 then
 			prompt = table.concat(tool_hints, "\n") .. "\n\n" .. prompt
@@ -144,36 +226,51 @@ function M.send(opts)
 		if has_tsc then
 			prompt = prompt:gsub("@TSC%s*", "")
 			status.start("Running tsc…")
-			vim.system({ "tsc", "--noEmit" }, {}, vim.schedule_wrap(function(obj)
-				if obj.code ~= 0 and obj.stdout ~= "" then
-					tsc_context = obj.stdout
-					window.add_result("tsc --noEmit:\n" .. obj.stdout)
-				else
-					window.add_result("tsc: no errors")
-				end
-				window.refresh()
-				status.stop("tsc done")
+			vim.system(
+				{ "tsc", "--noEmit" },
+				{},
+				vim.schedule_wrap(function(obj)
+					if obj.code ~= 0 and obj.stdout ~= "" then
+						tsc_context = obj.stdout
+						window.add_result("tsc --noEmit:\n" .. obj.stdout)
+					else
+						window.add_result("tsc: no errors")
+					end
+					window.refresh()
+					status.stop("tsc done")
 
-				window.add_prompt(prompt)
-				start_spinners(regions)
-				session.send(prompt, regions, context.get_all(), function()
-					vim.schedule(stop_spinners)
-				end, lsp_context, tsc_context)
-			end))
+					window.add_prompt(prompt)
+					local sr = opts.from_chat and {} or regions
+					start_spinners(regions)
+					local on_done = opts.from_chat and git_snapshot_cb() or nil
+					session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
+						vim.schedule(function()
+							stop_spinners()
+							if on_done then on_done() end
+						end)
+					end, lsp_context, tsc_context)
+				end)
+			)
 			return
 		end
 
 		window.add_prompt(prompt)
+		local send_regions = opts.from_chat and {} or regions
 		start_spinners(regions)
-		session.send(prompt, regions, context.get_all(), function()
-			vim.schedule(stop_spinners)
+		local on_done = opts.from_chat and git_snapshot_cb() or nil
+		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
+			vim.schedule(function()
+				stop_spinners()
+				if on_done then on_done() end
+			end)
 		end, lsp_context, tsc_context)
 	end
 
 	if opts.prompt then
 		local text = opts.prompt
-		local has_ap = text:match("@AUTO_PAINT") ~= nil
-		do_send(text, false, false, false, false, has_ap)
+		local has_ap = text:match("@INFO") ~= nil
+		local has_git = text:match("@GIT") ~= nil
+		do_send(text, false, false, false, false, has_ap, has_git)
 	else
 		require("lg.prompt").open(do_send)
 	end
@@ -203,6 +300,15 @@ function M.clear_all()
 end
 function M.clear_marks()
 	diff.clear()
+	require("lg.changes").clear()
+end
+function M.accept_info_paint()
+	local count = server.convert_info_paint()
+	window.refresh()
+	vim.notify("lg: converted " .. count .. " info regions to paint", vim.log.levels.INFO)
+end
+function M.clear_info_paint()
+	server.clear_info_paint()
 end
 
 function M.clear_session()
@@ -246,7 +352,9 @@ function M.register_repo()
 end
 function M.add_file()
 	vim.ui.input({ prompt = "File path: ", completion = "file" }, function(path)
-		if not path or path == "" then return end
+		if not path or path == "" then
+			return
+		end
 		context.add_file(path)
 		window.refresh()
 	end)

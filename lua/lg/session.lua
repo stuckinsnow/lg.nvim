@@ -162,26 +162,23 @@ local function handle_message(s, msg)
 		local content = msg.params and msg.params.content or ""
 		if path and msg.id then
 			vim.schedule(function()
-				local short = vim.fn.fnamemodify(path, ":~:.")
-				local choice = vim.fn.confirm("Write to " .. short .. "?", "&Yes\n&No", 1)
-				if choice == 1 then
-					local f = io.open(path, "w")
-					if f then
-						f:write(content)
-						f:close()
+				status.update("Writing: " .. vim.fn.fnamemodify(path, ":t"))
+			end)
+			local f = io.open(path, "w")
+			if f then
+				f:write(content)
+				f:close()
+			end
+			write(s, { jsonrpc = "2.0", id = msg.id, result = vim.NIL })
+			vim.schedule(function()
+				local lines = vim.split(content, "\n")
+				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+					if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == path then
+						vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+						vim.bo[buf].modified = false
 					end
-					write(s, { jsonrpc = "2.0", id = msg.id, result = vim.NIL })
-					local lines = vim.split(content, "\n")
-					for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-						if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == path then
-							vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-							vim.bo[buf].modified = false
-						end
-					end
-					vim.cmd("redraw")
-				else
-					write(s, { jsonrpc = "2.0", id = msg.id, error = { code = -32000, message = "denied" } })
 				end
+				vim.cmd("redraw")
 			end)
 		end
 	elseif method:match("^_kiro") or method:match("^_opencode") then
@@ -522,6 +519,150 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 		s,
 		{ jsonrpc = "2.0", id = id, method = "session/prompt", params = { sessionId = s.session_id, prompt = messages } }
 	)
+end
+
+--- Spawn a Haiku subagent with git MCP, capture its text response.
+--- Fully async — no blocking rpc_request calls.
+--- @param prompt string
+--- @param on_done fun(result: string)
+function M.send_git_subagent(prompt, on_done)
+	local source = debug.getinfo(1, "S").source:gsub("^@", "")
+	local plugin_dir = vim.fn.fnamemodify(source, ":h:h:h") .. "/"
+	local git_mcp_path = plugin_dir .. "mcp/git-mcp/lg-git-mcp"
+
+	local cheap_models = {
+		kiro = "claude-haiku-4.5",
+		opencode = "github-copilot/gpt-4.1",
+	}
+	local model_id = cheap_models[opts.provider] or "claude-haiku-4.5"
+
+	local s = {
+		proc = nil,
+		next_id = 1,
+		stdout_buf = "",
+		_agent_text = "",
+		_phase = "init", -- init -> session -> prompt -> done
+	}
+
+	local function sub_handle(msg)
+		if msg.id and not msg.method then
+			-- Response to one of our requests
+			if msg.error then
+				vim.schedule(function()
+					status.stop("Git agent error")
+					vim.notify("lg-git: " .. vim.inspect(msg.error), vim.log.levels.ERROR)
+				end)
+				return
+			end
+			local result = msg.result or {}
+
+			if s._phase == "init" then
+				s._phase = "session"
+				local id = s.next_id; s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0", id = id, method = "session/new",
+					params = { cwd = vim.fn.getcwd(), mcpServers = {} },
+				})
+
+			elseif s._phase == "session" then
+				if not result.sessionId then
+					vim.schedule(function()
+						status.stop("Git agent: no session")
+						on_done("")
+					end)
+					return
+				end
+				s.session_id = result.sessionId
+				s._phase = "set_model"
+				local id = s.next_id; s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0", id = id, method = "session/set_model",
+					params = { sessionId = s.session_id, modelId = model_id },
+				})
+
+			elseif s._phase == "set_model" then
+				s._phase = "prompt"
+				local id = s.next_id; s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0", id = id, method = "session/prompt",
+					params = { sessionId = s.session_id, prompt = { { type = "text", text = prompt } } },
+				})
+
+			elseif s._phase == "prompt" then
+				if result.stopReason then
+					s._phase = "done"
+					vim.schedule(function()
+						status.stop("Git analysis done")
+						on_done(s._agent_text)
+						vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
+					end)
+				end
+			end
+			return
+		end
+
+		local method = msg.method or ""
+		if method == "session/update" then
+			local update = msg.params and msg.params.update
+			if update and update.sessionUpdate == "agent_message_chunk" then
+				local content = update.content
+				if content and content.type == "text" and content.text then
+					s._agent_text = s._agent_text .. content.text
+					vim.schedule(function() require("lg.window").append_agent_text(content.text) end)
+				end
+			end
+		elseif method == "session/request_permission" then
+			local tool_options = msg.params and msg.params.options or {}
+			local option_id
+			for _, opt in ipairs(tool_options) do
+				if opt.kind == "allow_always" or opt.kind == "allow_once" then
+					option_id = opt.optionId
+					break
+				end
+			end
+			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
+			if option_id and msg.id then
+				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
+			end
+		end
+	end
+
+	local function sub_stdout(data)
+		s.stdout_buf = s.stdout_buf .. data
+		while true do
+			local nl = s.stdout_buf:find("\n")
+			if not nl then break end
+			local line = s.stdout_buf:sub(1, nl - 1):gsub("\r$", "")
+			s.stdout_buf = s.stdout_buf:sub(nl + 1)
+			if line ~= "" and line:match("^%s*{") then
+				local ok, parsed = pcall(vim.json.decode, line)
+				if ok then sub_handle(parsed) end
+			end
+		end
+	end
+
+	local proc = vim.system(
+		opts.cmd,
+		{
+			stdin = true,
+			cwd = vim.fn.getcwd(),
+			stdout = vim.schedule_wrap(function(_, data) if data then sub_stdout(data) end end),
+			stderr = vim.schedule_wrap(function(_, data)
+				if data and data ~= "" then vim.notify("lg-git: " .. data, vim.log.levels.WARN) end
+			end),
+		},
+		vim.schedule_wrap(function(_) s.proc = nil end)
+	)
+	s.proc = proc
+
+	status.start("Git analysis (" .. model_id .. ")...")
+
+	-- Kick off the async chain: initialize
+	local id = s.next_id; s.next_id = id + 1
+	write(s, {
+		jsonrpc = "2.0", id = id, method = "initialize",
+		params = { protocolVersion = 1, clientCapabilities = { fs = { readTextFile = true } }, clientInfo = { name = "lg-git", version = "1.0.0" } },
+	})
 end
 
 return M

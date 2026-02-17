@@ -8,6 +8,9 @@ local M = {}
 
 local server = nil
 ---@type string?
+
+--- Stored info-paint regions for conversion
+local info_regions = {}
 local sock_path = nil
 
 --- Encode regions as JSON for MCP server to read
@@ -97,19 +100,30 @@ function M.handle_message(data)
 		local regions = msg.regions or {}
 		local count = 0
 		local first_file, first_line
+		info_regions = {}
 		for _, r in ipairs(regions) do
 			local path = r.file
 			local s_line = r.start_line
 			local e_line = r.end_line
 			if path and s_line and e_line then
 				local bufnr = vim.fn.bufnr(path)
-				if bufnr == -1 then
-					vim.cmd("edit " .. vim.fn.fnameescape(path))
+				if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
+					-- find a normal window to open in
+					local target
+					for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+						local b = vim.api.nvim_win_get_buf(win)
+						if vim.bo[b].buftype == "" then target = win; break end
+					end
+					if target then
+						vim.api.nvim_win_call(target, function()
+							vim.cmd("edit " .. vim.fn.fnameescape(path))
+						end)
+					end
 					bufnr = vim.fn.bufnr(path)
-				elseif not vim.api.nvim_buf_is_loaded(bufnr) then
-					vim.fn.bufload(bufnr)
 				end
 				if bufnr ~= -1 then
+					local total_lines = vim.api.nvim_buf_line_count(bufnr)
+					e_line = math.min(e_line, total_lines)
 					for row = s_line - 1, e_line - 1 do
 						local total = e_line - s_line + 1
 						local sign = "│"
@@ -124,6 +138,7 @@ function M.handle_message(data)
 						})
 					end
 					count = count + 1
+					table.insert(info_regions, { bufnr = bufnr, start_line = s_line, end_line = e_line })
 					if not first_file then
 						first_file = path
 						first_line = s_line
@@ -131,10 +146,24 @@ function M.handle_message(data)
 				end
 			end
 		end
+		-- Navigate to first painted region in a non-chat window
 		if first_file then
-			vim.cmd("edit " .. vim.fn.fnameescape(first_file))
-			vim.api.nvim_win_set_cursor(0, { first_line, 0 })
-			vim.cmd("normal! zz")
+			local target_win
+			for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+				local b = vim.api.nvim_win_get_buf(win)
+				if vim.bo[b].buftype == "" then
+					target_win = win
+					break
+				end
+			end
+			if target_win then
+				local bufnr = vim.fn.bufnr(first_file)
+				if bufnr ~= -1 then
+					vim.api.nvim_win_set_buf(target_win, bufnr)
+					pcall(vim.api.nvim_win_set_cursor, target_win, { first_line, 0 })
+					vim.api.nvim_win_call(target_win, function() vim.cmd("normal! zz") end)
+				end
+			end
 		end
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true, count = count })
@@ -211,6 +240,33 @@ end
 --- @return string?
 function M.get_sock_path()
 	return sock_path
+end
+
+function M.convert_info_paint()
+	local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
+	for _, r in ipairs(info_regions) do
+		if vim.api.nvim_buf_is_valid(r.bufnr) then
+			paint.add(r.bufnr, r.start_line, r.end_line)
+		end
+	end
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_valid(buf) then
+			vim.api.nvim_buf_clear_namespace(buf, ns_auto, 0, -1)
+		end
+	end
+	local count = #info_regions
+	info_regions = {}
+	return count
+end
+
+function M.clear_info_paint()
+	local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_valid(buf) then
+			vim.api.nvim_buf_clear_namespace(buf, ns_auto, 0, -1)
+		end
+	end
+	info_regions = {}
 end
 
 return M

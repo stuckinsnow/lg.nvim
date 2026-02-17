@@ -342,18 +342,17 @@ func handleToolsList() any {
 		Tools: []toolDef{
 			{
 				Name:        "paint_edit",
-				Description: "Replace code in painted regions in Neovim. Send ALL edits in one call. Call get_painted_regions first to see available regions.",
+				Description: "Replace code in painted regions. Call get_painted_regions first. Send ALL edits in one call.",
 				InputSchema: toolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"edits": map[string]any{
-							"type":        "array",
-							"description": "Array of edits, one per region",
+							"type": "array",
 							"items": map[string]any{
 								"type": "object",
 								"properties": map[string]any{
-									"region_id": map[string]string{"type": "integer", "description": "0-based index of the painted region"},
-									"new_code":  map[string]string{"type": "string", "description": "Complete replacement code for this region"},
+									"region_id": map[string]string{"type": "integer", "description": "0-based region index"},
+									"new_code":  map[string]string{"type": "string", "description": "Full replacement code"},
 								},
 								"required":             []string{"region_id", "new_code"},
 								"additionalProperties": false,
@@ -366,7 +365,7 @@ func handleToolsList() any {
 			},
 			{
 				Name:        "get_painted_regions",
-				Description: "List all currently painted regions in Neovim with their code content.",
+				Description: "List painted regions with their code content.",
 				InputSchema: toolSchema{
 					Type:       "object",
 					Properties: map[string]any{},
@@ -375,12 +374,12 @@ func handleToolsList() any {
 			},
 			{
 				Name:        "lg_search_codebase",
-				Description: "Semantic search across the codebase using embeddings. Returns top 5 matching code chunks with full content, plus additional file references (score >= 0.3) without content. Use this to find relevant code before making edits.",
+				Description: "Semantic search over codebase via embeddings.",
 				InputSchema: toolSchema{
 					Type: "object",
 					Properties: map[string]any{
-						"query":  map[string]string{"type": "string", "description": "Natural language search query"},
-						"top_n":  map[string]any{"type": "integer", "description": "Number of results to return (default 5)"},
+						"query": map[string]string{"type": "string", "description": "Search query"},
+						"top_n": map[string]any{"type": "integer", "description": "Results count (default 5)"},
 					},
 					Required:             []string{"query"},
 					AdditionalProperties: &f,
@@ -388,11 +387,11 @@ func handleToolsList() any {
 			},
 			{
 				Name:        "get_diagnostics",
-				Description: "Get LSP diagnostics (errors, warnings) from all open buffers in Neovim. ONLY use when the user explicitly asks for diagnostics or when fixing a specific error requires knowing the exact diagnostic message. Do NOT call proactively.",
+				Description: "Get LSP diagnostics from open buffers. Only use when explicitly asked.",
 				InputSchema: toolSchema{
 					Type: "object",
 					Properties: map[string]any{
-						"severity": map[string]any{"type": "integer", "description": "Minimum severity: 1=Error, 2=Warning (default), 3=Info, 4=Hint"},
+						"severity": map[string]any{"type": "integer", "description": "Min severity: 1=Error 2=Warn 3=Info 4=Hint"},
 					},
 					Required:             []string{},
 					AdditionalProperties: &f,
@@ -400,17 +399,16 @@ func handleToolsList() any {
 			},
 			{
 				Name:        "lg_paint_regions",
-				Description: "Paint (highlight) regions of code in Neovim to mark them for editing. Opens files if not already open. Use this to show the user which code regions need changes.",
+				Description: "Highlight code regions in Neovim. Opens files if needed.",
 				InputSchema: toolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"regions": map[string]any{
-							"type":        "array",
-							"description": "Regions to paint",
+							"type": "array",
 							"items": map[string]any{
 								"type": "object",
 								"properties": map[string]any{
-									"file":       map[string]string{"type": "string", "description": "Absolute file path"},
+									"file":       map[string]string{"type": "string", "description": "Absolute path"},
 									"start_line": map[string]string{"type": "integer", "description": "Start line (1-based)"},
 									"end_line":   map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
 								},

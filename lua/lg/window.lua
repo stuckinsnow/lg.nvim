@@ -233,7 +233,19 @@ function M.submit()
   local text = vim.trim(table.concat(lines, "\n"))
   if text == "" then return end
 
-  -- Trigger send via init.lua, bypassing region check
+  -- Include the active file name so the AI knows what the user is looking at
+  local active_file
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local b = vim.api.nvim_win_get_buf(win)
+    if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
+      active_file = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(b), ":~:.")
+      break
+    end
+  end
+  if active_file then
+    text = "[Current file: " .. active_file .. "]\n" .. text
+  end
+
   require("lg").send({ prompt = text, from_chat = true })
 end
 
