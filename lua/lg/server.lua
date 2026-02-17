@@ -92,6 +92,52 @@ function M.handle_message(data)
 		paint.clear()
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true, count = #edits })
+	elseif msg.method == "paint_regions" then
+		local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
+		local regions = msg.regions or {}
+		local count = 0
+		local first_file, first_line
+		for _, r in ipairs(regions) do
+			local path = r.file
+			local s_line = r.start_line
+			local e_line = r.end_line
+			if path and s_line and e_line then
+				local bufnr = vim.fn.bufnr(path)
+				if bufnr == -1 then
+					vim.cmd("edit " .. vim.fn.fnameescape(path))
+					bufnr = vim.fn.bufnr(path)
+				elseif not vim.api.nvim_buf_is_loaded(bufnr) then
+					vim.fn.bufload(bufnr)
+				end
+				if bufnr ~= -1 then
+					for row = s_line - 1, e_line - 1 do
+						local total = e_line - s_line + 1
+						local sign = "│"
+						if total == 1 then sign = "│"
+						elseif row == s_line - 1 then sign = "┌"
+						elseif row == e_line - 1 then sign = "└" end
+						vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
+							end_line = row + 1, hl_group = "LgAutoPaintLine", hl_eol = true, priority = 110,
+						})
+						vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
+							sign_text = sign, sign_hl_group = "LgAutoPaintSign", priority = 110,
+						})
+					end
+					count = count + 1
+					if not first_file then
+						first_file = path
+						first_line = s_line
+					end
+				end
+			end
+		end
+		if first_file then
+			vim.cmd("edit " .. vim.fn.fnameescape(first_file))
+			vim.api.nvim_win_set_cursor(0, { first_line, 0 })
+			vim.cmd("normal! zz")
+		end
+		vim.cmd("redraw")
+		return vim.json.encode({ ok = true, count = count })
 	end
 
 	return vim.json.encode({ error = "unknown method" })

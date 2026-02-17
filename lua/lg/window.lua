@@ -197,6 +197,18 @@ function M.add_prompt(prompt)
   M.refresh()
 end
 
+function M.get_history()
+  local parts = {}
+  for _, entry in ipairs(state.history) do
+    if entry.type == "prompt" then
+      table.insert(parts, "User: " .. entry.text)
+    elseif entry.type == "result" or entry.type == "agent" then
+      table.insert(parts, "Assistant: " .. entry.text)
+    end
+  end
+  return table.concat(parts, "\n\n")
+end
+
 function M.add_result(text)
   table.insert(state.history, { type = "result", text = text })
   M.refresh()

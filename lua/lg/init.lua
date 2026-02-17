@@ -93,12 +93,20 @@ function M.send(opts)
 		return
 	end
 
-	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search)
+	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint)
 		if not prompt or prompt == "" then
 			return
 		end
 
 		local tool_hints = {}
+		if has_auto_paint then
+			prompt = prompt:gsub("@AUTO_PAINT%s*", "")
+			local history = window.get_history()
+			if history ~= "" then
+				prompt = "Previous conversation:\n" .. history .. "\n\nNew request:\n" .. prompt
+			end
+			table.insert(tool_hints, "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.")
+		end
 		if has_diag then
 			prompt = prompt:gsub("@DIAG%s*", "")
 			table.insert(tool_hints, "Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits.")
@@ -163,7 +171,9 @@ function M.send(opts)
 	end
 
 	if opts.prompt then
-		do_send(opts.prompt, false)
+		local text = opts.prompt
+		local has_ap = text:match("@AUTO_PAINT") ~= nil
+		do_send(text, false, false, false, false, has_ap)
 	else
 		require("lg.prompt").open(do_send)
 	end

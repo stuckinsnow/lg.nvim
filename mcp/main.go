@@ -304,6 +304,31 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []textContent{{Type: "text", Text: formatDiagnostics(diags)}},
 		}, nil
 
+	case "lg_paint_regions":
+		var args struct {
+			Regions []struct {
+				File      string `json:"file"`
+				StartLine int    `json:"start_line"`
+				EndLine   int    `json:"end_line"`
+			} `json:"regions"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			return toolResult{
+				Content: []textContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		resp, err := sendToNeovim(map[string]any{"method": "paint_regions", "regions": args.Regions})
+		if err != nil {
+			return toolResult{
+				Content: []textContent{{Type: "text", Text: "paint failed: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		return toolResult{
+			Content: []textContent{{Type: "text", Text: string(resp)}},
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", call.Name)
 	}
@@ -370,6 +395,30 @@ func handleToolsList() any {
 						"severity": map[string]any{"type": "integer", "description": "Minimum severity: 1=Error, 2=Warning (default), 3=Info, 4=Hint"},
 					},
 					Required:             []string{},
+					AdditionalProperties: &f,
+				},
+			},
+			{
+				Name:        "lg_paint_regions",
+				Description: "Paint (highlight) regions of code in Neovim to mark them for editing. Opens files if not already open. Use this to show the user which code regions need changes.",
+				InputSchema: toolSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"regions": map[string]any{
+							"type":        "array",
+							"description": "Regions to paint",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"file":       map[string]string{"type": "string", "description": "Absolute file path"},
+									"start_line": map[string]string{"type": "integer", "description": "Start line (1-based)"},
+									"end_line":   map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
+								},
+								"required": []string{"file", "start_line", "end_line"},
+							},
+						},
+					},
+					Required:             []string{"regions"},
 					AdditionalProperties: &f,
 				},
 			},
