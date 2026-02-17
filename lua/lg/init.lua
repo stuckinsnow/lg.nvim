@@ -93,9 +93,22 @@ function M.send(opts)
 		return
 	end
 
-	local function do_send(prompt, has_lsp, has_tsc)
+	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search)
 		if not prompt or prompt == "" then
 			return
+		end
+
+		local tool_hints = {}
+		if has_diag then
+			prompt = prompt:gsub("@DIAG%s*", "")
+			table.insert(tool_hints, "Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits.")
+		end
+		if has_search then
+			prompt = prompt:gsub("@SEARCH%s*", "")
+			table.insert(tool_hints, "Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed.")
+		end
+		if #tool_hints > 0 then
+			prompt = table.concat(tool_hints, "\n") .. "\n\n" .. prompt
 		end
 
 		local lsp_context = nil

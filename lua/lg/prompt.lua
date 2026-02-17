@@ -37,7 +37,9 @@ function M.open(cb)
 		if text ~= "" then
 			local has_lsp = text:match("@LSP") ~= nil
 			local has_tsc = text:match("@TSC") ~= nil
-			cb(text, has_lsp, has_tsc)
+			local has_diag = text:match("@DIAG") ~= nil
+			local has_search = text:match("@SEARCH") ~= nil
+			cb(text, has_lsp, has_tsc, has_diag, has_search)
 		end
 	end
 
