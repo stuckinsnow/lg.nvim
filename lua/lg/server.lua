@@ -108,6 +108,9 @@ function M.handle_message(data)
 			local e_line = r.end_line
 			local desc = r.description or ""
 			if path and s_line and e_line then
+				-- Strip kiro-cli tmp prefix and resolve to project root
+				path = path:gsub("^/tmp/tmp%.[^/]+/", "")
+				path = vim.fn.fnamemodify(path, ":p")
 				local bufnr = vim.fn.bufnr(path)
 				if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
 					-- find a normal window to open in
@@ -141,8 +144,8 @@ function M.handle_message(data)
 					end
 					count = count + 1
 					table.insert(info_regions, { bufnr = bufnr, start_line = s_line, end_line = e_line })
-					local text = desc ~= "" and ("AI - Info: " .. desc) or "AI - Info"
-					table.insert(qf_items, { filename = path, lnum = s_line, text = text })
+					local text = desc ~= "" and ("AI - " .. desc) or "AI"
+					table.insert(qf_items, { filename = path, lnum = s_line, text = text, bufnr = 0 })
 					if not first_file then
 						first_file = path
 						first_line = s_line

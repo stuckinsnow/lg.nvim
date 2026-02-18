@@ -9,7 +9,7 @@ function M.set(changes)
 	for _, e in ipairs(changes) do
 		local f = e.file
 		if not f:match("^/") then f = cwd .. f end
-		table.insert(items, { filename = f, lnum = e.line or 1, text = "AI - Chat" })
+		table.insert(items, { filename = f, lnum = e.line or 1, text = "AI - Chat", bufnr = 0 })
 
 		-- Apply gutter highlights
 		local bufnr = vim.fn.bufnr(f)

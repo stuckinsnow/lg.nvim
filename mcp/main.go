@@ -412,7 +412,7 @@ func handleToolsList() any {
 									"file":        map[string]string{"type": "string", "description": "Absolute path"},
 									"start_line":  map[string]string{"type": "integer", "description": "Start line (1-based)"},
 									"end_line":    map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
-									"description": map[string]string{"type": "string", "description": "Short summary of what needs to change in this region"},
+									"description": map[string]string{"type": "string", "description": "One sentence summary (max 80 chars)"},
 								},
 								"required": []string{"file", "start_line", "end_line"},
 							},
