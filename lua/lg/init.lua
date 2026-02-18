@@ -139,6 +139,23 @@ function M.send(opts)
 	local regions = paint.get_all()
 
 	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git)
+		if prompt then
+			-- Resolve active file for #buffer / #buffdir expansions
+			local active
+			for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+				local b = vim.api.nvim_win_get_buf(win)
+				if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
+					active = vim.api.nvim_buf_get_name(b)
+					break
+				end
+			end
+			if active then
+				prompt = prompt:gsub("#buffdir", "@" .. vim.fn.fnamemodify(active, ":~:.:h") .. "/")
+				prompt = prompt:gsub("#buffer", "@" .. vim.fn.fnamemodify(active, ":~:."))
+			end
+			-- #./path → @path (blink path completion uses ./ prefix)
+			prompt = prompt:gsub("#%./", "@")
+		end
 		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
