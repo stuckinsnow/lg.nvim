@@ -101,10 +101,12 @@ function M.handle_message(data)
 		local count = 0
 		local first_file, first_line
 		info_regions = {}
+		local qf_items = {}
 		for _, r in ipairs(regions) do
 			local path = r.file
 			local s_line = r.start_line
 			local e_line = r.end_line
+			local desc = r.description or ""
 			if path and s_line and e_line then
 				local bufnr = vim.fn.bufnr(path)
 				if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
@@ -139,12 +141,17 @@ function M.handle_message(data)
 					end
 					count = count + 1
 					table.insert(info_regions, { bufnr = bufnr, start_line = s_line, end_line = e_line })
+					local text = desc ~= "" and ("AI - Info: " .. desc) or "AI - Info"
+					table.insert(qf_items, { filename = path, lnum = s_line, text = text })
 					if not first_file then
 						first_file = path
 						first_line = s_line
 					end
 				end
 			end
+		end
+		if #qf_items > 0 then
+			vim.fn.setqflist(qf_items, "a")
 		end
 		-- Navigate to first painted region in a non-chat window
 		if first_file then

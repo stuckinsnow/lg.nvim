@@ -137,12 +137,12 @@ end
 function M.send(opts)
 	opts = opts or {}
 	local regions = paint.get_all()
-	if #regions == 0 and not opts.from_chat then
-		vim.notify("lg: no painted regions", vim.log.levels.WARN)
-		return
-	end
 
 	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git)
+		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git then
+			vim.notify("lg: no painted regions", vim.log.levels.WARN)
+			return
+		end
 		if not prompt or prompt == "" then
 			return
 		end

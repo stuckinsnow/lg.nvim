@@ -307,9 +307,10 @@ func handleToolCall(params json.RawMessage) (any, error) {
 	case "lg_paint_regions":
 		var args struct {
 			Regions []struct {
-				File      string `json:"file"`
-				StartLine int    `json:"start_line"`
-				EndLine   int    `json:"end_line"`
+				File        string `json:"file"`
+				StartLine   int    `json:"start_line"`
+				EndLine     int    `json:"end_line"`
+				Description string `json:"description"`
 			} `json:"regions"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -408,9 +409,10 @@ func handleToolsList() any {
 							"items": map[string]any{
 								"type": "object",
 								"properties": map[string]any{
-									"file":       map[string]string{"type": "string", "description": "Absolute path"},
-									"start_line": map[string]string{"type": "integer", "description": "Start line (1-based)"},
-									"end_line":   map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
+									"file":        map[string]string{"type": "string", "description": "Absolute path"},
+									"start_line":  map[string]string{"type": "integer", "description": "Start line (1-based)"},
+									"end_line":    map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
+									"description": map[string]string{"type": "string", "description": "Short summary of what needs to change in this region"},
 								},
 								"required": []string{"file", "start_line", "end_line"},
 							},

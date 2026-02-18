@@ -26,6 +26,8 @@ function M.open(cb)
 		title_pos = "center",
 	})
 
+	vim.wo[win].wrap = true
+	vim.wo[win].linebreak = true
 	vim.cmd("startinsert")
 
 	local function submit()
@@ -52,6 +54,7 @@ function M.open(cb)
 
 	vim.keymap.set("n", "q", cancel, { buffer = buf })
 	vim.keymap.set("n", "<Esc>", cancel, { buffer = buf })
+	vim.keymap.set("n", "<CR>", submit, { buffer = buf })
 	vim.keymap.set({ "n", "i" }, "<C-s>", submit, { buffer = buf })
 end
 
