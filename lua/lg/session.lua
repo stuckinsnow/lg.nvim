@@ -37,7 +37,6 @@ function M.setup(user_opts)
 		provider = "kiro",
 	}, user_opts or {})
 
-	-- Restore persisted provider
 	local saved = load_state()
 	if saved.provider and providers[saved.provider] then
 		opts.provider = saved.provider
@@ -56,33 +55,7 @@ local function write(s, msg)
 	end
 end
 
---- @param s table
---- @param method string
---- @param params table
---- @return table?
-local function rpc_request(s, method, params)
-	local id = s.next_id
-	s.next_id = id + 1
-	write(s, { jsonrpc = "2.0", id = id, method = method, params = params or {} })
-
-	local start = vim.uv.hrtime()
-	local timeout_ns = opts.timeout * 1e6
-	while vim.uv.hrtime() - start < timeout_ns do
-		vim.wait(10)
-		if s.pending[id] then
-			local resp = s.pending[id]
-			s.pending[id] = nil
-			if resp.error then
-				status.stop("Error: " .. method)
-				return nil
-			end
-			return resp.result
-		end
-	end
-	status.stop("Timeout: " .. method)
-	return nil
-end
-
+--- Default message handler for main + oneshot sessions.
 --- @param s table
 --- @param msg table
 local function handle_message(s, msg)
@@ -131,30 +104,23 @@ local function handle_message(s, msg)
 			end
 		end
 		option_id = option_id or (tool_options[1] and tool_options[1].optionId)
-
 		if option_id and msg.id then
 			vim.schedule(function()
 				local tc = msg.params and msg.params.toolCall
 				status.update("Approved: " .. (tc and tc.title or ""))
 			end)
 			write(s, {
-				jsonrpc = "2.0",
-				id = msg.id,
+				jsonrpc = "2.0", id = msg.id,
 				result = { outcome = { outcome = "selected", optionId = option_id } },
 			})
 		end
 	elseif method == "fs/read_text_file" then
 		local path = msg.params and msg.params.path
 		if path and msg.id then
-			vim.schedule(function()
-				status.update("Reading: " .. vim.fn.fnamemodify(path, ":t"))
-			end)
+			vim.schedule(function() status.update("Reading: " .. vim.fn.fnamemodify(path, ":t")) end)
 			local content = ""
 			local f = io.open(path, "r")
-			if f then
-				content = f:read("*a")
-				f:close()
-			end
+			if f then content = f:read("*a"); f:close() end
 			write(s, { jsonrpc = "2.0", id = msg.id, result = { content = content } })
 		end
 	elseif method == "fs/write_text_file" then
@@ -162,14 +128,9 @@ local function handle_message(s, msg)
 		local content = msg.params and msg.params.content or ""
 		if path and msg.id then
 			local resolved = vim.fn.fnamemodify(path, ":p")
-			vim.schedule(function()
-				status.update("Writing: " .. vim.fn.fnamemodify(path, ":t"))
-			end)
+			vim.schedule(function() status.update("Writing: " .. vim.fn.fnamemodify(path, ":t")) end)
 			local f = io.open(resolved, "w")
-			if f then
-				f:write(content)
-				f:close()
-			end
+			if f then f:write(content); f:close() end
 			write(s, { jsonrpc = "2.0", id = msg.id, result = vim.NIL })
 			vim.schedule(function()
 				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
@@ -183,38 +144,15 @@ local function handle_message(s, msg)
 				end
 			end)
 		end
-	elseif method:match("^_kiro") or method:match("^_opencode") then
-		-- silently ignore internal notifications
 	end
 end
 
---- @param s table
---- @param data string
-local function on_stdout(s, data)
-	s.stdout_buf = s.stdout_buf .. data
-	while true do
-		local nl = s.stdout_buf:find("\n")
-		if not nl then
-			break
-		end
-		local line = s.stdout_buf:sub(1, nl - 1):gsub("\r$", "")
-		s.stdout_buf = s.stdout_buf:sub(nl + 1)
-		if line ~= "" and line:match("^%s*{") then
-			local ok, msg = pcall(vim.json.decode, line)
-			if ok then
-				handle_message(s, msg)
-			end
-		end
-	end
-end
-
---- @return table?
-local function connect()
-	if state and state.proc then
-		return state
-	end
-
-	status.start("Connecting...")
+--- Spawn an ACP process, run init + session/new handshake, call on_ready(s).
+--- Fully async — never blocks the editor.
+--- @param spawn_opts { cmd: string[], mcp_servers: table, client_name: string, on_message?: fun(s:table, msg:table), on_fail?: fun() }
+--- @param on_ready fun(s: table?)
+local function spawn_session(spawn_opts, on_ready)
+	local msg_handler = spawn_opts.on_message or handle_message
 
 	local s = {
 		proc = nil,
@@ -225,16 +163,34 @@ local function connect()
 		models = nil,
 	}
 
+	-- stdout line parser → JSON → handler
+	local function process_stdout(data)
+		s.stdout_buf = s.stdout_buf .. data
+		while true do
+			local nl = s.stdout_buf:find("\n")
+			if not nl then break end
+			local line = s.stdout_buf:sub(1, nl - 1):gsub("\r$", "")
+			s.stdout_buf = s.stdout_buf:sub(nl + 1)
+			if line ~= "" and line:match("^%s*{") then
+				local ok, msg = pcall(vim.json.decode, line)
+				if ok then
+					-- During handshake, intercept responses
+					if s._handshake then
+						s._handshake(msg)
+					else
+						msg_handler(s, msg)
+					end
+				end
+			end
+		end
+	end
+
 	local proc = vim.system(
-		opts.cmd,
+		spawn_opts.cmd,
 		{
 			stdin = true,
 			cwd = vim.fn.getcwd(),
-			stdout = vim.schedule_wrap(function(_, data)
-				if data then
-					on_stdout(s, data)
-				end
-			end),
+			stdout = vim.schedule_wrap(function(_, data) if data then process_stdout(data) end end),
 			stderr = vim.schedule_wrap(function(_, _) end),
 		},
 		vim.schedule_wrap(function(_)
@@ -242,103 +198,150 @@ local function connect()
 			s.session_id = nil
 		end)
 	)
-
 	s.proc = proc
-	state = s
 
-	status.update("Initializing...")
-	local init = rpc_request(s, "initialize", {
-		protocolVersion = 1,
-		clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
-		clientInfo = { name = "lg", version = "2.0.0" },
-	})
-	if not init then
-		M.clear()
-		return nil
-	end
+	-- Async handshake: init → session → ready
+	local phase = "init"
+	s._handshake = function(msg)
+		if not (msg.id and not msg.method) then
+			msg_handler(s, msg)
+			return
+		end
 
-	status.update("Creating session...")
-	local session_result = rpc_request(s, "session/new", {
-		cwd = vim.fn.getcwd(),
-		mcpServers = opts.mcp_servers,
-	})
-	if not session_result or not session_result.sessionId then
-		status.stop("Failed to create session")
-		M.clear()
-		return nil
-	end
-	s.session_id = session_result.sessionId
-	s.models = session_result.models
+		local result = msg.result
+		local err = msg.error
 
-	-- Restore persisted model
-	local saved = load_state()
-	if saved.model and s.models then
-		for _, m in ipairs(s.models.availableModels or {}) do
-			if m.modelId == saved.model then
-				local id = s.next_id
-				s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0",
-					id = id,
-					method = "session/set_model",
-					params = { sessionId = s.session_id, modelId = saved.model },
-				})
-				s.models.currentModelId = saved.model
-				break
+		if phase == "init" then
+			if err or not result then
+				s._handshake = nil
+				if spawn_opts.on_fail then spawn_opts.on_fail() end
+				on_ready(nil)
+				return
 			end
+			phase = "session"
+			local id = s.next_id; s.next_id = id + 1
+			write(s, {
+				jsonrpc = "2.0", id = id, method = "session/new",
+				params = { cwd = vim.fn.getcwd(), mcpServers = spawn_opts.mcp_servers or {} },
+			})
+
+		elseif phase == "session" then
+			s._handshake = nil
+			if err or not result or not result.sessionId then
+				if spawn_opts.on_fail then spawn_opts.on_fail() end
+				on_ready(nil)
+				return
+			end
+			s.session_id = result.sessionId
+			s.models = result.models
+			on_ready(s)
 		end
 	end
 
-	status.stop("Session ready")
-
-	vim.api.nvim_create_autocmd("VimLeavePre", {
-		group = vim.api.nvim_create_augroup("lg_session", { clear = true }),
-		callback = function()
-			M.clear()
-		end,
+	-- Kick off: send initialize
+	local id = s.next_id; s.next_id = id + 1
+	write(s, {
+		jsonrpc = "2.0", id = id, method = "initialize",
+		params = {
+			protocolVersion = 1,
+			clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
+			clientInfo = { name = spawn_opts.client_name or "lg", version = "2.0.0" },
+		},
 	})
 
 	return s
 end
 
---- @param prompt string
---- @param regions table[]
---- @param context_regions? table[]
---- @param on_done? fun() called when turn completes
---- @param lsp_context? string
---- @param tsc_context? string
-function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_context)
-	local s = connect()
-	if not s then
+-- ── Main session (persistent) ──────────────────────────────────────
+
+local _connect_queue = nil
+
+local function connect(on_ready)
+	if state and state.proc then
+		on_ready(state)
 		return
 	end
 
-	local messages = protocol.build_prompt(regions, context_regions or {}, prompt, lsp_context, tsc_context)
+	if _connect_queue then
+		table.insert(_connect_queue, on_ready)
+		return
+	end
+	_connect_queue = { on_ready }
 
-	status.start("Thinking...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+	local function flush(s)
+		local q = _connect_queue
+		_connect_queue = nil
+		for _, cb in ipairs(q) do cb(s) end
+	end
 
-	-- Store on_done for when turn completes
-	s._on_done = on_done
+	status.start("Connecting...")
 
-	local id = s.next_id
-	s.next_id = id + 1
-	write(s, {
-		jsonrpc = "2.0",
-		id = id,
-		method = "session/prompt",
-		params = { sessionId = s.session_id, prompt = messages },
-	})
+	state = spawn_session({
+		cmd = opts.cmd,
+		mcp_servers = opts.mcp_servers,
+		client_name = "lg",
+		on_fail = function()
+			status.stop("Connection failed")
+			state = nil
+		end,
+	}, function(s)
+		if not s then
+			flush(nil)
+			return
+		end
+
+		-- Restore persisted model
+		local saved = load_state()
+		if saved.model and s.models then
+			for _, m in ipairs(s.models.availableModels or {}) do
+				if m.modelId == saved.model then
+					local id = s.next_id; s.next_id = id + 1
+					write(s, {
+						jsonrpc = "2.0", id = id, method = "session/set_model",
+						params = { sessionId = s.session_id, modelId = saved.model },
+					})
+					s.models.currentModelId = saved.model
+					break
+				end
+			end
+		end
+
+		status.stop("Session ready")
+
+		vim.api.nvim_create_autocmd("VimLeavePre", {
+			group = vim.api.nvim_create_augroup("lg_session", { clear = true }),
+			callback = function() M.clear() end,
+		})
+
+		flush(s)
+	end)
+end
+
+function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_context)
+	connect(function(s)
+		if not s then return end
+
+		local messages = protocol.build_prompt(regions, context_regions or {}, prompt, lsp_context, tsc_context)
+
+		status.start("Thinking...")
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+		s._on_done = on_done
+
+		local id = s.next_id
+		s.next_id = id + 1
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/prompt",
+			params = { sessionId = s.session_id, prompt = messages },
+		})
+	end)
 end
 
 function M.clear()
-	if not state then
-		return
-	end
+	_connect_queue = nil
+	if not state then return end
 	if state.proc then
-		pcall(function()
-			state.proc:kill(9)
-		end)
+		pcall(function() state.proc:kill(9) end)
 	end
 	state = nil
 end
@@ -358,42 +361,39 @@ function M.is_active()
 end
 
 function M.select_model()
-	local s = connect()
-	if not s or not s.models then
-		vim.notify("lg: no models available", vim.log.levels.WARN)
-		return
-	end
-
-	local names = {}
-	for _, m in ipairs(s.models.availableModels or {}) do
-		local label = m.modelId
-		if m.modelId == s.models.currentModelId then
-			label = label .. " (current)"
+	connect(function(s)
+		if not s or not s.models then
+			vim.notify("lg: no models available", vim.log.levels.WARN)
+			return
 		end
-		table.insert(names, label)
-	end
 
-	vim.ui.select(
-		names,
-		{ prompt = "lg model (current: " .. (s.models.currentModelId or "?") .. "):" },
-		function(choice)
-			if not choice then
-				return
+		local names = {}
+		for _, m in ipairs(s.models.availableModels or {}) do
+			local label = m.modelId
+			if m.modelId == s.models.currentModelId then
+				label = label .. " (current)"
 			end
-			local model_id = choice:gsub(" %(current%)$", "")
-			local id = s.next_id
-			s.next_id = id + 1
-			write(s, {
-				jsonrpc = "2.0",
-				id = id,
-				method = "session/set_model",
-				params = { sessionId = s.session_id, modelId = model_id },
-			})
-			s.models.currentModelId = model_id
-			save_state({ provider = opts.provider, model = model_id })
-			vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+			table.insert(names, label)
 		end
-	)
+
+		vim.ui.select(
+			names,
+			{ prompt = "lg model (current: " .. (s.models.currentModelId or "?") .. "):" },
+			function(choice)
+				if not choice then return end
+				local model_id = choice:gsub(" %(current%)$", "")
+				local id = s.next_id
+				s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0", id = id, method = "session/set_model",
+					params = { sessionId = s.session_id, modelId = model_id },
+				})
+				s.models.currentModelId = model_id
+				save_state({ provider = opts.provider, model = model_id })
+				vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+			end
+		)
+	end)
 end
 
 --- @return string?
@@ -418,137 +418,70 @@ function M.select_provider()
 		end
 		table.insert(names, { key = key, label = label })
 	end
-	table.sort(names, function(a, b)
-		return a.label < b.label
-	end)
+	table.sort(names, function(a, b) return a.label < b.label end)
 
-	local labels = vim.tbl_map(function(n)
-		return n.label
-	end, names)
+	local labels = vim.tbl_map(function(n) return n.label end, names)
 
 	vim.ui.select(
 		labels,
 		{ prompt = "lg provider (current: " .. (providers[opts.provider].name or "?") .. "):" },
 		function(choice, idx)
-			if not choice or not idx then
-				return
-			end
+			if not choice or not idx then return end
 			local picked = names[idx].key
-			if picked == opts.provider and state then
-				return
-			end
+			if picked == opts.provider and state then return end
 			opts.provider = picked
 			opts.cmd = providers[picked].cmd
 			M.clear()
 			save_state({ provider = picked, model = M.current_model() })
 			vim.notify("lg: provider → " .. providers[picked].name, vim.log.levels.INFO)
-			vim.schedule(function()
-				M.select_model()
-			end)
+			vim.schedule(function() M.select_model() end)
 		end
 	)
 end
 
---- Spawn an ephemeral session, send one prompt, call on_done when finished.
---- Does not touch the main `state`.
+-- ── Oneshot session (ephemeral) ────────────────────────────────────
+
 function M.send_oneshot(prompt, regions, context_regions, on_done)
-	local s = {
-		proc = nil,
-		next_id = 1,
-		pending = {},
-		session_id = nil,
-		stdout_buf = "",
-		_on_done = on_done,
-	}
+	local s = spawn_session({
+		cmd = opts.cmd,
+		mcp_servers = opts.mcp_servers,
+		client_name = "lg-quick",
+	}, function(sess)
+		if not sess then return end
 
-	local proc = vim.system(
-		opts.cmd,
-		{
-			stdin = true,
-			cwd = vim.fn.getcwd(),
-			stdout = vim.schedule_wrap(function(_, data)
-				if data then
-					on_stdout(s, data)
-				end
-			end),
-			stderr = vim.schedule_wrap(function(_, _) end),
-		},
-		vim.schedule_wrap(function(_)
-			s.proc = nil
-		end)
-	)
-	s.proc = proc
-
-	local init = rpc_request(s, "initialize", {
-		protocolVersion = 1,
-		clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
-		clientInfo = { name = "lg-quick", version = "2.0.0" },
-	})
-	if not init then
-		pcall(function()
-			proc:kill(9)
-		end)
-		return
-	end
-
-	local sr = rpc_request(s, "session/new", { cwd = vim.fn.getcwd(), mcpServers = opts.mcp_servers })
-	if not sr or not sr.sessionId then
-		pcall(function()
-			proc:kill(9)
-		end)
-		return
-	end
-	s.session_id = sr.sessionId
-
-	-- Wrap on_done to also kill the ephemeral process
-	s._on_done = function()
-		if on_done then
-			on_done()
+		sess._on_done = function()
+			if on_done then on_done() end
+			vim.defer_fn(function() pcall(function() sess.proc:kill(9) end) end, 500)
 		end
-		vim.defer_fn(function()
-			pcall(function()
-				proc:kill(9)
-			end)
-		end, 500)
-	end
 
-	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
-	status.start("Quick edit...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-	local id = s.next_id
-	s.next_id = id + 1
-	write(
-		s,
-		{ jsonrpc = "2.0", id = id, method = "session/prompt", params = { sessionId = s.session_id, prompt = messages } }
-	)
+		local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
+		status.start("Quick edit...")
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+		local id = sess.next_id; sess.next_id = id + 1
+		write(sess, {
+			jsonrpc = "2.0", id = id, method = "session/prompt",
+			params = { sessionId = sess.session_id, prompt = messages },
+		})
+	end)
 end
 
---- Spawn a Haiku subagent with git MCP, capture its text response.
---- Fully async — no blocking rpc_request calls.
+-- ── Git subagent (ephemeral, custom message handler) ───────────────
+
 --- @param prompt string
 --- @param on_done fun(result: string)
 function M.send_git_subagent(prompt, on_done)
-	local source = debug.getinfo(1, "S").source:gsub("^@", "")
-	local plugin_dir = vim.fn.fnamemodify(source, ":h:h:h") .. "/"
-	local git_mcp_path = plugin_dir .. "mcp/git-mcp/lg-git-mcp"
-
 	local cheap_models = {
 		kiro = "claude-haiku-4.5",
 		opencode = "github-copilot/gpt-4.1",
 	}
 	local model_id = cheap_models[opts.provider] or "claude-haiku-4.5"
 
-	local s = {
-		proc = nil,
-		next_id = 1,
-		stdout_buf = "",
-		_agent_text = "",
-		_phase = "init", -- init -> session -> prompt -> done
-	}
+	local agent_text = ""
+	local git_phase = "set_model" -- after spawn_session: set_model → prompt → done
 
-	local function sub_handle(msg)
+	--- Custom message handler for the git subagent
+	local function git_handler(s, msg)
 		if msg.id and not msg.method then
-			-- Response to one of our requests
 			if msg.error then
 				vim.schedule(function()
 					status.stop("Git agent error")
@@ -558,44 +491,20 @@ function M.send_git_subagent(prompt, on_done)
 			end
 			local result = msg.result or {}
 
-			if s._phase == "init" then
-				s._phase = "session"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/new",
-					params = { cwd = vim.fn.getcwd(), mcpServers = {} },
-				})
-
-			elseif s._phase == "session" then
-				if not result.sessionId then
-					vim.schedule(function()
-						status.stop("Git agent: no session")
-						on_done("")
-					end)
-					return
-				end
-				s.session_id = result.sessionId
-				s._phase = "set_model"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/set_model",
-					params = { sessionId = s.session_id, modelId = model_id },
-				})
-
-			elseif s._phase == "set_model" then
-				s._phase = "prompt"
+			if git_phase == "set_model" then
+				git_phase = "prompt"
 				local id = s.next_id; s.next_id = id + 1
 				write(s, {
 					jsonrpc = "2.0", id = id, method = "session/prompt",
 					params = { sessionId = s.session_id, prompt = { { type = "text", text = prompt } } },
 				})
 
-			elseif s._phase == "prompt" then
+			elseif git_phase == "prompt" then
 				if result.stopReason then
-					s._phase = "done"
+					git_phase = "done"
 					vim.schedule(function()
 						status.stop("Git analysis done")
-						on_done(s._agent_text)
+						on_done(agent_text)
 						vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
 					end)
 				end
@@ -609,7 +518,7 @@ function M.send_git_subagent(prompt, on_done)
 			if update and update.sessionUpdate == "agent_message_chunk" then
 				local content = update.content
 				if content and content.type == "text" and content.text then
-					s._agent_text = s._agent_text .. content.text
+					agent_text = agent_text .. content.text
 					vim.schedule(function() require("lg.window").append_agent_text(content.text) end)
 				end
 			end
@@ -629,42 +538,27 @@ function M.send_git_subagent(prompt, on_done)
 		end
 	end
 
-	local function sub_stdout(data)
-		s.stdout_buf = s.stdout_buf .. data
-		while true do
-			local nl = s.stdout_buf:find("\n")
-			if not nl then break end
-			local line = s.stdout_buf:sub(1, nl - 1):gsub("\r$", "")
-			s.stdout_buf = s.stdout_buf:sub(nl + 1)
-			if line ~= "" and line:match("^%s*{") then
-				local ok, parsed = pcall(vim.json.decode, line)
-				if ok then sub_handle(parsed) end
-			end
-		end
-	end
-
-	local proc = vim.system(
-		opts.cmd,
-		{
-			stdin = true,
-			cwd = vim.fn.getcwd(),
-			stdout = vim.schedule_wrap(function(_, data) if data then sub_stdout(data) end end),
-			stderr = vim.schedule_wrap(function(_, data)
-				if data and data ~= "" then vim.notify("lg-git: " .. data, vim.log.levels.WARN) end
-			end),
-		},
-		vim.schedule_wrap(function(_) s.proc = nil end)
-	)
-	s.proc = proc
-
 	status.start("Git analysis (" .. model_id .. ")...")
 
-	-- Kick off the async chain: initialize
-	local id = s.next_id; s.next_id = id + 1
-	write(s, {
-		jsonrpc = "2.0", id = id, method = "initialize",
-		params = { protocolVersion = 1, clientCapabilities = { fs = { readTextFile = true } }, clientInfo = { name = "lg-git", version = "1.0.0" } },
-	})
+	spawn_session({
+		cmd = opts.cmd,
+		mcp_servers = {},
+		client_name = "lg-git",
+		on_message = git_handler,
+		on_fail = function()
+			status.stop("Git agent failed")
+			on_done("")
+		end,
+	}, function(s)
+		if not s then return end
+
+		-- First step after session ready: set model
+		local id = s.next_id; s.next_id = id + 1
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/set_model",
+			params = { sessionId = s.session_id, modelId = model_id },
+		})
+	end)
 end
 
 return M
