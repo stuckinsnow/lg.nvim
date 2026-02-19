@@ -66,8 +66,10 @@ local function stop_spinners()
 	active_spinners = {}
 end
 
---- Snapshot git diff, return callback that populates quickfix with new changes
-local function git_snapshot_cb()
+--- Snapshot git diff, return callback that highlights new changes
+--- @param snap_opts? { skip_qf?: boolean }
+local function git_snapshot_cb(snap_opts)
+	snap_opts = snap_opts or {}
 	local baseline = nil
 	vim.system({ "git", "diff", "--unified=0" }, {}, function(obj)
 		baseline = (obj.code == 0 and obj.stdout) or ""
@@ -108,7 +110,7 @@ local function git_snapshot_cb()
 					end
 				end
 				if #new_items > 0 then
-					require("lg.changes").set(new_items)
+					require("lg.changes").set(new_items, { skip_qf = snap_opts.skip_qf })
 				end
 			end
 		end))
@@ -266,7 +268,7 @@ function M.send(opts)
 					window.add_prompt(prompt)
 					local sr = opts.from_chat and {} or regions
 					start_spinners(regions)
-					local on_done = opts.from_chat and git_snapshot_cb() or nil
+					local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not has_auto_paint }) or nil
 					session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
 						vim.schedule(function()
 							stop_spinners()
@@ -281,7 +283,7 @@ function M.send(opts)
 		window.add_prompt(prompt)
 		local send_regions = opts.from_chat and {} or regions
 		start_spinners(regions)
-		local on_done = opts.from_chat and git_snapshot_cb() or nil
+		local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not has_auto_paint }) or nil
 		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
 			vim.schedule(function()
 				stop_spinners()

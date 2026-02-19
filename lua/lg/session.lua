@@ -161,24 +161,26 @@ local function handle_message(s, msg)
 		local path = msg.params and msg.params.path
 		local content = msg.params and msg.params.content or ""
 		if path and msg.id then
+			local resolved = vim.fn.fnamemodify(path, ":p")
 			vim.schedule(function()
 				status.update("Writing: " .. vim.fn.fnamemodify(path, ":t"))
 			end)
-			local f = io.open(path, "w")
+			local f = io.open(resolved, "w")
 			if f then
 				f:write(content)
 				f:close()
 			end
 			write(s, { jsonrpc = "2.0", id = msg.id, result = vim.NIL })
 			vim.schedule(function()
-				local lines = vim.split(content, "\n")
 				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-					if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == path then
-						vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-						vim.bo[buf].modified = false
+					if vim.api.nvim_buf_is_loaded(buf) then
+						local bname = vim.api.nvim_buf_get_name(buf)
+						if bname == resolved or bname == path then
+							vim.bo[buf].autoread = true
+							vim.cmd("checktime " .. buf)
+						end
 					end
 				end
-				vim.cmd("redraw")
 			end)
 		end
 	elseif method:match("^_kiro") or method:match("^_opencode") then

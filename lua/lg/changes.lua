@@ -2,14 +2,19 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("lg_auto_paint")
 
-function M.set(changes)
+--- @param changes { file: string, line: number }[]
+--- @param set_opts? { skip_qf?: boolean }
+function M.set(changes, set_opts)
 	if not changes or #changes == 0 then return end
+	set_opts = set_opts or {}
 	local cwd = vim.fn.getcwd() .. "/"
 	local items = {}
 	for _, e in ipairs(changes) do
 		local f = e.file
 		if not f:match("^/") then f = cwd .. f end
-		table.insert(items, { filename = f, lnum = e.line or 1, text = "AI - Chat", bufnr = 0 })
+		if not set_opts.skip_qf then
+			table.insert(items, { filename = f, lnum = e.line or 1, text = "AI - Chat", bufnr = 0 })
+		end
 
 		-- Apply gutter highlights
 		local bufnr = vim.fn.bufnr(f)
@@ -28,7 +33,9 @@ function M.set(changes)
 			sign_text = "│", sign_hl_group = "LgSign", priority = 110,
 		})
 	end
-	vim.fn.setqflist(items, "a")
+	if #items > 0 then
+		vim.fn.setqflist(items, "a")
+	end
 end
 
 function M.clear()
