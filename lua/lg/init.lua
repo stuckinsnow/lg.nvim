@@ -51,6 +51,13 @@ function M.context_paint()
 	window.refresh()
 end
 
+function M.mark_paint()
+	local buf = vim.api.nvim_get_current_buf()
+	local start_line = vim.fn.getpos("'<")[2]
+	local end_line = vim.fn.getpos("'>")[2]
+	server.add_info_region(buf, start_line, end_line)
+end
+
 --- Stop all active spinners
 local function stop_spinners()
 	for _, s in ipairs(active_spinners) do
@@ -326,6 +333,27 @@ function M.accept_info_paint()
 end
 function M.clear_info_paint()
 	server.clear_info_paint()
+end
+
+function M.copy_info_paint()
+	local regions = server.get_info_regions()
+	if #regions == 0 then
+		vim.notify("lg: no info paint regions to copy", vim.log.levels.WARN)
+		return
+	end
+	local cwd = vim.fn.getcwd() .. "/"
+	local lines = {}
+	for _, r in ipairs(regions) do
+		if vim.api.nvim_buf_is_valid(r.bufnr) then
+			local path = vim.api.nvim_buf_get_name(r.bufnr)
+			if path:sub(1, #cwd) == cwd then path = path:sub(#cwd + 1) end
+			local range = r.start_line == r.end_line and tostring(r.start_line) or (r.start_line .. "-" .. r.end_line)
+			table.insert(lines, path .. ":" .. range)
+		end
+	end
+	local text = table.concat(lines, "\n")
+	vim.fn.setreg("+", text)
+	vim.notify("lg: copied " .. #lines .. " info regions to clipboard", vim.log.levels.INFO)
 end
 
 function M.clear_session()

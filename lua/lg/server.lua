@@ -279,4 +279,28 @@ function M.clear_info_paint()
 	info_regions = {}
 end
 
+function M.get_info_regions()
+	return info_regions
+end
+
+function M.add_info_region(bufnr, s_line, e_line)
+	local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
+	local total_lines = vim.api.nvim_buf_line_count(bufnr)
+	e_line = math.min(e_line, total_lines)
+	for row = s_line - 1, e_line - 1 do
+		local total = e_line - s_line + 1
+		local sign = "│"
+		if total == 1 then sign = "│"
+		elseif row == s_line - 1 then sign = "┌"
+		elseif row == e_line - 1 then sign = "└" end
+		vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
+			end_line = row + 1, hl_group = "LgAutoPaintLine", hl_eol = true, priority = 110,
+		})
+		vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
+			sign_text = sign, sign_hl_group = "LgAutoPaintSign", priority = 110,
+		})
+	end
+	table.insert(info_regions, { bufnr = bufnr, start_line = s_line, end_line = e_line })
+end
+
 return M
