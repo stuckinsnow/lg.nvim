@@ -59,6 +59,7 @@ end
 --- @param s table
 --- @param msg table
 local function handle_message(s, msg)
+	if s.killed then return end
 	if msg.id and not msg.method then
 		s.pending[msg.id] = { result = msg.result, error = msg.error }
 		if msg.result and msg.result.stopReason then
@@ -348,6 +349,7 @@ end
 
 function M.kill()
 	if not state then return end
+	state.killed = true
 	if state.proc then
 		pcall(function() state.proc:kill(9) end)
 	end
