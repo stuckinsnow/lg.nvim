@@ -25,6 +25,11 @@ end
 function M.add(bufnr, start_line, end_line)
   ensure_highlights()
 
+  local max = vim.api.nvim_buf_line_count(bufnr)
+  if max == 0 then return end
+  if start_line > max then start_line = max end
+  if end_line > max then end_line = max end
+
   for row = start_line - 1, end_line - 1 do
     local total = end_line - start_line + 1
     local sign
@@ -38,17 +43,24 @@ function M.add(bufnr, start_line, end_line)
       sign = "│"
     end
 
-    vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
       end_line = row + 1,
       hl_group = "LgPaintLine",
       hl_eol = true,
       priority = 110,
     })
-    vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
       sign_text = sign,
       sign_hl_group = "LgPaintSign",
       priority = 110,
     })
+  end
+
+  -- Dedup: skip if exact same region already exists
+  for _, r in ipairs(regions) do
+    if r.bufnr == bufnr and r.start_line == start_line and r.end_line == end_line then
+      return
+    end
   end
 
   table.insert(regions, {

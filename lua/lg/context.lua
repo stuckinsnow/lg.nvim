@@ -38,6 +38,11 @@ function M.add(bufnr, start_line, end_line, label)
       sign_text = sign, sign_hl_group = "LgContextSign", priority = 105,
     })
   end
+  for _, r in ipairs(regions) do
+    if r.bufnr == bufnr and r.start_line == start_line and r.end_line == end_line then
+      return
+    end
+  end
   table.insert(regions, { bufnr = bufnr, start_line = start_line, end_line = end_line, label = label })
 end
 

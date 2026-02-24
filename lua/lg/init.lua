@@ -413,6 +413,14 @@ function M.select_provider()
 	session.select_provider()
 end
 
+function M.paint_from_commits()
+	require("lg.paint-commits").pick()
+end
+
+function M.list_regions()
+	require("lg.paint-commits").list_regions()
+end
+
 function M.add_lsp_context()
 	local regions = paint.get_all()
 	if #regions == 0 then
