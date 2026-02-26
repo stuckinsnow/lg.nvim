@@ -1,8 +1,8 @@
 --- Chat: visual selection → chat-only prompt (no editing allowed)
+--- Always uses OpenCode GPT-4.1 via ephemeral session.
 
 local session = require("lg.session")
 local window = require("lg.window")
-local status = require("lg.status")
 
 local M = {}
 
@@ -20,10 +20,7 @@ function M.quick_chat()
 			.. snippet .. "\n\n" .. prompt
 		window.add_prompt(prompt)
 		window.open()
-		status.start("Thinking...")
-		session.send(full, {}, {}, function()
-			vim.schedule(function() status.stop() end)
-		end)
+		session.send_quick_chat(full)
 	end)
 end
 

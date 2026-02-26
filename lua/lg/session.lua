@@ -398,8 +398,11 @@ function M.select_model()
 	end)
 end
 
+local ephemeral_override = nil
+
 --- @return string?
 function M.current_model()
+	if ephemeral_override then return ephemeral_override.model end
 	if state and state.models then
 		return state.models.currentModelId
 	end
@@ -408,6 +411,7 @@ function M.current_model()
 end
 
 function M.current_provider()
+	if ephemeral_override then return ephemeral_override.provider end
 	return opts.provider
 end
 
@@ -555,6 +559,76 @@ function M.send_git_subagent(prompt, on_done)
 		if not s then return end
 
 		-- First step after session ready: set model
+		local id = s.next_id; s.next_id = id + 1
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/set_model",
+			params = { sessionId = s.session_id, modelId = model_id },
+		})
+	end)
+end
+
+-- ── Quick chat (ephemeral, opencode gpt-4.1) ──────────────────────
+
+function M.send_quick_chat(prompt, on_done)
+	local model_id = "github-copilot/gpt-4.1"
+	local phase = "set_model"
+
+	ephemeral_override = { provider = "opencode", model = model_id }
+
+	local function handler(s, msg)
+		if msg.id and not msg.method then
+			if phase == "set_model" then
+				phase = "prompt"
+				local id = s.next_id; s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0", id = id, method = "session/prompt",
+					params = { sessionId = s.session_id, prompt = { { type = "text", text = prompt } } },
+				})
+			elseif phase == "prompt" and msg.result and msg.result.stopReason then
+				vim.schedule(function()
+					ephemeral_override = nil
+					status.stop()
+					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
+					if on_done then on_done() end
+				end)
+				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
+			end
+			return
+		end
+
+		local method = msg.method or ""
+		if method == "session/update" then
+			local update = msg.params and msg.params.update
+			if update and update.sessionUpdate == "agent_message_chunk" then
+				local content = update.content
+				if content and content.type == "text" and content.text then
+					vim.schedule(function() require("lg.window").append_agent_text(content.text) end)
+				end
+			end
+		elseif method == "session/request_permission" then
+			local tool_options = msg.params and msg.params.options or {}
+			local option_id = tool_options[1] and tool_options[1].optionId
+			if option_id and msg.id then
+				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
+			end
+		end
+	end
+
+	status.start("Quick chat (GPT-4.1)...")
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+	spawn_session({
+		cmd = { "opencode", "acp" },
+		mcp_servers = {},
+		client_name = "lg-quick-chat",
+		on_message = handler,
+		on_fail = function()
+			ephemeral_override = nil
+			status.stop("Quick chat failed")
+			if on_done then on_done() end
+		end,
+	}, function(s)
+		if not s then return end
 		local id = s.next_id; s.next_id = id + 1
 		write(s, {
 			jsonrpc = "2.0", id = id, method = "session/set_model",
