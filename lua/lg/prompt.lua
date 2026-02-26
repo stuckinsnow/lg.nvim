@@ -4,7 +4,8 @@ local M = {}
 
 --- Open a floating buffer for prompt input, call cb(text) on submit
 --- @param cb fun(text: string, has_lsp: boolean)
-function M.open(cb)
+--- @param on_cancel? fun()
+function M.open(cb, on_cancel)
 	local ui = vim.api.nvim_list_uis()[1]
 	local width = math.floor(ui.width * 0.6)
 	local height = 8
@@ -50,6 +51,7 @@ function M.open(cb)
 	local function cancel()
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
+		if on_cancel then on_cancel() end
 	end
 
 	vim.keymap.set("n", "q", cancel, { buffer = buf })

@@ -38,6 +38,9 @@ function M.quick_edit()
 				window.refresh()
 			end)
 		end)
+	end, function()
+		paint.clear_last()
+		window.refresh()
 	end)
 end
 
