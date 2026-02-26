@@ -19,6 +19,7 @@ function M.quick_chat()
 		local full = "You are in chat-only mode. Do NOT edit any code or use any editing tools. Just answer the question.\n\nCode snippet:\n"
 			.. snippet .. "\n\n" .. prompt
 		window.add_prompt(prompt)
+		window.open()
 		status.start("Thinking...")
 		session.send(full, {}, {}, function()
 			vim.schedule(function() status.stop() end)
