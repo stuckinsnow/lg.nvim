@@ -169,9 +169,15 @@ local function handle_message(s, msg)
 				end
 			elseif title:match("^Creating ") or title:match("^Deleting ")
 				or (title:match("^Running") and title:match("[:%s]rm ")) then
+				local reject_id
+				for _, opt in ipairs(tool_options) do
+					if opt.kind == "reject_once" or opt.kind == "reject_always" then
+						reject_id = opt.optionId; break
+					end
+				end
 				vim.schedule(function()
 					vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
-						local oid = choice == "Allow" and option_id or "reject_once"
+						local oid = choice == "Allow" and option_id or reject_id or option_id
 						write(s, {
 							jsonrpc = "2.0", id = msg.id,
 							result = { outcome = { outcome = "selected", optionId = oid } },
