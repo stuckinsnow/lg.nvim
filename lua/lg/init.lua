@@ -154,6 +154,7 @@ function M.clear_session()
 	paint.clear()
 	context.clear()
 	diff.clear()
+	session.kill_planner()
 	session.clear()
 	window.clear_history()
 	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
@@ -180,6 +181,10 @@ end
 
 function M.toggle_window()
 	window.toggle()
+end
+
+function M.toggle_planner()
+	window.toggle_planner()
 end
 
 function M.focus_chat()

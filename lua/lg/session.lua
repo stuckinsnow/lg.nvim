@@ -711,4 +711,34 @@ function M.send_quick_chat(prompt, on_done)
 	end)
 end
 
+-- ── Planner mode (set_mode on main session) ───────────────────────
+
+local _planner_active = false
+
+function M.set_planner(enabled, callback)
+	connect(function(s)
+		if not s then
+			if callback then callback(false) end
+			return
+		end
+		local mode_id = enabled and "planner" or "kiro_default"
+		local id = s.next_id; s.next_id = id + 1
+		s.pending[id] = { _set_mode = true }
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/set_mode",
+			params = { sessionId = s.session_id, modeId = mode_id },
+		})
+		_planner_active = enabled
+		if callback then callback(true) end
+	end)
+end
+
+function M.is_planner_active()
+	return _planner_active
+end
+
+function M.kill_planner()
+	_planner_active = false
+end
+
 return M

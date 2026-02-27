@@ -13,6 +13,7 @@ local state = {
   wins = {},
   history = {},
   input_line = nil, -- line number where user input starts
+  planner = false,
 }
 
 local opts = {}
@@ -78,6 +79,7 @@ end
 
 local function render_status()
   local status = session.is_active() and "● active" or "○ idle"
+  if state.planner then status = status .. "  [PLAN]" end
   return { "Session: " .. status }, { { 0, 0, -1, "LgStatus" } }
 end
 
@@ -373,6 +375,13 @@ end
 function M.clear_history()
   state.history = {}
   M.refresh()
+end
+
+function M.toggle_planner()
+  state.planner = not state.planner
+  session.set_planner(state.planner, function(ok)
+    if ok then vim.schedule(function() M.refresh() end) end
+  end)
 end
 
 return M
