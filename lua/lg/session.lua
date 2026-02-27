@@ -315,6 +315,10 @@ local function spawn_session(spawn_opts, on_ready)
 			end
 			s.session_id = result.sessionId
 			s.models = result.models
+			if s.models and not s.models.currentModelId then
+				local avail = s.models.availableModels
+				if avail and avail[1] then s.models.currentModelId = avail[1].modelId end
+			end
 			on_ready(s)
 		end
 	end
