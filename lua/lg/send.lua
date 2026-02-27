@@ -65,7 +65,7 @@ function M.send(opts)
 	opts = opts or {}
 	local regions = paint.get_all()
 
-	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git)
+	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint)
 		if prompt then
 			local active
 			for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
@@ -81,7 +81,7 @@ function M.send(opts)
 			end
 			prompt = prompt:gsub("#%./", "@")
 		end
-		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git then
+		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git and not has_hint then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
 		end
@@ -107,6 +107,20 @@ function M.send(opts)
 					end)
 				end
 			)
+			return
+		end
+
+		if has_hint then
+			prompt = prompt:gsub("@HINT%s*", "")
+			window.add_prompt("@HINT " .. prompt)
+			status.start("Reviewing...")
+			spinners.start(regions)
+			session.send_hint(prompt, regions, context.get_all(), function()
+				vim.schedule(function()
+					spinners.stop()
+					status.stop("Review done")
+				end)
+			end)
 			return
 		end
 
@@ -194,7 +208,8 @@ function M.send(opts)
 		local text = opts.prompt
 		local has_ap = text:match("@INFO") ~= nil
 		local has_git = text:match("@GIT") ~= nil
-		do_send(text, false, false, false, false, has_ap, has_git)
+		local has_hint = text:match("@HINT") ~= nil
+		do_send(text, false, false, false, false, has_ap, has_git, has_hint)
 	else
 		require("lg.prompt").open(do_send)
 	end

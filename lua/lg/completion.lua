@@ -10,6 +10,7 @@ local at_items = {
   { label = "@DIAG", detail = "Check LSP diagnostics in open buffers before editing" },
   { label = "@INFO", detail = "AI highlights regions and explains changes — no code written" },
   { label = "@TSC", detail = "Run tsc --noEmit and include type errors as context" },
+  { label = "@HINT", detail = "AI reviews code and publishes findings as editor diagnostics" },
 }
 
 local hash_items = {

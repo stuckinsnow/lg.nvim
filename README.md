@@ -25,8 +25,13 @@ lua/lg/
 
 mcp/
 ├── main.go       -- MCP server (paint_edit + get_painted_regions tools)
-└── git-mcp/
-    └── main.go   -- Git MCP server (git_log, git_show, git_diff, git_blame)
+├── git-mcp/
+│   └── main.go   -- Git MCP server (git_log, git_show, git_diff, git_blame)
+└── hint-mcp/
+    └── main.go   -- Hint MCP server (lg_hint tool for AI diagnostics)
+
+lsp/
+└── main.go       -- Hint LSP display server (receives hints, publishes diagnostics)
 ```
 
 ## Installation
@@ -36,7 +41,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   "your-user/lg",
-  build = "cd mcp && go build -o lg-mcp . && cd git-mcp && go build -o lg-git-mcp .",
+  build = "./build.sh",
   config = function()
     local lg = require("lg")
     lg.setup()
@@ -60,8 +65,33 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Info paint
     vim.keymap.set("n", "<leader>aA", function() lg.accept_info_paint() end, { desc = "Convert info paint to real paint" })
     vim.keymap.set("n", "<leader>aI", function() lg.clear_info_paint() end, { desc = "Clear info paint" })
+
+    -- Hints
+    vim.keymap.set("n", "<leader>aH", function() lg.clear_hints() end, { desc = "Clear AI hints" })
   end,
 }
+```
+
+## Building
+
+A `build.sh` script builds all Go binaries:
+
+```bash
+./build.sh
+```
+
+This builds:
+- `mcp/lg-mcp` — main MCP server
+- `mcp/git-mcp/lg-git-mcp` — git MCP server
+- `mcp/hint-mcp/lg-hint-mcp` — hint MCP server
+- `lsp/lg-lsp` — hint LSP display server
+
+To run tests:
+
+```bash
+cd lsp && go test -v
+cd mcp && go test -v
+cd mcp/git-mcp && go test -v
 ```
 
 ## MCP Server Setup
@@ -85,6 +115,23 @@ Add to `~/.kiro/settings/mcp.json`:
       "args": []
     }
   }
+}
+```
+
+For the reviewer agent mode, add to `~/.kiro/agents/reviewer.json`:
+
+```json
+{
+  "name": "reviewer",
+  "mcpServers": {
+    "lg-hint": {
+      "command": "/path/to/lg/mcp/hint-mcp/lg-hint-mcp",
+      "args": [],
+      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock" }
+    }
+  },
+  "tools": ["read", "grep", "glob", "thinking", "@lg-hint"],
+  "useLegacyMcpJson": false
 }
 ```
 
@@ -127,6 +174,7 @@ Use these prefixes in your prompt to enable special modes:
 | Prefix | Description |
 |---|---|
 | `@INFO` | AI highlights regions that need changes and explains what to do — no code written. Use `<leader>aA` to convert highlighted regions to real paint. |
+| `@HINT` | AI reviews code and publishes findings as editor diagnostics (squiggly underlines + hover messages). Read-only — no edits. Uses a dedicated reviewer agent mode. |
 | `@GIT` | Spawns a cheap subagent (Haiku/GPT-4.1) to analyze git history, then injects the result as context into the main session. |
 | `@SEARCH` | Tells the AI to use semantic codebase search (nomic-embed-text) before acting. Requires `LG_INDEX_URL`. |
 | `@DIAG` | Tells the AI to check LSP diagnostics before making edits. |
@@ -134,6 +182,19 @@ Use these prefixes in your prompt to enable special modes:
 | `@TSC` | Runs `tsc --noEmit` and includes type errors as context. |
 
 Prefixes can be combined: `@DIAG @SEARCH fix the auth bug`
+
+## AI Hints (`@HINT`)
+
+`@HINT` switches to a dedicated reviewer agent mode that can only annotate code, not edit it. The AI analyzes your code and publishes findings as native Neovim diagnostics:
+
+- Squiggly underlines on the exact expression (uses string matching for precise column ranges)
+- Hover messages with explanations
+- Navigate findings with `[d` / `]d`
+- Clear with `<leader>aH`
+
+The hint system uses a separate LSP server (`lg-lsp`) that starts automatically. The AI calls the `lg_hint` MCP tool → hint MCP forwards to the LSP via unix socket → LSP publishes `textDocument/publishDiagnostics`.
+
+Example: `@HINT find potential null pointer issues in this code`
 
 ## Chat Mode
 

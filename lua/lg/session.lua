@@ -751,4 +751,40 @@ function M.kill_planner()
 	_planner_active = false
 end
 
+-- ── Hint / reviewer mode ──────────────────────────────────────────
+
+function M.send_hint(prompt, regions, context_regions, on_done)
+	connect(function(s)
+		if not s then return end
+
+		-- Switch to reviewer mode
+		local id = s.next_id; s.next_id = id + 1
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/set_mode",
+			params = { sessionId = s.session_id, modeId = "reviewer" },
+		})
+
+		local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
+
+		status.start("Reviewing...")
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+		s._on_done = function()
+			-- Switch back to default mode
+			local rid = s.next_id; s.next_id = rid + 1
+			write(s, {
+				jsonrpc = "2.0", id = rid, method = "session/set_mode",
+				params = { sessionId = s.session_id, modeId = "kiro_default" },
+			})
+			if on_done then on_done() end
+		end
+
+		local pid = s.next_id; s.next_id = pid + 1
+		write(s, {
+			jsonrpc = "2.0", id = pid, method = "session/prompt",
+			params = { sessionId = s.session_id, prompt = messages },
+		})
+	end)
+end
+
 return M

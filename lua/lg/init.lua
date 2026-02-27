@@ -21,6 +21,33 @@ function M.setup(opts)
 
 	server.start()
 
+	-- Start hint LSP
+	local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
+	local lsp_bin = plugin_dir .. "/lsp/lg-lsp"
+	if vim.fn.executable(lsp_bin) == 1 then
+		vim.api.nvim_create_autocmd("FileType", {
+			group = vim.api.nvim_create_augroup("lg_hint_lsp", { clear = true }),
+			callback = function(ev)
+				if vim.bo[ev.buf].buftype ~= "" then return end
+				vim.lsp.start({
+					name = "lg-hint",
+					cmd = { lsp_bin },
+					root_dir = vim.fn.getcwd(),
+				}, { bufnr = ev.buf })
+			end,
+		})
+		-- Attach to already-open buffers
+		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) ~= "" then
+				vim.lsp.start({
+					name = "lg-hint",
+					cmd = { lsp_bin },
+					root_dir = vim.fn.getcwd(),
+				}, { bufnr = buf })
+			end
+		end
+	end
+
 	-- Register blink.cmp completion source for @ prefixes
 	pcall(function()
 		local blink = require("blink.cmp")
@@ -114,6 +141,15 @@ function M.clear_marks()
 	diff.clear()
 	require("lg.hunk").clear()
 	require("lg.changes").clear()
+end
+
+function M.clear_hints()
+	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
+		local diag_ns = vim.lsp.diagnostic.get_namespace(client.id, false)
+		if diag_ns then
+			vim.diagnostic.reset(diag_ns)
+		end
+	end
 end
 
 -- ── Diff hunks (chat mode) ────────────────────────────────────────
