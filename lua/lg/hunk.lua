@@ -238,7 +238,7 @@ end
 
 function M.accept()
 	local idx = nearest()
-	if not idx then return vim.notify("lg: no hunk at cursor", vim.log.levels.WARN) end
+	if not idx then return end
 	hunks[idx].accepted = true
 	clear_extmarks(hunks[idx])
 	api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
@@ -247,7 +247,7 @@ end
 
 function M.reject()
 	local idx = nearest()
-	if not idx then return vim.notify("lg: no hunk at cursor", vim.log.levels.WARN) end
+	if not idx then return end
 	hunks[idx].accepted = false
 	clear_extmarks(hunks[idx])
 	api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)

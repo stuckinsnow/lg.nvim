@@ -147,6 +147,7 @@ local function render_context()
 end
 local function render_chat()
   local lines = {}
+  local tool_lines = {}
   for _, entry in ipairs(state.history) do
     if entry.type == "prompt" then
       table.insert(lines, "")
@@ -171,6 +172,10 @@ local function render_chat()
       for _, l in ipairs(vim.split(entry.text, "\n")) do
         table.insert(lines, l)
       end
+    elseif entry.type == "tool" then
+      table.insert(lines, "")
+      table.insert(lines, "⚙ " .. entry.text)
+      tool_lines[#lines] = true
     end
   end
   -- Input area
@@ -179,7 +184,7 @@ local function render_chat()
   table.insert(lines, "")
   state.input_line = #lines -- 0-indexed line where input starts
   table.insert(lines, "")
-  return lines
+  return lines, tool_lines
 end
 
 -- Public API
@@ -211,6 +216,11 @@ end
 
 function M.add_result(text)
   table.insert(state.history, { type = "result", text = text })
+  M.refresh()
+end
+
+function M.add_tool(text)
+  table.insert(state.history, { type = "tool", text = text })
   M.refresh()
 end
 
@@ -282,9 +292,19 @@ function M.refresh()
 
   if win_valid(state.wins.chat) then
     local buf = ensure_buf("chat", "markdown")
-    local lines = render_chat()
+    local lines, tool_lines = render_chat()
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    local ns = vim.api.nvim_create_namespace("lg_chat")
+    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    for ln in pairs(tool_lines) do
+      vim.api.nvim_buf_set_extmark(buf, ns, ln - 1, 0, {
+        end_col = #"⚙", hl_group = "LgToolIcon",
+      })
+      vim.api.nvim_buf_set_extmark(buf, ns, ln - 1, #"⚙", {
+        end_row = ln - 1, end_col = #lines[ln], hl_group = "LgTool",
+      })
+    end
     local lc = vim.api.nvim_buf_line_count(buf)
     pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, 0 })
   end

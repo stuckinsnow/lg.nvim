@@ -91,6 +91,7 @@ local function handle_message(s, msg)
 				vim.schedule(function()
 					local title = update.title or update.toolCallId or "unknown"
 					status.update("Tool: " .. title)
+					require("lg.window").add_tool(title)
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgToolCall", data = { title = title } })
 					if update.kind == "edit" and update.content and update.toolCallId then
 						if not s._seen_tool_calls then s._seen_tool_calls = {} end
