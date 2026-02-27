@@ -89,23 +89,50 @@ local function jump(idx)
 	vim.cmd("normal! zz")
 end
 
-local function resolve_permission(accepted)
-	if #pending_approvals == 0 then return end
-	local a = table.remove(pending_approvals, 1)
-	local oid = accepted and a.option_id or "reject_once"
-	a.write_fn(a.s, {
-		jsonrpc = "2.0", id = a.msg_id,
-		result = { outcome = { outcome = "selected", optionId = oid } },
-	})
-	-- If accepted, CLI writes to disk — reload buffer
-	if accepted and a.bufnr and api.nvim_buf_is_valid(a.bufnr) then
-		vim.bo[a.bufnr].autoread = true
-		-- Small delay to let CLI finish writing
-		vim.defer_fn(function()
-			if api.nvim_buf_is_valid(a.bufnr) then
-				vim.cmd("checktime " .. a.bufnr)
+local function resolve(h, accepted)
+	-- Kiro: has pending permission
+	if #pending_approvals > 0 then
+		local a = table.remove(pending_approvals, 1)
+		local oid = accepted and a.option_id or "reject_once"
+		a.write_fn(a.s, {
+			jsonrpc = "2.0", id = a.msg_id,
+			result = { outcome = { outcome = "selected", optionId = oid } },
+		})
+		if accepted and a.bufnr and api.nvim_buf_is_valid(a.bufnr) then
+			vim.bo[a.bufnr].autoread = true
+			vim.defer_fn(function()
+				if api.nvim_buf_is_valid(a.bufnr) then vim.cmd("checktime " .. a.bufnr) end
+			end, 300)
+		end
+		return
+	end
+	-- Opencode: file already on disk
+	if accepted then
+		if h.bufnr and api.nvim_buf_is_valid(h.bufnr) then
+			vim.bo[h.bufnr].autoread = true
+			vim.cmd("checktime " .. h.bufnr)
+		end
+	else
+		-- Revert: write old content back
+		if h.path then
+			local f = io.open(h.path, "r")
+			if f then
+				local cur = f:read("*a"); f:close()
+				local new_str = table.concat(h.new_lines, "\n")
+				local old_str = table.concat(h.old_lines, "\n")
+				local s, e = cur:find(new_str, 1, true)
+				if s then
+					local reverted = cur:sub(1, s - 1) .. old_str .. cur:sub(e + 1)
+					local fw = io.open(h.path, "w")
+					if fw then fw:write(reverted); fw:close() end
+				end
 			end
-		end, 300)
+		end
+		if h.bufnr and api.nvim_buf_is_valid(h.bufnr) then
+			vim.bo[h.bufnr].autoread = true
+			vim.cmd("checktime " .. h.bufnr)
+			pcall(function() require("gitsigns").reset_buffer() end)
+		end
 	end
 end
 
@@ -203,8 +230,8 @@ function M.propose_edit(path, old_text, new_text)
 	for i = top + 1, #new_lines - bot do trimmed_new[#trimmed_new + 1] = new_lines[i] end
 
 	local h = {
-		bufnr = bufnr, old_lines = trimmed_old, new_lines = trimmed_new,
-		row = start_row + top, extmark_ids = {}, accepted = nil,
+		bufnr = bufnr, path = resolved, old_lines = trimmed_old, new_lines = trimmed_new,
+		old_text = old_text, row = start_row + top, extmark_ids = {}, accepted = nil,
 	}
 	hunks[#hunks + 1] = h
 	render(h)
@@ -213,6 +240,8 @@ function M.propose_edit(path, old_text, new_text)
 	local n = 0
 	for _, hk in ipairs(hunks) do if hk.accepted == nil then n = n + 1 end end
 	vim.notify(string.format("lg: %d hunk(s) — ]h/[h navigate, <leader>aha accept, <leader>ahr reject", n), vim.log.levels.INFO)
+	-- Clear watcher marks on this buffer so they don't overlap
+	pcall(api.nvim_buf_clear_namespace, bufnr, api.nvim_create_namespace("lg_auto_paint"), 0, -1)
 	return true
 end
 
@@ -242,7 +271,9 @@ function M.accept()
 	hunks[idx].accepted = true
 	clear_extmarks(hunks[idx])
 	api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
-	resolve_permission(true)
+	resolve(hunks[idx], true)
+	local changes_ns = api.nvim_create_namespace("lg_auto_paint")
+	pcall(api.nvim_buf_clear_namespace, hunks[idx].bufnr, changes_ns, 0, -1)
 end
 
 function M.reject()
@@ -251,7 +282,9 @@ function M.reject()
 	hunks[idx].accepted = false
 	clear_extmarks(hunks[idx])
 	api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
-	resolve_permission(false)
+	resolve(hunks[idx], false)
+	local changes_ns = api.nvim_create_namespace("lg_auto_paint")
+	pcall(api.nvim_buf_clear_namespace, hunks[idx].bufnr, changes_ns, 0, -1)
 end
 
 function M.accept_all()
@@ -259,7 +292,7 @@ function M.accept_all()
 		if h.accepted == nil then
 			h.accepted = true
 			clear_extmarks(h)
-			resolve_permission(true)
+			resolve(h, true)
 		end
 	end
 end
@@ -269,7 +302,7 @@ function M.reject_all()
 		if h.accepted == nil then
 			h.accepted = false
 			clear_extmarks(h)
-			resolve_permission(false)
+			resolve(h, false)
 		end
 	end
 end

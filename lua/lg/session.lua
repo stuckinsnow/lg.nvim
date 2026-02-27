@@ -99,12 +99,31 @@ local function handle_message(s, msg)
 							s._seen_tool_calls[update.toolCallId] = true
 							local hunk = require("lg.hunk")
 							local any = false
+							local loc_path = update.locations and update.locations[1] and update.locations[1].path
 							for _, c in ipairs(update.content) do
-								if c.type == "diff" and c.path and c.oldText and c.newText then
-									if hunk.propose_edit(c.path, c.oldText, c.newText) then any = true end
+								local p = c.path or loc_path
+								local old = c.oldText
+								local new = c.newText
+								if p and old and new and (c.type == "diff" or old ~= new) then
+									if hunk.propose_edit(p, old, new) then any = true end
 								end
 							end
 							if not any then s._seen_tool_calls[update.toolCallId] = "failed" end
+						end
+					end
+				end)
+			elseif update.sessionUpdate == "tool_call_update" and update.status == "completed"
+				and update.kind == "edit" and update.content and update.toolCallId then
+				vim.schedule(function()
+					if not s._seen_tool_calls then s._seen_tool_calls = {} end
+					if not s._seen_tool_calls[update.toolCallId] then
+						s._seen_tool_calls[update.toolCallId] = true
+						local hunk = require("lg.hunk")
+						local loc_path = update.locations and update.locations[1] and update.locations[1].path
+						for _, c in ipairs(update.content) do
+							if c.type == "diff" and c.path and c.oldText and c.newText then
+								hunk.propose_edit(c.path, c.oldText, c.newText)
+							end
 						end
 					end
 				end)
@@ -299,7 +318,7 @@ local function spawn_session(spawn_opts, on_ready)
 		jsonrpc = "2.0", id = id, method = "initialize",
 		params = {
 			protocolVersion = 1,
-			clientCapabilities = { fs = { readTextFile = true, writeTextFile = true } },
+			clientCapabilities = { fs = { readTextFile = true, writeTextFile = false } },
 			clientInfo = { name = spawn_opts.client_name or "lg", version = "2.0.0" },
 		},
 	})
