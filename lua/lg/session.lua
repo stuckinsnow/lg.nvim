@@ -167,7 +167,8 @@ local function handle_message(s, msg)
 						require("lg.hunk").hold_permission(s, msg.id, option_id, write, bufnr)
 					end)
 				end
-			elseif title:match("^Creating ") then
+			elseif title:match("^Creating ") or title:match("^Deleting ")
+				or (title:match("^Running") and title:match("[:%s]rm ")) then
 				vim.schedule(function()
 					vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
 						local oid = choice == "Allow" and option_id or "reject_once"
