@@ -92,11 +92,27 @@ local function handle_message(s, msg)
 					local title = update.title or update.toolCallId or "unknown"
 					status.update("Tool: " .. title)
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgToolCall", data = { title = title } })
+					if update.kind == "edit" and update.content and update.toolCallId then
+						if not s._seen_tool_calls then s._seen_tool_calls = {} end
+						if not s._seen_tool_calls[update.toolCallId] then
+							s._seen_tool_calls[update.toolCallId] = true
+							local hunk = require("lg.hunk")
+							local any = false
+							for _, c in ipairs(update.content) do
+								if c.type == "diff" and c.path and c.oldText and c.newText then
+									if hunk.propose_edit(c.path, c.oldText, c.newText) then any = true end
+								end
+							end
+							if not any then s._seen_tool_calls[update.toolCallId] = "failed" end
+						end
+					end
 				end)
 			end
 		end
 	elseif method == "session/request_permission" then
 		local tool_options = msg.params and msg.params.options or {}
+		local tc = msg.params and msg.params.toolCall
+		local title = tc and tc.title or ""
 		local option_id
 		for _, opt in ipairs(tool_options) do
 			if opt.kind == "allow_always" or opt.kind == "allow_once" then
@@ -106,14 +122,51 @@ local function handle_message(s, msg)
 		end
 		option_id = option_id or (tool_options[1] and tool_options[1].optionId)
 		if option_id and msg.id then
-			vim.schedule(function()
-				local tc = msg.params and msg.params.toolCall
-				status.update("Approved: " .. (tc and tc.title or ""))
-			end)
-			write(s, {
-				jsonrpc = "2.0", id = msg.id,
-				result = { outcome = { outcome = "selected", optionId = option_id } },
-			})
+			if title:match("^Editing ") then
+				local tcid = tc and tc.toolCallId
+				local failed = tcid and s._seen_tool_calls and s._seen_tool_calls[tcid] == "failed"
+				if failed then
+					-- propose_edit couldn't find old_text — auto-approve so CLI isn't stuck
+					vim.schedule(function() status.update("Auto-approved: " .. title) end)
+					write(s, {
+						jsonrpc = "2.0", id = msg.id,
+						result = { outcome = { outcome = "selected", optionId = option_id } },
+					})
+				else
+					vim.schedule(function()
+						status.update("Review: " .. title)
+						local fname = title:match("^Editing (.+)$")
+						local bufnr
+						if fname then
+							for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+								if vim.api.nvim_buf_is_loaded(buf) and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t") == fname then
+									bufnr = buf; break
+								end
+							end
+						end
+						require("lg.hunk").hold_permission(s, msg.id, option_id, write, bufnr)
+					end)
+				end
+			elseif title:match("^Creating ") then
+				vim.schedule(function()
+					vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
+						local oid = choice == "Allow" and option_id or "reject_once"
+						write(s, {
+							jsonrpc = "2.0", id = msg.id,
+							result = { outcome = { outcome = "selected", optionId = oid } },
+						})
+						status.update(choice == "Allow" and ("Approved: " .. title) or ("Rejected: " .. title))
+					end)
+				end)
+			else
+				vim.schedule(function()
+					status.update("Approved: " .. title)
+				end)
+				write(s, {
+					jsonrpc = "2.0", id = msg.id,
+					result = { outcome = { outcome = "selected", optionId = option_id } },
+				})
+			end
 		end
 	elseif method == "fs/read_text_file" then
 		local path = msg.params and msg.params.path

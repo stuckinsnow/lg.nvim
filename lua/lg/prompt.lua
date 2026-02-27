@@ -51,7 +51,9 @@ function M.open(cb, on_cancel)
 	local function cancel()
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
-		if on_cancel then on_cancel() end
+		if on_cancel then
+			on_cancel()
+		end
 	end
 
 	vim.keymap.set("n", "q", cancel, { buffer = buf })

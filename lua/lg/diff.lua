@@ -87,7 +87,6 @@ function M.clear(bufnr)
 			vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 		end
 	end
-	-- Also clear current buffer even if not tracked
 	local cur = vim.api.nvim_get_current_buf()
 	vim.api.nvim_buf_clear_namespace(cur, ns, 0, -1)
 end

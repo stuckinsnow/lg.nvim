@@ -98,7 +98,18 @@ end
 
 function M.clear_marks()
 	diff.clear()
+	require("lg.hunk").clear()
 	require("lg.changes").clear()
+end
+
+-- ── Diff hunks (chat mode) ────────────────────────────────────────
+
+local hunk = require("lg.hunk")
+function M.accept_hunk()
+	hunk.accept()
+end
+function M.reject_hunk()
+	hunk.reject()
 end
 
 -- ── Info paint ─────────────────────────────────────────────────────
@@ -124,7 +135,9 @@ function M.copy_info_paint()
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			local path = vim.api.nvim_buf_get_name(r.bufnr)
-			if path:sub(1, #cwd) == cwd then path = path:sub(#cwd + 1) end
+			if path:sub(1, #cwd) == cwd then
+				path = path:sub(#cwd + 1)
+			end
 			local range = r.start_line == r.end_line and tostring(r.start_line) or (r.start_line .. "-" .. r.end_line)
 			table.insert(lines, path .. ":" .. range)
 		end
@@ -189,7 +202,9 @@ end
 
 function M.add_file()
 	vim.ui.input({ prompt = "File path: ", completion = "file" }, function(path)
-		if not path or path == "" then return end
+		if not path or path == "" then
+			return
+		end
 		context.add_file(path)
 		window.refresh()
 	end)
@@ -206,7 +221,9 @@ function M.add_lsp_context()
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
 			if info ~= "" then
-				window.add_result("LSP: " .. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.") .. "\n" .. info)
+				window.add_result(
+					"LSP: " .. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.") .. "\n" .. info
+				)
 			end
 		end
 	end
