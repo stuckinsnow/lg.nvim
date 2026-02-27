@@ -21,6 +21,20 @@ function M.setup(opts)
 
 	server.start()
 
+	-- Register blink.cmp completion source for @ prefixes
+	pcall(function()
+		local blink = require("blink.cmp")
+		local add = blink.add_source_provider or blink.add_provider
+		add("lg", {
+			name = "lg",
+			module = "lg.completion",
+			enabled = true,
+			score_offset = 100,
+		})
+		pcall(function() blink.add_filetype_source("lgprompt", "lg") end)
+		pcall(function() blink.add_filetype_source("markdown", "lg") end)
+	end)
+
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		callback = function()
 			server.stop()
