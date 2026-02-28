@@ -391,6 +391,13 @@ local function connect(on_ready)
 			end
 		end
 
+		-- Switch to lg agent mode (scoped MCP servers)
+		local mid = s.next_id; s.next_id = mid + 1
+		write(s, {
+			jsonrpc = "2.0", id = mid, method = "session/set_mode",
+			params = { sessionId = s.session_id, modeId = "lg" },
+		})
+
 		status.stop("Session ready")
 
 		vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -538,6 +545,13 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 		client_name = "lg-quick",
 	}, function(sess)
 		if not sess then return end
+
+		-- Switch to lg agent mode (scoped MCP servers)
+		local mid = sess.next_id; sess.next_id = mid + 1
+		write(sess, {
+			jsonrpc = "2.0", id = mid, method = "session/set_mode",
+			params = { sessionId = sess.session_id, modeId = "lg" },
+		})
 
 		sess._on_done = function()
 			if on_done then on_done() end
@@ -776,7 +790,7 @@ function M.send_hint(prompt, regions, context_regions, on_done)
 			local rid = s.next_id; s.next_id = rid + 1
 			write(s, {
 				jsonrpc = "2.0", id = rid, method = "session/set_mode",
-				params = { sessionId = s.session_id, modeId = "kiro_default" },
+				params = { sessionId = s.session_id, modeId = "lg" },
 			})
 			if on_done then on_done() end
 		end
