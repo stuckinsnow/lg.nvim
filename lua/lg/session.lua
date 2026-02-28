@@ -127,6 +127,10 @@ local function handle_message(s, msg)
 						end
 					end
 				end)
+			elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
+				vim.schedule(function()
+					status.flash("Tool failed: " .. (update.message or update.title or "unknown"))
+				end)
 			end
 		end
 	elseif method == "session/request_permission" then
@@ -544,6 +548,40 @@ function M.select_provider()
 	)
 end
 
+function M.info()
+	local lines = {}
+	local function add(s) lines[#lines + 1] = s end
+
+	-- Provider & model
+	add("Provider: " .. (providers[opts.provider] and providers[opts.provider].name or opts.provider))
+	add("Model: " .. (M.current_model() or "default"))
+	add("Session: " .. (state and state.session_id and "active" or "none"))
+	add("")
+
+	-- Read agent configs from ~/.kiro/agents/
+	local agents_dir = vim.fn.expand("~/.kiro/agents")
+	local agent_files = vim.fn.glob(agents_dir .. "/*.json", false, true)
+	for _, path in ipairs(agent_files) do
+		local f = io.open(path, "r")
+		if f then
+			local ok, cfg = pcall(vim.json.decode, f:read("*a"))
+			f:close()
+			if ok and cfg.name then
+				local mcps = {}
+				for name, _ in pairs(cfg.mcpServers or {}) do mcps[#mcps + 1] = name end
+				add(string.format("Agent [%s]: model=%s  mcps=%s  tools=%s",
+					cfg.name,
+					cfg.model or "default",
+					#mcps > 0 and table.concat(mcps, ",") or "none",
+					cfg.tools and table.concat(cfg.tools, ",") or "none"
+				))
+			end
+		end
+	end
+
+	vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+end
+
 -- ── Oneshot session (ephemeral) ────────────────────────────────────
 
 local oneshot_active = false
@@ -854,6 +892,7 @@ end
 
 function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 	local phase = "set_mode"
+	local tool_error = nil
 
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
@@ -865,7 +904,7 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 			if msg.error then
 				vim.schedule(function()
 					status.stop("Hint subagent error")
-					vim.notify("lg-hint: " .. vim.inspect(msg.error), vim.log.levels.ERROR)
+					status.flash("RPC error: " .. (msg.error.message or vim.inspect(msg.error)))
 				end)
 				return
 			end
@@ -879,9 +918,12 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 				})
 			elseif phase == "prompt" and msg.result and msg.result.stopReason then
 				vim.schedule(function()
+					if tool_error then
+						status.flash("Tool error: " .. tool_error)
+					end
 					status.stop("Review done")
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if on_done then on_done() end
+					if on_done then on_done(tool_error) end
 				end)
 				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
 			end
@@ -889,7 +931,21 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 		end
 
 		local method = msg.method or ""
-		if method == "session/request_permission" then
+		if method == "session/update" then
+			local update = msg.params and msg.params.update
+			if update then
+				if update.sessionUpdate == "tool_call" then
+					vim.schedule(function()
+						status.update("Tool: " .. (update.title or "unknown"))
+					end)
+				elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
+					tool_error = update.message or update.title or "unknown error"
+					vim.schedule(function()
+						status.flash("Tool failed: " .. tool_error)
+					end)
+				end
+			end
+		elseif method == "session/request_permission" then
 			local tool_options = msg.params and msg.params.options or {}
 			local option_id
 			for _, opt in ipairs(tool_options) do
@@ -965,6 +1021,7 @@ end
 
 function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 	local phase = "set_mode"
+	local tool_error = nil
 
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
@@ -976,7 +1033,7 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 			if msg.error then
 				vim.schedule(function()
 					status.stop("Suggest subagent error")
-					vim.notify("lg-suggest: " .. vim.inspect(msg.error), vim.log.levels.ERROR)
+					status.flash("RPC error: " .. (msg.error.message or vim.inspect(msg.error)))
 				end)
 				return
 			end
@@ -990,9 +1047,12 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 				})
 			elseif phase == "prompt" and msg.result and msg.result.stopReason then
 				vim.schedule(function()
+					if tool_error then
+						status.flash("Tool error: " .. tool_error)
+					end
 					status.stop("Suggestions done")
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if on_done then on_done() end
+					if on_done then on_done(tool_error) end
 				end)
 				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
 			end
@@ -1000,7 +1060,21 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 		end
 
 		local method = msg.method or ""
-		if method == "session/request_permission" then
+		if method == "session/update" then
+			local update = msg.params and msg.params.update
+			if update then
+				if update.sessionUpdate == "tool_call" then
+					vim.schedule(function()
+						status.update("Tool: " .. (update.title or "unknown"))
+					end)
+				elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
+					tool_error = update.message or update.title or "unknown error"
+					vim.schedule(function()
+						status.flash("Tool failed: " .. tool_error)
+					end)
+				end
+			end
+		elseif method == "session/request_permission" then
 			local tool_options = msg.params and msg.params.options or {}
 			local option_id
 			for _, opt in ipairs(tool_options) do

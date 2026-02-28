@@ -228,6 +228,10 @@ function M.select_provider()
 	session.select_provider()
 end
 
+function M.info()
+	session.info()
+end
+
 -- ── UI ─────────────────────────────────────────────────────────────
 
 function M.toggle_window()

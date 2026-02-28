@@ -10,6 +10,16 @@ local spinners = require("lg.spinners")
 
 local M = {}
 
+--- Count diagnostics published by the lg-hint LSP
+local function count_ai_diagnostics()
+	local n = 0
+	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
+		local ns = vim.lsp.diagnostic.get_namespace(client.id, false)
+		if ns then n = n + #vim.diagnostic.get(nil, { namespace = ns }) end
+	end
+	return n
+end
+
 --- Snapshot git diff, return callback that highlights new changes
 --- @param snap_opts? { skip_qf?: boolean }
 local function git_snapshot_cb(snap_opts)
@@ -135,12 +145,33 @@ function M.send(opts)
 			status.start("Reviewing" .. (has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
 			local hint_fn = has_sub and session.send_hint_subagent or session.send_hint
-			hint_fn(prompt, regions, context.get_all(), function()
-				vim.schedule(function()
-					spin:stop()
-					status.stop("Review done")
-				end)
-			end)
+			local retried = false
+			local ctx_regions = context.get_all()
+			local before = count_ai_diagnostics()
+			local function check_and_retry()
+				vim.defer_fn(function()
+					local n = count_ai_diagnostics() - before
+					if not retried and n <= 0 then
+						retried = true
+						status.flash("No hints published — retrying")
+						status.start("Retrying review…")
+						hint_fn("Your previous attempt produced zero diagnostics in the editor. You MUST call the lg_hint tool. If the tool errored, fix the arguments and try again.\n\n" .. prompt, regions, ctx_regions, function()
+							vim.defer_fn(function()
+								spin:stop()
+								local n2 = count_ai_diagnostics() - before
+								if n2 <= 0 then
+									status.flash("Retry failed — no hints")
+								end
+								status.stop("Review done — " .. math.max(n2, 0) .. " hint(s)")
+							end, 500)
+						end)
+					else
+						spin:stop()
+						status.stop("Review done — " .. n .. " hint(s)")
+					end
+				end, 500)
+			end
+			hint_fn(prompt, regions, ctx_regions, check_and_retry)
 			return
 		end
 
@@ -151,12 +182,33 @@ function M.send(opts)
 			status.start("Suggesting" .. (has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
 			local suggest_fn = has_sub and session.send_suggest_subagent or session.send_suggest
-			suggest_fn(prompt, regions, context.get_all(), function()
-				vim.schedule(function()
-					spin:stop()
-					status.stop("Suggestions done")
-				end)
-			end)
+			local retried = false
+			local ctx_regions = context.get_all()
+			local before = count_ai_diagnostics()
+			local function check_and_retry()
+				vim.defer_fn(function()
+					local n = count_ai_diagnostics() - before
+					if not retried and n <= 0 then
+						retried = true
+						status.flash("No suggestions published — retrying")
+						status.start("Retrying suggestions…")
+						suggest_fn("Your previous attempt produced zero diagnostics in the editor. You MUST call the lg_suggest tool. If the tool errored, fix the arguments and try again.\n\n" .. prompt, regions, ctx_regions, function()
+							vim.defer_fn(function()
+								spin:stop()
+								local n2 = count_ai_diagnostics() - before
+								if n2 <= 0 then
+									status.flash("Retry failed — no suggestions")
+								end
+								status.stop("Suggestions done — " .. math.max(n2, 0) .. " suggestion(s)")
+							end, 500)
+						end)
+					else
+						spin:stop()
+						status.stop("Suggestions done — " .. n .. " suggestion(s)")
+					end
+				end, 500)
+			end
+			suggest_fn(prompt, regions, ctx_regions, check_and_retry)
 			return
 		end
 

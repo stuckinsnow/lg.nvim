@@ -131,7 +131,7 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-func publishHints(hints []hint) {
+func publishHints(hints []hint) (total int, matched int, failures []string) {
 	// Cache file lines
 	fileLines := map[string][]string{}
 	readFile := func(path string) []string {
@@ -148,6 +148,8 @@ func publishHints(hints []hint) {
 		return lines
 	}
 
+	total = len(hints)
+	matched = 0
 	grouped := map[string][]diagnostic{}
 	groupedDetails := map[string][]string{}
 	for _, h := range hints {
@@ -163,6 +165,7 @@ func publishHints(hints []hint) {
 		col := h.Column - 1
 		endCol := h.EndColumn - 1
 
+		matchOk := true
 		// If match is provided, find it on the line to get exact columns
 		if h.Match != "" && col < 0 {
 			lines := readFile(h.File)
@@ -173,11 +176,17 @@ func publishHints(hints []hint) {
 					endCol = idx + len(h.Match)
 					endLine = line
 				} else {
-					fmt.Fprintf(os.Stderr, "lg-lsp: match %q not found on line %d of %s\n", h.Match, h.Line, h.File)
+					matchOk = false
+					failures = append(failures, fmt.Sprintf("match %q not found on line %d of %s (line content: %q)", h.Match, h.Line, h.File, lines[line]))
 				}
 			} else {
-				fmt.Fprintf(os.Stderr, "lg-lsp: could not read line %d of %s\n", h.Line, h.File)
+				matchOk = false
+				failures = append(failures, fmt.Sprintf("could not read line %d of %s", h.Line, h.File))
 			}
+		}
+
+		if matchOk {
+			matched++
 		}
 
 		if col < 0 {
@@ -210,6 +219,7 @@ func publishHints(hints []hint) {
 		sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 	}
 	diagMu.Unlock()
+	return
 }
 
 func clearAll() {
@@ -243,8 +253,13 @@ func startHintSocket() {
 					}
 					switch req.Method {
 					case "set_hints":
-						publishHints(req.Hints)
-						c.Write([]byte(`{"ok":true}` + "\n"))
+						total, matched, failures := publishHints(req.Hints)
+						resp := map[string]any{"ok": true, "total": total, "matched": matched}
+						if len(failures) > 0 {
+							resp["failures"] = failures
+						}
+						out, _ := json.Marshal(resp)
+						c.Write(append(out, '\n'))
 					case "clear":
 						diagMu.Lock()
 						if len(req.Hints) > 0 {

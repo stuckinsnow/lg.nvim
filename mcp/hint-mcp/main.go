@@ -145,18 +145,30 @@ func main() {
 				}
 				json.Unmarshal(call.Arguments, &args)
 
-				_, err := sendToLSP(map[string]any{"method": "set_hints", "hints": json.RawMessage(args.Hints)})
+				lspResp, err := sendToLSP(map[string]any{"method": "set_hints", "hints": json.RawMessage(args.Hints)})
 				if err != nil {
 					resp.Result = toolResult{
 						Content: []textContent{{Type: "text", Text: "hint failed: " + err.Error()}},
 						IsError: true,
 					}
 				} else {
-					// Count hints
-					var hints []json.RawMessage
-					json.Unmarshal(args.Hints, &hints)
+					var result struct {
+						Total    int      `json:"total"`
+						Matched  int      `json:"matched"`
+						Failures []string `json:"failures"`
+					}
+					json.Unmarshal(lspResp, &result)
+
+					msg := fmt.Sprintf("%d/%d hint(s) matched and published as diagnostics", result.Matched, result.Total)
+					if len(result.Failures) > 0 {
+						msg += "\n\nFailed to match (these hints were NOT shown to the user — fix and re-call):\n"
+						for _, f := range result.Failures {
+							msg += "- " + f + "\n"
+						}
+					}
 					resp.Result = toolResult{
-						Content: []textContent{{Type: "text", Text: fmt.Sprintf("%d hint(s) published as diagnostics", len(hints))}},
+						Content: []textContent{{Type: "text", Text: msg}},
+						IsError: len(result.Failures) > 0,
 					}
 				}
 			}
