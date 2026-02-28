@@ -18,6 +18,10 @@ function M.quick_edit()
 
 	require("lg.prompt").open(function(prompt, has_lsp)
 		if not prompt or prompt == "" then return end
+		if prompt:match("@HINT") then
+			vim.notify("lg: @HINT not supported in quick-edit", vim.log.levels.WARN)
+			return
+		end
 
 		if has_lsp then
 			local lsp = require("lg.lsp")

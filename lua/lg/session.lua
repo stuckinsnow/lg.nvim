@@ -764,9 +764,11 @@ function M.send_hint(prompt, regions, context_regions, on_done)
 			params = { sessionId = s.session_id, modeId = "reviewer" },
 		})
 
-		local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
-
-		status.start("Reviewing...")
+		-- For hints, all regions are read-only context — reviewer doesn't edit
+		local all_ctx = {}
+		for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
+		for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
+		local messages = protocol.build_prompt({}, all_ctx, prompt)
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
 
 		s._on_done = function()
