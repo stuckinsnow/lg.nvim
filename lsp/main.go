@@ -124,6 +124,11 @@ func fileToURI(path string) string {
 	return "file://" + path
 }
 
+func truncate(s string, n int) string {
+	if len(s) <= n { return s }
+	return s[:n] + "…"
+}
+
 func publishHints(hints []hint) {
 	// Cache file lines
 	fileLines := map[string][]string{}
@@ -296,7 +301,11 @@ func main() {
 				ID:      msg.ID,
 				Result: map[string]any{
 					"capabilities": map[string]any{
-						"textDocumentSync": 1, // full sync
+						"textDocumentSync":  1,
+						"codeActionProvider": true,
+						"executeCommandProvider": map[string]any{
+							"commands": []string{"lg.dismissHint"},
+						},
 					},
 					"serverInfo": map[string]any{
 						"name":    "lg-hint",
@@ -317,7 +326,52 @@ func main() {
 			os.Exit(0)
 
 		case "textDocument/didOpen", "textDocument/didChange", "textDocument/didClose":
-			// no-op — we don't need to track documents
+			// no-op
+
+		case "textDocument/codeAction":
+			var p struct {
+				TextDocument struct{ URI string `json:"uri"` } `json:"textDocument"`
+				Range        lspRange                          `json:"range"`
+			}
+			json.Unmarshal(msg.Params, &p)
+			var actions []map[string]any
+			diagMu.Lock()
+			for i, d := range storedDiags[p.TextDocument.URI] {
+				if d.Range.Start.Line <= p.Range.End.Line && d.Range.End.Line >= p.Range.Start.Line {
+					actions = append(actions, map[string]any{
+						"title": "Dismiss: " + truncate(d.Message, 60),
+						"kind":  "quickfix",
+						"command": map[string]any{
+							"title":   "Dismiss hint",
+							"command": "lg.dismissHint",
+							"arguments": []any{p.TextDocument.URI, i},
+						},
+					})
+				}
+			}
+			diagMu.Unlock()
+			sendLSP(lspMessage{JSONRPC: "2.0", ID: msg.ID, Result: actions})
+
+		case "workspace/executeCommand":
+			var p struct {
+				Command   string `json:"command"`
+				Arguments []json.RawMessage `json:"arguments"`
+			}
+			json.Unmarshal(msg.Params, &p)
+			if p.Command == "lg.dismissHint" && len(p.Arguments) == 2 {
+				var uri string
+				var idx int
+				json.Unmarshal(p.Arguments[0], &uri)
+				json.Unmarshal(p.Arguments[1], &idx)
+				diagMu.Lock()
+				if diags, ok := storedDiags[uri]; ok && idx >= 0 && idx < len(diags) {
+					storedDiags[uri] = append(diags[:idx], diags[idx+1:]...)
+					params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: storedDiags[uri]})
+					sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
+				}
+				diagMu.Unlock()
+			}
+			sendLSP(lspMessage{JSONRPC: "2.0", ID: msg.ID, Result: nil})
 
 		default:
 			if msg.ID != nil {
