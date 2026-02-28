@@ -99,7 +99,10 @@ function M.send(opts)
 							local full_prompt = "The following git analysis was already shown to the user by a subagent — do NOT repeat or summarize it. Just act on the user's request using this context.\n\nGit analysis:\n" .. result .. "\n\nUser request:\n" .. git_prompt
 							local send_regions = opts.from_chat and {} or regions
 							session.send(full_prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
-								vim.schedule(function() spinners.stop() end)
+								vim.schedule(function()
+									spinners.stop()
+									if not opts.from_chat then paint.clear(); window.refresh() end
+								end)
 							end)
 						else
 							status.stop("Git analysis empty")
@@ -187,6 +190,7 @@ function M.send(opts)
 				session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
 					vim.schedule(function()
 						spinners.stop()
+						if not opts.from_chat then paint.clear(); window.refresh() end
 						if on_done then on_done() end
 					end)
 				end, lsp_context, tsc_context)
@@ -201,6 +205,7 @@ function M.send(opts)
 		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
 			vim.schedule(function()
 				spinners.stop()
+				if not opts.from_chat then paint.clear(); window.refresh() end
 				if on_done then on_done() end
 			end)
 		end, lsp_context, tsc_context)
