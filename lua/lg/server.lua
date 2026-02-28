@@ -13,6 +13,18 @@ local server = nil
 local info_regions = {}
 local sock_path = nil
 
+-- Session-scoped regions for oneshot edits
+local sessions = {}
+
+function M.register_session(regions)
+	sessions["oneshot"] = regions
+	return "oneshot"
+end
+
+function M.unregister_session(id)
+	sessions[id] = nil
+end
+
 --- Encode regions as JSON for MCP server to read
 --- @return string
 function M.encode_regions()
@@ -70,6 +82,21 @@ function M.handle_message(data)
 	end
 
 	if msg.method == "get_regions" then
+		if msg.session and sessions[msg.session] then
+			-- Session-scoped: return only that session's regions
+			local regs = sessions[msg.session]
+			local out = {}
+			for i, r in ipairs(regs) do
+				out[i] = {
+					region_id = i - 1,
+					file = r.file,
+					start_line = r.start_line,
+					end_line = r.end_line,
+					lines = r.lines,
+				}
+			end
+			return vim.json.encode(out)
+		end
 		return M.encode_regions()
 	elseif msg.method == "get_diagnostics" then
 		return M.encode_diagnostics(msg.bufnr, msg.severity)
@@ -89,10 +116,23 @@ function M.handle_message(data)
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true })
 	elseif msg.method == "apply_edits" then
-		local regions = paint.get_all()
 		local edits = msg.edits or {}
-		diff.apply_all(regions, edits)
-		paint.clear()
+		if msg.session and sessions[msg.session] then
+			-- Session-scoped: edit that session's regions
+			local regs = sessions[msg.session]
+			for _, e in ipairs(edits) do
+				local idx = (e.region_id or -1) + 1
+				local r = regs[idx]
+				if r and vim.api.nvim_buf_is_valid(r.bufnr) then
+					local new_lines = vim.split(e.new_code, "\n")
+					diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
+				end
+			end
+		else
+			-- Global paint
+			local regions = paint.get_all()
+			diff.apply_all(regions, edits)
+		end
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true, count = #edits })
 	elseif msg.method == "paint_regions" then

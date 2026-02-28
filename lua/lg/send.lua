@@ -101,7 +101,7 @@ function M.send(opts)
 							session.send(full_prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
 								vim.schedule(function()
 									spinners.stop()
-									if not opts.from_chat then paint.clear(); window.refresh() end
+									if not opts.from_chat then window.refresh() end
 								end)
 							end)
 						else
@@ -118,11 +118,11 @@ function M.send(opts)
 			prompt = prompt:gsub("@HINT%s*", "")
 			window.add_prompt((has_sub and "@SUB " or "") .. "@HINT " .. prompt)
 			status.start("Reviewing" .. (has_sub and " (subagent)" or "") .. "...")
-			spinners.start(regions)
+			local spin = spinners.start(regions)
 			local hint_fn = has_sub and session.send_hint_subagent or session.send_hint
 			hint_fn(prompt, regions, context.get_all(), function()
 				vim.schedule(function()
-					spinners.stop()
+					spin:stop()
 					status.stop("Review done")
 				end)
 			end)
@@ -185,12 +185,12 @@ function M.send(opts)
 
 				window.add_prompt(prompt)
 				local sr = opts.from_chat and {} or regions
-				spinners.start(regions)
+				local spin = spinners.start(regions)
 				local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not has_auto_paint }) or nil
 				session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
 					vim.schedule(function()
-						spinners.stop()
-						if not opts.from_chat then paint.clear(); window.refresh() end
+						spin:stop()
+						if not opts.from_chat then window.refresh() end
 						if on_done then on_done() end
 					end)
 				end, lsp_context, tsc_context)
@@ -200,12 +200,12 @@ function M.send(opts)
 
 		window.add_prompt(prompt)
 		local send_regions = opts.from_chat and {} or regions
-		spinners.start(regions)
+		local spin = spinners.start(regions)
 		local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not has_auto_paint }) or nil
 		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
 			vim.schedule(function()
-				spinners.stop()
-				if not opts.from_chat then paint.clear(); window.refresh() end
+				spin:stop()
+				if not opts.from_chat then window.refresh() end
 				if on_done then on_done() end
 			end)
 		end, lsp_context, tsc_context)

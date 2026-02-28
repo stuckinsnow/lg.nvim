@@ -104,7 +104,6 @@ function M.definition()
 					end
 
 					diff.apply_all(regions, edits)
-					paint.clear()
 
 					return {
 						status = "success",

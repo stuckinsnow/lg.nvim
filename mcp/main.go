@@ -74,13 +74,15 @@ type nvimBatchRequest struct {
 }
 
 var (
-	sockPath string
-	indexURL string
+	sockPath   string
+	indexURL   string
+	sessionID  string
 )
 
 func init() {
 	sockPath = os.Getenv("LG_SOCK")
 	indexURL = os.Getenv("LG_INDEX_URL")
+	sessionID = os.Getenv("LG_SESSION")
 }
 
 func detectGitInfo() (repo, branch, head string) {
@@ -181,7 +183,11 @@ func sendToNeovim(req any) ([]byte, error) {
 }
 
 func getRegions() ([]nvimRegion, error) {
-	resp, err := sendToNeovim(map[string]string{"method": "get_regions"})
+	req := map[string]string{"method": "get_regions"}
+	if sessionID != "" {
+		req["session"] = sessionID
+	}
+	resp, err := sendToNeovim(req)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +199,11 @@ func getRegions() ([]nvimRegion, error) {
 }
 
 func applyEdits(edits []nvimEdit) error {
-	resp, err := sendToNeovim(nvimBatchRequest{Method: "apply_edits", Edits: edits})
+	req := map[string]any{"method": "apply_edits", "edits": edits}
+	if sessionID != "" {
+		req["session"] = sessionID
+	}
+	resp, err := sendToNeovim(req)
 	if err != nil {
 		return err
 	}
@@ -352,7 +362,7 @@ func handleToolsList() any {
 							"items": map[string]any{
 								"type": "object",
 								"properties": map[string]any{
-									"region_id": map[string]string{"type": "integer", "description": "0-based region index"},
+									"region_id": map[string]any{"type": "integer", "description": "0-based region index"},
 									"new_code":  map[string]string{"type": "string", "description": "Full replacement code"},
 								},
 								"required":             []string{"region_id", "new_code"},

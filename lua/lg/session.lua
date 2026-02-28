@@ -538,22 +538,61 @@ end
 
 -- ── Oneshot session (ephemeral) ────────────────────────────────────
 
-function M.send_oneshot(prompt, regions, context_regions, on_done)
-	local s = spawn_session({
-		cmd = opts.cmd,
-		mcp_servers = opts.mcp_servers,
-		client_name = "lg-quick",
-	}, function(sess)
-		if not sess then return end
+local oneshot_active = false
 
-		-- Switch to lg agent mode (scoped MCP servers)
+function M.send_oneshot(prompt, regions, context_regions, on_done)
+	if oneshot_active then
+		vim.notify("Oneshot already running", vim.log.levels.WARN)
+		return
+	end
+	oneshot_active = true
+	local svr = require("lg.server")
+	local sid = svr.register_session(regions)
+
+	local function silent_handler(s, msg)
+		if msg.id and not msg.method then
+			if msg.result and msg.result.stopReason then
+				vim.schedule(function()
+					status.stop("Quick edit done")
+					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
+					if s._on_done then s._on_done(); s._on_done = nil end
+				end)
+			end
+			return
+		end
+		local method = msg.method or ""
+		if method == "session/request_permission" then
+			local tool_options = msg.params and msg.params.options or {}
+			local option_id
+			for _, opt in ipairs(tool_options) do
+				if opt.kind == "allow_always" or opt.kind == "allow_once" then
+					option_id = opt.optionId; break
+				end
+			end
+			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
+			if option_id and msg.id then
+				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
+			end
+		end
+	end
+
+	spawn_session({
+		cmd = opts.cmd,
+		mcp_servers = {},
+		client_name = "lg-quick",
+		on_message = silent_handler,
+	}, function(sess)
+		if not sess then oneshot_active = false; svr.unregister_session(sid); return end
+
 		local mid = sess.next_id; sess.next_id = mid + 1
 		write(sess, {
 			jsonrpc = "2.0", id = mid, method = "session/set_mode",
-			params = { sessionId = sess.session_id, modeId = "lg" },
+			params = { sessionId = sess.session_id, modeId = "lg-oneshot" },
 		})
 
 		sess._on_done = function()
+			oneshot_active = false
+			svr.unregister_session(sid)
 			if on_done then on_done() end
 			vim.defer_fn(function() pcall(function() sess.proc:kill(9) end) end, 500)
 		end

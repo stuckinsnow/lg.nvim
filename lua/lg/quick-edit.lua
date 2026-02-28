@@ -1,50 +1,61 @@
---- Quick-edit: visual select → paint → prompt → isolated oneshot session
+--- Quick-edit: visual select → prompt → edit via main session with isolated region
 
-local paint = require("lg.paint")
 local session = require("lg.session")
-local window = require("lg.window")
 local spinners = require("lg.spinners")
 
 local M = {}
+
+local ns = vim.api.nvim_create_namespace("lg_quick_paint")
+
+local function highlight(bufnr, start_line, end_line)
+	for row = start_line - 1, end_line - 1 do
+		vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+			end_line = row + 1, hl_group = "LgPaintLine", hl_eol = true, priority = 120,
+		})
+	end
+end
+
+local function clear_highlight(bufnr)
+	vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+end
 
 function M.quick_edit()
 	local buf = vim.api.nvim_get_current_buf()
 	local start_line = vim.fn.getpos("'<")[2]
 	local end_line = vim.fn.getpos("'>")[2]
-	paint.add(buf, start_line, end_line)
-	window.refresh()
+	local file = vim.api.nvim_buf_get_name(buf)
+	local lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
 
-	local regions = { paint.get_all()[#paint.get_all()] }
+	highlight(buf, start_line, end_line)
+
+	local region = {
+		bufnr = buf,
+		file = file,
+		start_line = start_line,
+		end_line = end_line,
+		lines = lines,
+	}
 
 	require("lg.prompt").open(function(prompt, has_lsp)
-		if not prompt or prompt == "" then return end
-		if prompt:match("@HINT") then
-			vim.notify("lg: @HINT not supported in quick-edit", vim.log.levels.WARN)
+		if not prompt or prompt == "" then
+			clear_highlight(buf)
 			return
 		end
 
 		if has_lsp then
-			local lsp = require("lg.lsp")
-			local r = regions[1]
-			if vim.api.nvim_buf_is_valid(r.bufnr) then
-				local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
-				if info ~= "" then
-					prompt = prompt .. "\n\nLSP Information:\n" .. info
-				end
-			end
+			local info = require("lg.lsp").gather(buf, start_line, end_line)
+			if info ~= "" then prompt = prompt .. "\n\nLSP Information:\n" .. info end
 		end
 
-		spinners.start(regions)
-		session.send_oneshot(prompt, regions, {}, function()
+		local spin = spinners.start({ region })
+		session.send_oneshot(prompt, { region }, {}, function()
 			vim.schedule(function()
-				spinners.stop()
-				paint.clear_last()
-				window.refresh()
+				spin:stop()
+				clear_highlight(buf)
 			end)
 		end)
 	end, function()
-		paint.clear_last()
-		window.refresh()
+		clear_highlight(buf)
 	end)
 end
 
