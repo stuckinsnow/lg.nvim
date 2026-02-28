@@ -11,11 +11,16 @@ import (
 )
 
 var hintSockPath string
+var lgSockPath string
 
 func init() {
 	hintSockPath = os.Getenv("LG_HINT_SOCK")
 	if hintSockPath == "" {
 		hintSockPath = "/dev/shm/lg-hint.sock"
+	}
+	lgSockPath = os.Getenv("LG_SOCK")
+	if lgSockPath == "" {
+		lgSockPath = "/dev/shm/lg.sock"
 	}
 }
 
@@ -41,6 +46,38 @@ type textContent struct {
 type toolResult struct {
 	Content []textContent `json:"content"`
 	IsError bool          `json:"isError,omitempty"`
+}
+
+type paintedRegion struct {
+	File      string `json:"file"`
+	StartLine int    `json:"start_line"`
+	EndLine   int    `json:"end_line"`
+}
+
+func getPaintedRegions() []paintedRegion {
+	conn, err := net.Dial("unix", lgSockPath)
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+	data, _ := json.Marshal(map[string]string{"method": "get_regions"})
+	conn.Write(append(data, '\n'))
+	resp, err := bufio.NewReader(conn).ReadBytes('\n')
+	if err != nil {
+		return nil
+	}
+	var regions []paintedRegion
+	json.Unmarshal(resp, &regions)
+	return regions
+}
+
+func hintInScope(file string, line int, regions []paintedRegion) bool {
+	for _, r := range regions {
+		if r.File == file && line >= r.StartLine && line <= r.EndLine {
+			return true
+		}
+	}
+	return false
 }
 
 func sendToLSP(req any) ([]byte, error) {
@@ -157,30 +194,65 @@ func main() {
 					resolved[i], _ = json.Marshal(h)
 				}
 
-				lspResp, err := sendToLSP(map[string]any{"method": "set_hints", "hints": resolved})
-				if err != nil {
-					resp.Result = toolResult{
-						Content: []textContent{{Type: "text", Text: "hint failed: " + err.Error()}},
-						IsError: true,
+				// Filter hints to painted regions if any exist
+				regions := getPaintedRegions()
+				var filtered []json.RawMessage
+				var outOfScope []string
+				if len(regions) > 0 {
+					for _, raw := range resolved {
+						var h struct {
+							File string `json:"file"`
+							Line int    `json:"line"`
+						}
+						json.Unmarshal(raw, &h)
+						if hintInScope(h.File, h.Line, regions) {
+							filtered = append(filtered, raw)
+						} else {
+							outOfScope = append(outOfScope, fmt.Sprintf("line %d of %s is outside painted regions", h.Line, h.File))
+						}
 					}
 				} else {
-					var result struct {
-						Total    int      `json:"total"`
-						Matched  int      `json:"matched"`
-						Failures []string `json:"failures"`
-					}
-					json.Unmarshal(lspResp, &result)
+					filtered = resolved
+				}
 
-					msg := fmt.Sprintf("%d/%d hint(s) matched and published as diagnostics", result.Matched, result.Total)
-					if len(result.Failures) > 0 {
-						msg += "\n\nFailed to match (these hints were NOT shown to the user — fix and re-call):\n"
-						for _, f := range result.Failures {
-							msg += "- " + f + "\n"
-						}
+				if len(filtered) == 0 && len(outOfScope) > 0 {
+					msg := "All hints were outside painted regions — only suggest within painted lines.\n"
+					for _, f := range outOfScope {
+						msg += "- " + f + "\n"
 					}
 					resp.Result = toolResult{
 						Content: []textContent{{Type: "text", Text: msg}},
-						IsError: len(result.Failures) > 0,
+						IsError: true,
+					}
+				} else {
+					lspResp, err := sendToLSP(map[string]any{"method": "set_hints", "hints": filtered})
+					if err != nil {
+						resp.Result = toolResult{
+							Content: []textContent{{Type: "text", Text: "hint failed: " + err.Error()}},
+							IsError: true,
+						}
+					} else {
+						var result struct {
+							Total    int      `json:"total"`
+							Matched  int      `json:"matched"`
+							Failures []string `json:"failures"`
+						}
+						json.Unmarshal(lspResp, &result)
+
+						msg := fmt.Sprintf("%d/%d hint(s) matched and published as diagnostics", result.Matched, result.Total)
+						if len(outOfScope) > 0 {
+							msg += fmt.Sprintf("\n\n%d hint(s) were outside painted regions and were dropped.", len(outOfScope))
+						}
+						if len(result.Failures) > 0 {
+							msg += "\n\nFailed to match (these hints were NOT shown to the user — fix and re-call):\n"
+							for _, f := range result.Failures {
+								msg += "- " + f + "\n"
+							}
+						}
+						resp.Result = toolResult{
+							Content: []textContent{{Type: "text", Text: msg}},
+							IsError: len(result.Failures) > 0,
+						}
 					}
 				}
 			}

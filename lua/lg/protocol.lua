@@ -10,8 +10,26 @@ local M = {}
 --- @param tsc_context? string
 --- @param edit_token? string
 --- @return table[] ACP prompt content blocks
-function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_context, edit_token)
+function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_context, edit_token, opts)
   local parts = {}
+  opts = opts or {}
+
+  -- Scoped context (for hint/suggest — regions the AI should focus on)
+  if opts.scope and #context_regions > 0 then
+    local ctx = { "### Painted regions (focus your " .. opts.scope .. " ONLY on these regions):\n" }
+    for i, r in ipairs(context_regions) do
+      local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
+      table.insert(ctx, string.format(
+        "Region %d — %s lines %d–%d:\n```\n%s\n```",
+        i - 1, fname, r.start_line, r.end_line,
+        table.concat(r.lines, "\n")
+      ))
+    end
+    table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
+    -- User message
+    table.insert(parts, { type = "text", text = user_prompt })
+    return parts
+  end
 
   -- Editable regions
   if #regions > 0 then

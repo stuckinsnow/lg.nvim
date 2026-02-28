@@ -867,7 +867,8 @@ function M.send_hint(prompt, regions, context_regions, on_done)
 		local all_ctx = {}
 		for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 		for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
-		local messages = protocol.build_prompt({}, all_ctx, prompt)
+		local has_scope = #regions > 0
+		local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "hints" } or nil)
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
 
 		s._on_done = function()
@@ -897,7 +898,8 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
-	local messages = protocol.build_prompt({}, all_ctx, prompt)
+	local has_scope = #regions > 0
+	local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "hints" } or nil)
 
 	local function handler(s, msg)
 		if msg.id and not msg.method then
@@ -997,7 +999,8 @@ function M.send_suggest(prompt, regions, context_regions, on_done)
 		local all_ctx = {}
 		for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 		for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
-		local messages = protocol.build_prompt({}, all_ctx, prompt)
+		local has_scope = #regions > 0
+		local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "suggestions" } or nil)
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
 
 		s._on_done = function()
@@ -1026,7 +1029,8 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
-	local messages = protocol.build_prompt({}, all_ctx, prompt)
+	local has_scope = #regions > 0
+	local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "suggestions" } or nil)
 
 	local function handler(s, msg)
 		if msg.id and not msg.method then
