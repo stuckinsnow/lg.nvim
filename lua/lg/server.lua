@@ -25,7 +25,22 @@ function M.unregister_session(id)
 	sessions[id] = nil
 end
 
---- Encode regions as JSON for MCP server to read
+-- Edit tokens: scope edits to specific region snapshots
+local tokens = {} -- token -> region snapshot
+
+function M.create_token(regions)
+	local token = string.format("%04x", math.random(0, 0xFFFF))
+	local snapshot = {}
+	for i, r in ipairs(regions) do
+		snapshot[i] = { bufnr = r.bufnr, file = r.file, start_line = r.start_line, end_line = r.end_line, lines = r.lines }
+	end
+	tokens[token] = snapshot
+	return token
+end
+
+function M.clear_tokens()
+	tokens = {}
+end
 --- @return string
 function M.encode_regions()
 	local regions = paint.get_all()
@@ -97,6 +112,21 @@ function M.handle_message(data)
 			end
 			return vim.json.encode(out)
 		end
+		if msg.edit_token and msg.edit_token ~= "" then
+			local regs = tokens[msg.edit_token]
+			if not regs then return vim.json.encode({}) end
+			local out = {}
+			for i, r in ipairs(regs) do
+				out[i] = {
+					region_id = i - 1,
+					file = r.file,
+					start_line = r.start_line,
+					end_line = r.end_line,
+					lines = r.lines,
+				}
+			end
+			return vim.json.encode(out)
+		end
 		return M.encode_regions()
 	elseif msg.method == "get_diagnostics" then
 		return M.encode_diagnostics(msg.bufnr, msg.severity)
@@ -128,8 +158,25 @@ function M.handle_message(data)
 					diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
 				end
 			end
+		elseif msg.edit_token and msg.edit_token ~= "" then
+			-- Token-scoped: edit only the snapshot regions
+			local regs = tokens[msg.edit_token]
+			if not regs then
+				return vim.json.encode({ error = "invalid edit_token" })
+			end
+			for _, e in ipairs(edits) do
+				local idx = (e.region_id or -1) + 1
+				local r = regs[idx]
+				if r and vim.api.nvim_buf_is_valid(r.bufnr) then
+					local new_lines = vim.split(e.new_code, "\n")
+					diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
+				end
+			end
 		else
-			-- Global paint
+			-- Global paint (only if no tokens exist)
+			if next(tokens) then
+				return vim.json.encode({ error = "edit_token required" })
+			end
 			local regions = paint.get_all()
 			diff.apply_all(regions, edits)
 		end

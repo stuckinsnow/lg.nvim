@@ -8,16 +8,19 @@ local M = {}
 --- @param user_prompt string
 --- @param lsp_context? string
 --- @param tsc_context? string
+--- @param edit_token? string
 --- @return table[] ACP prompt content blocks
-function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_context)
+function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_context, edit_token)
   local parts = {}
 
   -- Editable regions
   if #regions > 0 then
-    local ctx = {
-      "You have painted regions in Neovim that you should edit.",
-      "Edit ONLY the painted regions. Use the paint_edit tool with ALL edits in one call.\n",
-    }
+    local max_id = #regions - 1
+    local header = "You have " .. #regions .. " painted region(s) (region_id 0" .. (max_id > 0 and ("–" .. max_id) or "") .. "). Edit ONLY these regions. Do NOT edit any other regions. Use the paint_edit tool with ALL edits in one call."
+    if edit_token then
+      header = header .. "\n\nEdit token: `" .. edit_token .. "` — pass this as edit_token in every paint_edit and get_painted_regions call."
+    end
+    local ctx = { header .. "\n" }
     for i, r in ipairs(regions) do
       local fname = r.file ~= "" and vim.fn.fnamemodify(r.file, ":~:.") or "[unnamed]"
       table.insert(ctx, string.format(

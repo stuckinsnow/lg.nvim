@@ -182,10 +182,13 @@ func sendToNeovim(req any) ([]byte, error) {
 	return reader.ReadBytes('\n')
 }
 
-func getRegions() ([]nvimRegion, error) {
+func getRegions(editToken string) ([]nvimRegion, error) {
 	req := map[string]string{"method": "get_regions"}
 	if sessionID != "" {
 		req["session"] = sessionID
+	}
+	if editToken != "" {
+		req["edit_token"] = editToken
 	}
 	resp, err := sendToNeovim(req)
 	if err != nil {
@@ -198,10 +201,13 @@ func getRegions() ([]nvimRegion, error) {
 	return regions, nil
 }
 
-func applyEdits(edits []nvimEdit) error {
+func applyEdits(edits []nvimEdit, editToken string) error {
 	req := map[string]any{"method": "apply_edits", "edits": edits}
 	if sessionID != "" {
 		req["session"] = sessionID
+	}
+	if editToken != "" {
+		req["edit_token"] = editToken
 	}
 	resp, err := sendToNeovim(req)
 	if err != nil {
@@ -232,7 +238,8 @@ func handleToolCall(params json.RawMessage) (any, error) {
 	switch call.Name {
 	case "paint_edit":
 		var args struct {
-			Edits []nvimEdit `json:"edits"`
+			Edits     []nvimEdit `json:"edits"`
+			EditToken string     `json:"edit_token"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
 			return toolResult{
@@ -241,7 +248,7 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			}, nil
 		}
 
-		if err := applyEdits(args.Edits); err != nil {
+		if err := applyEdits(args.Edits, args.EditToken); err != nil {
 			return toolResult{
 				Content: []textContent{{Type: "text", Text: "edit failed: " + err.Error()}},
 				IsError: true,
@@ -253,7 +260,11 @@ func handleToolCall(params json.RawMessage) (any, error) {
 		}, nil
 
 	case "get_painted_regions":
-		regions, err := getRegions()
+		var args struct {
+			EditToken string `json:"edit_token"`
+		}
+		json.Unmarshal(call.Arguments, &args)
+		regions, err := getRegions(args.EditToken)
 		if err != nil {
 			return toolResult{
 				Content: []textContent{{Type: "text", Text: "failed to get regions: " + err.Error()}},
@@ -369,6 +380,7 @@ func handleToolsList() any {
 								"additionalProperties": false,
 							},
 						},
+						"edit_token": map[string]string{"type": "string", "description": "Edit token from prompt. Pass it exactly if provided."},
 					},
 					Required:             []string{"edits"},
 					AdditionalProperties: &f,
@@ -378,8 +390,10 @@ func handleToolsList() any {
 				Name:        "get_painted_regions",
 				Description: "List painted regions with their code content.",
 				InputSchema: toolSchema{
-					Type:       "object",
-					Properties: map[string]any{},
+					Type: "object",
+					Properties: map[string]any{
+						"edit_token": map[string]string{"type": "string", "description": "Edit token from prompt. Pass it exactly if provided."},
+					},
 					Required:   []string{},
 				},
 			},

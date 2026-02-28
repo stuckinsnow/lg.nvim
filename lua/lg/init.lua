@@ -112,6 +112,7 @@ end
 
 function M.clear()
 	paint.clear()
+	require("lg.send").reset_region_count()
 	window.refresh()
 end
 

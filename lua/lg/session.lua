@@ -413,7 +413,14 @@ function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_cont
 	connect(function(s)
 		if not s then return end
 
-		local messages = protocol.build_prompt(regions, context_regions or {}, prompt, lsp_context, tsc_context)
+		s._prompt_count = (s._prompt_count or 0) + 1
+		local token = nil
+		if #regions > 0 then
+			local svr = require("lg.server")
+			token = svr.create_token(regions)
+		end
+
+		local messages = protocol.build_prompt(regions, context_regions or {}, prompt, lsp_context, tsc_context, token)
 
 		status.start("Thinking...")
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
@@ -431,6 +438,7 @@ end
 
 function M.clear()
 	_connect_queue = nil
+	require("lg.server").clear_tokens()
 	if not state then return end
 	if state.proc then
 		pcall(function() state.proc:kill(9) end)

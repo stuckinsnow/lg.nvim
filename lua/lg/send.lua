@@ -60,13 +60,28 @@ local function git_snapshot_cb(snap_opts)
 	end
 end
 
+local sent_region_count = 0
+
+function M.reset_region_count()
+	sent_region_count = 0
+end
+
 --- @param opts? { prompt?: string, from_chat?: boolean }
 function M.send(opts)
 	opts = opts or {}
-	local regions = paint.get_all()
+	local all_regions = paint.get_all()
+	-- Only include regions painted since last send
+	local regions = {}
+	for i = sent_region_count + 1, #all_regions do
+		regions[#regions + 1] = all_regions[i]
+	end
+	if #regions == 0 and not opts.from_chat then
+		regions = all_regions -- fallback: nothing new, use all
+	end
 
 	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub)
 		if prompt then
+			sent_region_count = #all_regions
 			local active
 			for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 				local b = vim.api.nvim_win_get_buf(win)
