@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -98,7 +99,7 @@ func main() {
 						"items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{
-								"file":       map[string]string{"type": "string", "description": "Absolute file path"},
+								"file":       map[string]string{"type": "string", "description": "File path (absolute or relative to project root)"},
 								"line":       map[string]string{"type": "integer", "description": "Start line (1-based)"},
 								"end_line":   map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
 								"match":      map[string]string{"type": "string", "description": "Text to match on the line to auto-calculate exact underline range. Preferred over column."},
@@ -141,11 +142,22 @@ func main() {
 				resp.Error = map[string]any{"code": -32601, "message": "unknown tool: " + call.Name}
 			} else {
 				var args struct {
-					Hints json.RawMessage `json:"hints"`
+					Hints []json.RawMessage `json:"hints"`
 				}
 				json.Unmarshal(call.Arguments, &args)
 
-				lspResp, err := sendToLSP(map[string]any{"method": "set_hints", "hints": json.RawMessage(args.Hints)})
+				// Resolve relative paths to absolute
+				resolved := make([]json.RawMessage, len(args.Hints))
+				for i, raw := range args.Hints {
+					var h map[string]any
+					json.Unmarshal(raw, &h)
+					if f, ok := h["file"].(string); ok && !filepath.IsAbs(f) {
+						h["file"], _ = filepath.Abs(f)
+					}
+					resolved[i], _ = json.Marshal(h)
+				}
+
+				lspResp, err := sendToLSP(map[string]any{"method": "set_hints", "hints": resolved})
 				if err != nil {
 					resp.Result = toolResult{
 						Content: []textContent{{Type: "text", Text: "hint failed: " + err.Error()}},
