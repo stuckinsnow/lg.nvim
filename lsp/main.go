@@ -211,8 +211,27 @@ func publishHints(hints []hint) (total int, matched int, failures []string) {
 	}
 	diagMu.Lock()
 	for uri, diags := range grouped {
-		storedDiags[uri] = append(storedDiags[uri], diags...)
-		storedDetails[uri] = append(storedDetails[uri], groupedDetails[uri]...)
+		existing := storedDiags[uri]
+		existingDetails := storedDetails[uri]
+		for i, d := range diags {
+			dup := false
+			for _, e := range existing {
+				if e.Range.Start.Line == d.Range.Start.Line && e.Message == d.Message {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				existing = append(existing, d)
+				detail := ""
+				if i < len(groupedDetails[uri]) {
+					detail = groupedDetails[uri][i]
+				}
+				existingDetails = append(existingDetails, detail)
+			}
+		}
+		storedDiags[uri] = existing
+		storedDetails[uri] = existingDetails
 	}
 	for uri := range grouped {
 		params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: storedDiags[uri]})
