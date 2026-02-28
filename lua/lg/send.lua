@@ -65,7 +65,7 @@ function M.send(opts)
 	opts = opts or {}
 	local regions = paint.get_all()
 
-	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint)
+	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub)
 		if prompt then
 			local active
 			for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
@@ -111,11 +111,13 @@ function M.send(opts)
 		end
 
 		if has_hint then
+			prompt = prompt:gsub("@SUB%s*", "")
 			prompt = prompt:gsub("@HINT%s*", "")
-			window.add_prompt("@HINT " .. prompt)
-			status.start("Reviewing...")
+			window.add_prompt((has_sub and "@SUB " or "") .. "@HINT " .. prompt)
+			status.start("Reviewing" .. (has_sub and " (subagent)" or "") .. "...")
 			spinners.start(regions)
-			session.send_hint(prompt, regions, context.get_all(), function()
+			local hint_fn = has_sub and session.send_hint_subagent or session.send_hint
+			hint_fn(prompt, regions, context.get_all(), function()
 				vim.schedule(function()
 					spinners.stop()
 					status.stop("Review done")
@@ -209,7 +211,8 @@ function M.send(opts)
 		local has_ap = text:match("@INFO") ~= nil
 		local has_git = text:match("@GIT") ~= nil
 		local has_hint = text:match("@HINT") ~= nil
-		do_send(text, false, false, false, false, has_ap, has_git, has_hint)
+		local has_sub = text:match("@SUB") ~= nil
+		do_send(text, false, false, false, false, has_ap, has_git, has_hint, has_sub)
 	else
 		require("lg.prompt").open(do_send)
 	end

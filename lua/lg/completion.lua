@@ -11,6 +11,7 @@ local at_items = {
   { label = "@INFO", detail = "AI highlights regions and explains changes — no code written" },
   { label = "@TSC", detail = "Run tsc --noEmit and include type errors as context" },
   { label = "@HINT", detail = "AI reviews code and publishes findings as editor diagnostics" },
+  { label = "@SUB", detail = "Run next prefix as a subagent (e.g. @SUB HINT) — doesn't block main session" },
 }
 
 local hash_items = {

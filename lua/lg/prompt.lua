@@ -45,7 +45,8 @@ function M.open(cb, on_cancel)
 			local has_auto_paint = text:match("@INFO") ~= nil
 			local has_git = text:match("@GIT") ~= nil
 			local has_hint = text:match("@HINT") ~= nil
-			cb(text, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint)
+			local has_sub = text:match("@SUB") ~= nil
+			cb(text, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub)
 		end
 	end
 
