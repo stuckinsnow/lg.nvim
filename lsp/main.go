@@ -113,6 +113,9 @@ func readLSP(reader *bufio.Reader) ([]byte, error) {
 
 // ── Hint socket server ─────────────────────────────────────────────
 
+var storedDiags = map[string][]diagnostic{}
+var diagMu sync.Mutex
+
 func severityToLSP(s string) int {
 	return 3 // always info
 }
@@ -188,10 +191,15 @@ func publishHints(hints []hint) {
 			Message:  h.Message,
 		})
 	}
+	diagMu.Lock()
 	for uri, diags := range grouped {
-		params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: diags})
+		storedDiags[uri] = append(storedDiags[uri], diags...)
+	}
+	for uri := range grouped {
+		params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: storedDiags[uri]})
 		sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 	}
+	diagMu.Unlock()
 }
 
 func clearAll() {
@@ -228,18 +236,26 @@ func startHintSocket() {
 						publishHints(req.Hints)
 						c.Write([]byte(`{"ok":true}` + "\n"))
 					case "clear":
-						// Publish empty diagnostics for files in hints
+						diagMu.Lock()
 						if len(req.Hints) > 0 {
 							seen := map[string]bool{}
 							for _, h := range req.Hints {
 								uri := fileToURI(h.File)
 								if !seen[uri] {
 									seen[uri] = true
+									delete(storedDiags, uri)
 									params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: []diagnostic{}})
 									sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 								}
 							}
+						} else {
+							for uri := range storedDiags {
+								params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: []diagnostic{}})
+								sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
+							}
+							storedDiags = map[string][]diagnostic{}
 						}
+						diagMu.Unlock()
 						c.Write([]byte(`{"ok":true}` + "\n"))
 					default:
 						c.Write([]byte(`{"error":"unknown method"}` + "\n"))
