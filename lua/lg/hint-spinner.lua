@@ -54,4 +54,19 @@ function HintSpinner:stop()
   pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, self.ns_id, self.start_line, self.end_line + 1)
 end
 
+function M.render_region(bufnr, ns_id, start_line, end_line, tick)
+  for i = start_line - 1, end_line - 1 do
+    local offset = i - (start_line - 1)
+    local parts = {}
+    for j = 0, 4 do
+      local wi = ((tick + offset * 2 + j) % #waves) + 1
+      local hi = ((tick + offset + j) % #hls) + 1
+      parts[#parts + 1] = { waves[wi] .. " ", hls[hi] }
+    end
+    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, i, 0, {
+      virt_text = parts, virt_text_pos = "eol", priority = 1000,
+    })
+  end
+end
+
 return M
