@@ -46,7 +46,8 @@ function M.open(cb, on_cancel)
 			local has_git = text:match("@GIT") ~= nil
 			local has_hint = text:match("@HINT") ~= nil
 			local has_sub = text:match("@SUB") ~= nil
-			cb(text, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub)
+			local has_suggest = text:match("@SUGGEST") ~= nil
+			cb(text, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub, has_suggest)
 		end
 	end
 

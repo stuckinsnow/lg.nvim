@@ -926,4 +926,115 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 	end)
 end
 
+-- ── Suggest (uses main session, switches to suggester mode) ───────
+
+function M.send_suggest(prompt, regions, context_regions, on_done)
+	connect(function(s)
+		if not s then return end
+
+		local id = s.next_id; s.next_id = id + 1
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/set_mode",
+			params = { sessionId = s.session_id, modeId = "suggester" },
+		})
+
+		local all_ctx = {}
+		for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
+		for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
+		local messages = protocol.build_prompt({}, all_ctx, prompt)
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+		s._on_done = function()
+			local rid = s.next_id; s.next_id = rid + 1
+			write(s, {
+				jsonrpc = "2.0", id = rid, method = "session/set_mode",
+				params = { sessionId = s.session_id, modeId = "lg" },
+			})
+			if on_done then on_done() end
+		end
+
+		local pid = s.next_id; s.next_id = pid + 1
+		write(s, {
+			jsonrpc = "2.0", id = pid, method = "session/prompt",
+			params = { sessionId = s.session_id, prompt = messages },
+		})
+	end)
+end
+
+-- ── Suggest subagent (ephemeral) ──────────────────────────────────
+
+function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
+	local phase = "set_mode"
+
+	local all_ctx = {}
+	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
+	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
+	local messages = protocol.build_prompt({}, all_ctx, prompt)
+
+	local function handler(s, msg)
+		if msg.id and not msg.method then
+			if msg.error then
+				vim.schedule(function()
+					status.stop("Suggest subagent error")
+					vim.notify("lg-suggest: " .. vim.inspect(msg.error), vim.log.levels.ERROR)
+				end)
+				return
+			end
+
+			if phase == "set_mode" then
+				phase = "prompt"
+				local id = s.next_id; s.next_id = id + 1
+				write(s, {
+					jsonrpc = "2.0", id = id, method = "session/prompt",
+					params = { sessionId = s.session_id, prompt = messages },
+				})
+			elseif phase == "prompt" and msg.result and msg.result.stopReason then
+				vim.schedule(function()
+					status.stop("Suggestions done")
+					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
+					if on_done then on_done() end
+				end)
+				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
+			end
+			return
+		end
+
+		local method = msg.method or ""
+		if method == "session/request_permission" then
+			local tool_options = msg.params and msg.params.options or {}
+			local option_id
+			for _, opt in ipairs(tool_options) do
+				if opt.kind == "allow_always" or opt.kind == "allow_once" then
+					option_id = opt.optionId; break
+				end
+			end
+			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
+			if option_id and msg.id then
+				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
+			end
+		end
+	end
+
+	status.start("Suggesting (subagent)...")
+	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+	spawn_session({
+		cmd = opts.cmd,
+		mcp_servers = {},
+		client_name = "lg-suggest-sub",
+		on_message = handler,
+		on_fail = function()
+			status.stop("Suggest subagent failed")
+			if on_done then on_done() end
+		end,
+	}, function(s)
+		if not s then return end
+		local id = s.next_id; s.next_id = id + 1
+		write(s, {
+			jsonrpc = "2.0", id = id, method = "session/set_mode",
+			params = { sessionId = s.session_id, modeId = "suggester" },
+		})
+	end)
+end
+
 return M

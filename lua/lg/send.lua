@@ -79,7 +79,7 @@ function M.send(opts)
 		regions = all_regions -- fallback: nothing new, use all
 	end
 
-	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub)
+	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub, has_suggest)
 		if prompt then
 			sent_region_count = #all_regions
 			local active
@@ -96,7 +96,7 @@ function M.send(opts)
 			end
 			prompt = prompt:gsub("#%./", "@")
 		end
-		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git and not has_hint then
+		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git and not has_hint and not has_suggest then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
 		end
@@ -139,6 +139,22 @@ function M.send(opts)
 				vim.schedule(function()
 					spin:stop()
 					status.stop("Review done")
+				end)
+			end)
+			return
+		end
+
+		if has_suggest then
+			prompt = prompt:gsub("@SUB%s*", "")
+			prompt = prompt:gsub("@SUGGEST%s*", "")
+			window.add_prompt((has_sub and "@SUB " or "") .. "@SUGGEST " .. prompt)
+			status.start("Suggesting" .. (has_sub and " (subagent)" or "") .. "...")
+			local spin = spinners.start(regions)
+			local suggest_fn = has_sub and session.send_suggest_subagent or session.send_suggest
+			suggest_fn(prompt, regions, context.get_all(), function()
+				vim.schedule(function()
+					spin:stop()
+					status.stop("Suggestions done")
 				end)
 			end)
 			return
@@ -231,8 +247,9 @@ function M.send(opts)
 		local has_ap = text:match("@INFO") ~= nil
 		local has_git = text:match("@GIT") ~= nil
 		local has_hint = text:match("@HINT") ~= nil
+		local has_suggest = text:match("@SUGGEST") ~= nil
 		local has_sub = text:match("@SUB") ~= nil
-		do_send(text, false, false, false, false, has_ap, has_git, has_hint, has_sub)
+		do_send(text, false, false, false, false, has_ap, has_git, has_hint, has_sub, has_suggest)
 	else
 		require("lg.prompt").open(do_send)
 	end

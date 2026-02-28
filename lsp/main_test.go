@@ -176,6 +176,101 @@ func TestHintSocketMatch(t *testing.T) {
 	os.Remove("/tmp/lg-hint-match.go")
 }
 
+func TestHover(t *testing.T) {
+	sockPath = "/tmp/lg-hint-hover-test.sock"
+	os.Remove(sockPath)
+
+	// Reset stored diags
+	diagMu.Lock()
+	storedDiags = map[string][]diagnostic{}
+	diagMu.Unlock()
+
+	origStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	stdout = bufio.NewWriter(w)
+
+	startHintSocket()
+	time.Sleep(50 * time.Millisecond)
+
+	// Publish a hint at line 10, cols 4-14
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatal("dial:", err)
+	}
+	req := `{"method":"set_hints","hints":[{"file":"/tmp/hover-test.go","line":10,"end_line":10,"column":5,"end_column":15,"message":"suggestion:\n` + "```go\\nfixed code\\n```" + `","severity":"hint"}]}`
+	fmt.Fprintln(conn, req)
+	scanner := bufio.NewScanner(conn)
+	scanner.Scan()
+	conn.Close()
+
+	// Drain the publishDiagnostics output
+	stdout.Flush()
+
+	// Now simulate a textDocument/hover LSP request by calling the handler directly
+	// We check storedDiags to verify hover would work
+	diagMu.Lock()
+	uri := "file:///tmp/hover-test.go"
+	diags := storedDiags[uri]
+	diagMu.Unlock()
+
+	if len(diags) != 1 {
+		// drain pipe before fatal
+		w.Close()
+		buf := make([]byte, 4096)
+		for { n, err := r.Read(buf); if n == 0 || err != nil { break } }
+		r.Close()
+		os.Stdout = origStdout
+		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
+	}
+
+	// Verify the diagnostic is at the right position for hover hit-testing
+	d := diags[0]
+	// Hover at line 9 (0-based), col 5 — should be inside range [4,14)
+	pos := position{Line: 9, Character: 5}
+	hit := d.Range.Start.Line <= pos.Line && d.Range.End.Line >= pos.Line &&
+		(d.Range.Start.Line < pos.Line || d.Range.Start.Character <= pos.Character) &&
+		(d.Range.End.Line > pos.Line || d.Range.End.Character >= pos.Character)
+	if !hit {
+		w.Close()
+		buf := make([]byte, 4096)
+		for { n, err := r.Read(buf); if n == 0 || err != nil { break } }
+		r.Close()
+		os.Stdout = origStdout
+		t.Fatalf("hover at (9,5) should hit diagnostic at range (%d,%d)-(%d,%d)",
+			d.Range.Start.Line, d.Range.Start.Character, d.Range.End.Line, d.Range.End.Character)
+	}
+
+	// Diagnostic should have the message
+	if !strings.Contains(d.Message, "suggestion") {
+		w.Close()
+		buf := make([]byte, 4096)
+		for { n, err := r.Read(buf); if n == 0 || err != nil { break } }
+		r.Close()
+		os.Stdout = origStdout
+		t.Fatalf("expected 'suggestion' in diagnostic message, got: %s", d.Message)
+	}
+
+	// Hover at line 0, col 0 — should miss
+	pos2 := position{Line: 0, Character: 0}
+	hit2 := d.Range.Start.Line <= pos2.Line && d.Range.End.Line >= pos2.Line
+	if hit2 {
+		w.Close()
+		buf := make([]byte, 4096)
+		for { n, err := r.Read(buf); if n == 0 || err != nil { break } }
+		r.Close()
+		os.Stdout = origStdout
+		t.Fatal("hover at (0,0) should NOT hit diagnostic")
+	}
+
+	w.Close()
+	buf := make([]byte, 4096)
+	for { n, err := r.Read(buf); if n == 0 || err != nil { break } }
+	r.Close()
+	os.Stdout = origStdout
+	os.Remove(sockPath)
+}
+
 func TestHintSocketClear(t *testing.T) {
 	sockPath = "/tmp/lg-hint-clear-test.sock"
 	os.Remove(sockPath)

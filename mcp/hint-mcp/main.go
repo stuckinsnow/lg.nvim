@@ -90,36 +90,45 @@ func main() {
 		case "notifications/initialized":
 			continue
 		case "tools/list":
-			resp.Result = map[string]any{
-				"tools": []map[string]any{{
-					"name":        "lg_hint",
-					"description": "Publish AI findings as diagnostics in the editor. Hints appear as squiggly underlines with hover messages. Use this to annotate code without editing anything.",
-					"inputSchema": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"hints": map[string]any{
-								"type": "array",
-								"items": map[string]any{
-									"type": "object",
-									"properties": map[string]any{
-										"file":       map[string]string{"type": "string", "description": "Absolute file path"},
-										"line":       map[string]string{"type": "integer", "description": "Start line (1-based)"},
-										"end_line":   map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
-										"match":      map[string]string{"type": "string", "description": "Text to match on the line to auto-calculate exact underline range. Preferred over column."},
-										"column":     map[string]string{"type": "integer", "description": "Start column (1-based). Omit if using match."},
-										"end_column": map[string]string{"type": "integer", "description": "End column (1-based, exclusive). Omit if using match."},
-										"message":    map[string]string{"type": "string", "description": "Diagnostic message shown on hover"},
-										"severity":   map[string]string{"type": "string", "description": "One of: error, warning, info, hint"},
-									},
-									"required":             []string{"file", "line", "message", "severity"},
-									"additionalProperties": false,
-								},
+			hintSchema := map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"hints": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"file":       map[string]string{"type": "string", "description": "Absolute file path"},
+								"line":       map[string]string{"type": "integer", "description": "Start line (1-based)"},
+								"end_line":   map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
+								"match":      map[string]string{"type": "string", "description": "Text to match on the line to auto-calculate exact underline range. Preferred over column."},
+								"column":     map[string]string{"type": "integer", "description": "Start column (1-based). Omit if using match."},
+								"end_column": map[string]string{"type": "integer", "description": "End column (1-based, exclusive). Omit if using match."},
+								"message":    map[string]string{"type": "string", "description": "Short summary shown as inline diagnostic text"},
+								"detail":     map[string]string{"type": "string", "description": "Full detail shown on hover (markdown supported). Include code blocks for suggestions. Falls back to message if omitted."},
+								"severity":   map[string]string{"type": "string", "description": "One of: error, warning, info, hint"},
 							},
+							"required":             []string{"file", "line", "message", "severity"},
+							"additionalProperties": false,
 						},
-						"required":             []string{"hints"},
-						"additionalProperties": &f,
 					},
-				}},
+				},
+				"required":             []string{"hints"},
+				"additionalProperties": &f,
+			}
+			resp.Result = map[string]any{
+				"tools": []map[string]any{
+					{
+						"name":        "lg_hint",
+						"description": "Publish AI findings as diagnostics in the editor. Hints appear as squiggly underlines with hover messages. Use this to annotate code without editing anything.",
+						"inputSchema": hintSchema,
+					},
+					{
+						"name":        "lg_suggest",
+						"description": "Publish code suggestions as diagnostics in the editor. Each suggestion appears as an underline — the hover message MUST contain a markdown code block showing the recommended replacement code. Use this to propose concrete code changes without editing anything.",
+						"inputSchema": hintSchema,
+					},
+				},
 			}
 		case "tools/call":
 			var call struct {
@@ -128,7 +137,7 @@ func main() {
 			}
 			json.Unmarshal(req.Params, &call)
 
-			if call.Name != "lg_hint" {
+			if call.Name != "lg_hint" && call.Name != "lg_suggest" {
 				resp.Error = map[string]any{"code": -32601, "message": "unknown tool: " + call.Name}
 			} else {
 				var args struct {

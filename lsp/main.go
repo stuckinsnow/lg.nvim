@@ -53,6 +53,7 @@ type hint struct {
 	EndColumn int    `json:"end_column"`
 	Match     string `json:"match"`
 	Message   string `json:"message"`
+	Detail    string `json:"detail"`
 	Severity  string `json:"severity"`
 }
 
@@ -114,6 +115,7 @@ func readLSP(reader *bufio.Reader) ([]byte, error) {
 // ── Hint socket server ─────────────────────────────────────────────
 
 var storedDiags = map[string][]diagnostic{}
+var storedDetails = map[string][]string{} // parallel to storedDiags — hover content
 var diagMu sync.Mutex
 
 func severityToLSP(s string) int {
@@ -147,6 +149,7 @@ func publishHints(hints []hint) {
 	}
 
 	grouped := map[string][]diagnostic{}
+	groupedDetails := map[string][]string{}
 	for _, h := range hints {
 		line := h.Line - 1
 		if line < 0 {
@@ -195,10 +198,12 @@ func publishHints(hints []hint) {
 			Source:   "ai",
 			Message:  h.Message,
 		})
+		groupedDetails[uri] = append(groupedDetails[uri], h.Detail)
 	}
 	diagMu.Lock()
 	for uri, diags := range grouped {
 		storedDiags[uri] = append(storedDiags[uri], diags...)
+		storedDetails[uri] = append(storedDetails[uri], groupedDetails[uri]...)
 	}
 	for uri := range grouped {
 		params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: storedDiags[uri]})
@@ -249,6 +254,7 @@ func startHintSocket() {
 								if !seen[uri] {
 									seen[uri] = true
 									delete(storedDiags, uri)
+								delete(storedDetails, uri)
 									params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: []diagnostic{}})
 									sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 								}
@@ -259,6 +265,7 @@ func startHintSocket() {
 								sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 							}
 							storedDiags = map[string][]diagnostic{}
+							storedDetails = map[string][]string{}
 						}
 						diagMu.Unlock()
 						c.Write([]byte(`{"ok":true}` + "\n"))
@@ -302,6 +309,7 @@ func main() {
 				Result: map[string]any{
 					"capabilities": map[string]any{
 						"textDocumentSync":  1,
+						"hoverProvider":     true,
 						"codeActionProvider": true,
 						"executeCommandProvider": map[string]any{
 							"commands": []string{"lg.dismissHint"},
@@ -327,6 +335,38 @@ func main() {
 
 		case "textDocument/didOpen", "textDocument/didChange", "textDocument/didClose":
 			// no-op
+
+		case "textDocument/hover":
+			var p struct {
+				TextDocument struct{ URI string `json:"uri"` } `json:"textDocument"`
+				Position     position                          `json:"position"`
+			}
+			json.Unmarshal(msg.Params, &p)
+			var parts []string
+			diagMu.Lock()
+			diags := storedDiags[p.TextDocument.URI]
+			details := storedDetails[p.TextDocument.URI]
+			for i, d := range diags {
+				if d.Range.Start.Line <= p.Position.Line && d.Range.End.Line >= p.Position.Line &&
+					(d.Range.Start.Line < p.Position.Line || d.Range.Start.Character <= p.Position.Character) &&
+					(d.Range.End.Line > p.Position.Line || d.Range.End.Character >= p.Position.Character) {
+					if i < len(details) && details[i] != "" {
+						parts = append(parts, details[i])
+					} else {
+						parts = append(parts, d.Message)
+					}
+				}
+			}
+			diagMu.Unlock()
+			if len(parts) > 0 {
+				combined := strings.Join(parts, "\n\n---\n\n")
+				result, _ := json.Marshal(map[string]any{
+					"contents": map[string]string{"kind": "markdown", "value": combined},
+				})
+				sendLSP(lspMessage{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(result)})
+			} else {
+				sendLSP(lspMessage{JSONRPC: "2.0", ID: msg.ID, Result: nil})
+			}
 
 		case "textDocument/codeAction":
 			var p struct {
@@ -366,6 +406,9 @@ func main() {
 				diagMu.Lock()
 				if diags, ok := storedDiags[uri]; ok && idx >= 0 && idx < len(diags) {
 					storedDiags[uri] = append(diags[:idx], diags[idx+1:]...)
+					if d, ok2 := storedDetails[uri]; ok2 && idx < len(d) {
+						storedDetails[uri] = append(d[:idx], d[idx+1:]...)
+					}
 					params, _ := json.Marshal(publishDiagnosticsParams{URI: uri, Diagnostics: storedDiags[uri]})
 					sendLSP(lspMessage{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 				}
