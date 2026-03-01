@@ -220,7 +220,16 @@ function M.send(opts)
 			if history ~= "" then
 				prompt = "Previous conversation:\n" .. history .. "\n\nNew request:\n" .. prompt
 			end
-			table.insert(tool_hints, "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.")
+			window.add_prompt("@INFO " .. prompt)
+			status.start("Info paint (subagent)...")
+			local spin = spinners.start(regions)
+			local ctx_regions = context.get_all()
+			session.send_info_subagent(prompt, regions, ctx_regions, function()
+				vim.schedule(function()
+					spin:stop()
+				end)
+			end)
+			return
 		end
 		if flags.has_diag then
 			prompt = prompt:gsub("@DIAG%s*", "")
@@ -282,9 +291,6 @@ function M.send(opts)
 			return
 		end
 
-		if opts.from_chat then
-			prompt = "You are in chat mode. Do NOT use lg_paint_regions, get_painted_regions, or paint_edit tools. Edit files directly with write/edit.\n\n" .. prompt
-		end
 		window.add_prompt(prompt)
 		local send_regions = opts.from_chat and {} or regions
 		local spin = spinners.start(regions)
