@@ -1,12 +1,12 @@
 --- Send: build prompt with prefixes and dispatch to ACP session
 
-local paint = require("lg.paint")
-local context = require("lg.context")
-local session = require("lg.session")
-local window = require("lg.window")
+local paint = require("lg.ui.paint")
+local context = require("lg.tools.context")
+local session = require("lg.session.session")
+local window = require("lg.ui.window")
 local status = require("lg.status")
 
-local spinners = require("lg.spinners")
+local spinners = require("lg.spinner.spinners")
 
 local M = {}
 
@@ -236,7 +236,7 @@ function M.send(opts)
 		local lsp_context = nil
 		if has_lsp then
 			prompt = prompt:gsub("@LSP%s*", "")
-			local lsp = require("lg.lsp")
+			local lsp = require("lg.tools.lsp")
 			local parts = {}
 			for _, r in ipairs(regions) do
 				if vim.api.nvim_buf_is_valid(r.bufnr) then
@@ -303,7 +303,7 @@ function M.send(opts)
 		local has_sub = text:match("@SUB") ~= nil
 		do_send(text, false, false, false, false, has_ap, has_git, has_hint, has_sub, has_suggest)
 	else
-		require("lg.prompt").open(do_send)
+		require("lg.ui.prompt").open(do_send)
 	end
 end
 

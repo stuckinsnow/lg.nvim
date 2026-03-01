@@ -1,8 +1,8 @@
 --- Unix socket server for receiving paint edits from MCP server
 --- All in-memory, no disk writes
 
-local diff = require("lg.diff")
-local paint = require("lg.paint")
+local diff = require("lg.ui.diff")
+local paint = require("lg.ui.paint")
 
 local M = {}
 

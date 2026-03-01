@@ -3,7 +3,7 @@
 local M = {}
 
 local config = { spinner_type = "hint" }
-local ns = vim.api.nvim_create_namespace("lg_spinner")
+local ns = vim.api.nvim_create_namespace("lg.spinner.spinner")
 local timer = nil
 local tick = 0
 local handles = {} -- active handles, each with a region snapshot
@@ -14,10 +14,10 @@ end
 
 local function get_spinner_mod()
 	local t = config.spinner_type
-	return t == "block" and require("lg.block-spinner")
-		or t == "center" and require("lg.spinner")
-		or t == "wave" and require("lg.wave-spinner")
-		or require("lg.hint-spinner")
+	return t == "block" and require("lg.spinner.block-spinner")
+		or t == "center" and require("lg.spinner.spinner")
+		or t == "wave" and require("lg.spinner.wave-spinner")
+		or require("lg.spinner.hint-spinner")
 end
 
 local function render()

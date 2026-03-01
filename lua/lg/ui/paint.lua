@@ -9,7 +9,7 @@
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("lg_paint")
+local ns = vim.api.nvim_create_namespace("lg.ui.paint")
 
 --- @type Lg.Region[]
 local regions = {}

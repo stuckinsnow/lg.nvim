@@ -1,7 +1,7 @@
 local M = {}
 
-local function get_paint() return require("lg.paint") end
-local function get_context() return require("lg.context") end
+local function get_paint() return require("lg.ui.paint") end
+local function get_context() return require("lg.tools.context") end
 
 local function get_picker_opts()
 	local ok, picker = pcall(require, "gitty.providers.github-compare.picker-utils")
@@ -67,7 +67,7 @@ function M.pick()
 				if #commits == 0 then return end
 				local n = apply_to_hunks(commits, function(b, s, e) get_paint().add(b, s, e) end)
 				vim.notify(string.format("Painted %d hunks from %d commit(s)", n, #commits), vim.log.levels.INFO)
-				pcall(function() require("lg.window").refresh() end)
+				pcall(function() require("lg.ui.window").refresh() end)
 			end,
 			["ctrl-p"] = function(selected)
 				if not selected or #selected == 0 then return end
@@ -79,7 +79,7 @@ function M.pick()
 				if #commits == 0 then return end
 				local n = apply_to_hunks(commits, function(b, s, e) get_context().add(b, s, e) end)
 				vim.notify(string.format("Context painted %d hunks from %d commit(s)", n, #commits), vim.log.levels.INFO)
-				pcall(function() require("lg.window").refresh() end)
+				pcall(function() require("lg.ui.window").refresh() end)
 			end,
 		},
 	})

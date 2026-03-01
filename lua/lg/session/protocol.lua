@@ -65,7 +65,7 @@ function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_
   end
 
   -- Search results context
-  local search_ctx = require("lg.context").get_searches()
+  local search_ctx = require("lg.tools.context").get_searches()
   if #search_ctx > 0 then
     local ctx = { "### Semantic search results (read-only reference):\n" }
     for _, s in ipairs(search_ctx) do
@@ -79,7 +79,7 @@ function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_
   end
 
   -- File context
-  local files = require("lg.context").get_files()
+  local files = require("lg.tools.context").get_files()
   if #files > 0 then
     local ctx = { "### Files (read these for additional context):\n" }
     for _, f in ipairs(files) do

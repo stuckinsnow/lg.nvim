@@ -3,7 +3,7 @@
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("lg_context")
+local ns = vim.api.nvim_create_namespace("lg.tools.context")
 
 --- @type Lg.Region[]
 local regions = {}

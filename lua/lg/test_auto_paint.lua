@@ -1,5 +1,5 @@
 -- Test auto-paint: run with :luafile lua/lg/test_auto_paint.lua
-local server = require("lg.server")
+local server = require("lg.session.server")
 local json = vim.json.encode({
 	method = "paint_regions",
 	regions = {

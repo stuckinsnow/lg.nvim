@@ -1,6 +1,6 @@
 --- Search: ripgrep via fzf-lua grep → multi-select → add as context
 
-local context = require("lg.context")
+local context = require("lg.tools.context")
 
 local M = {}
 
@@ -35,7 +35,7 @@ function M.open()
 						end
 					end
 					vim.schedule(function()
-						require("lg.window").refresh()
+						require("lg.ui.window").refresh()
 						vim.notify(string.format("lg: added %d context region(s) for '%s'", added, pattern))
 					end)
 				end,

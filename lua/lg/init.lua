@@ -1,14 +1,14 @@
 --- lg: Paint regions + direct kiro-cli ACP for constrained AI editing
 
-local paint = require("lg.paint")
-local context = require("lg.context")
-local diff = require("lg.diff")
-local session = require("lg.session")
-local server = require("lg.server")
-local window = require("lg.window")
+local paint = require("lg.ui.paint")
+local context = require("lg.tools.context")
+local diff = require("lg.ui.diff")
+local session = require("lg.session.session")
+local server = require("lg.session.server")
+local window = require("lg.ui.window")
 local status = require("lg.status")
 
-local spinners = require("lg.spinners")
+local spinners = require("lg.spinner.spinners")
 
 local M = {}
 
@@ -107,7 +107,7 @@ end
 -- ── Send ───────────────────────────────────────────────────────────
 
 function M.send(opts)
-	require("lg.send").send(opts)
+	require("lg.session.send").send(opts)
 end
 
 function M.quick_edit()
@@ -122,7 +122,7 @@ end
 
 function M.clear()
 	paint.clear()
-	require("lg.send").reset_region_count()
+	require("lg.session.send").reset_region_count()
 	window.refresh()
 end
 
@@ -150,7 +150,7 @@ end
 
 function M.clear_marks()
 	diff.clear()
-	require("lg.hunk").clear()
+	require("lg.ui.hunk").clear()
 	require("lg.changes").clear()
 end
 
@@ -165,7 +165,7 @@ end
 
 -- ── Diff hunks (chat mode) ────────────────────────────────────────
 
-local hunk = require("lg.hunk")
+local hunk = require("lg.ui.hunk")
 function M.accept_hunk()
 	hunk.accept()
 end
@@ -259,15 +259,15 @@ end
 -- ── Search / context ───────────────────────────────────────────────
 
 function M.search()
-	require("lg.search").open()
+	require("lg.tools.search").open()
 end
 
 function M.find(query)
-	require("lg.search-index").find(query)
+	require("lg.tools.search-index").find(query)
 end
 
 function M.register_repo()
-	require("lg.search-index").register()
+	require("lg.tools.search-index").register()
 end
 
 function M.add_file()
@@ -286,7 +286,7 @@ function M.add_lsp_context()
 		vim.notify("lg: no painted regions", vim.log.levels.WARN)
 		return
 	end
-	local lsp = require("lg.lsp")
+	local lsp = require("lg.tools.lsp")
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
@@ -303,11 +303,11 @@ end
 -- ── Git ────────────────────────────────────────────────────────────
 
 function M.paint_from_commits()
-	require("lg.paint-commits").pick()
+	require("lg.tools.paint-commits").pick()
 end
 
 function M.list_regions()
-	require("lg.paint-commits").list_regions()
+	require("lg.tools.paint-commits").list_regions()
 end
 
 return M

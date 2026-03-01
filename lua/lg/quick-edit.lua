@@ -1,7 +1,7 @@
 --- Quick-edit: visual select → prompt → edit via main session with isolated region
 
-local session = require("lg.session")
-local spinners = require("lg.spinners")
+local session = require("lg.session.session")
+local spinners = require("lg.spinner.spinners")
 
 local M = {}
 
@@ -36,14 +36,14 @@ function M.quick_edit()
 		lines = lines,
 	}
 
-	require("lg.prompt").open(function(prompt, has_lsp)
+	require("lg.ui.prompt").open(function(prompt, has_lsp)
 		if not prompt or prompt == "" then
 			clear_highlight(buf)
 			return
 		end
 
 		if has_lsp then
-			local info = require("lg.lsp").gather(buf, start_line, end_line)
+			local info = require("lg.tools.lsp").gather(buf, start_line, end_line)
 			if info ~= "" then prompt = prompt .. "\n\nLSP Information:\n" .. info end
 		end
 

@@ -1,7 +1,7 @@
 --- Session: manages a persistent kiro-cli ACP subprocess
 --- Handles: spawn, initialize, session/new, session/prompt lifecycle.
 
-local protocol = require("lg.protocol")
+local protocol = require("lg.session.protocol")
 local status = require("lg.status")
 
 local M = {}
@@ -84,20 +84,20 @@ local function handle_message(s, msg)
 				local content = update.content
 				if content and content.type == "text" and content.text then
 					vim.schedule(function()
-						require("lg.window").append_agent_text(content.text)
+						require("lg.ui.window").append_agent_text(content.text)
 					end)
 				end
 			elseif update.sessionUpdate == "tool_call" then
 				vim.schedule(function()
 					local title = update.title or update.toolCallId or "unknown"
 					status.update("Tool: " .. title)
-					require("lg.window").add_tool(title)
+					require("lg.ui.window").add_tool(title)
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgToolCall", data = { title = title } })
 					if update.kind == "edit" and update.content and update.toolCallId then
 						if not s._seen_tool_calls then s._seen_tool_calls = {} end
 						if not s._seen_tool_calls[update.toolCallId] then
 							s._seen_tool_calls[update.toolCallId] = true
-							local hunk = require("lg.hunk")
+							local hunk = require("lg.ui.hunk")
 							local any = false
 							local loc_path = update.locations and update.locations[1] and update.locations[1].path
 							for _, c in ipairs(update.content) do
@@ -118,7 +118,7 @@ local function handle_message(s, msg)
 					if not s._seen_tool_calls then s._seen_tool_calls = {} end
 					if not s._seen_tool_calls[update.toolCallId] then
 						s._seen_tool_calls[update.toolCallId] = true
-						local hunk = require("lg.hunk")
+						local hunk = require("lg.ui.hunk")
 						local loc_path = update.locations and update.locations[1] and update.locations[1].path
 						for _, c in ipairs(update.content) do
 							if c.type == "diff" and c.path and c.oldText and c.newText then
@@ -168,7 +168,7 @@ local function handle_message(s, msg)
 								end
 							end
 						end
-						require("lg.hunk").hold_permission(s, msg.id, option_id, write, bufnr)
+						require("lg.ui.hunk").hold_permission(s, msg.id, option_id, write, bufnr)
 					end)
 				end
 			elseif title:match("^Creating ") or title:match("^Deleting ")
@@ -405,7 +405,7 @@ local function connect(on_ready)
 		status.stop("Session ready")
 
 		vim.api.nvim_create_autocmd("VimLeavePre", {
-			group = vim.api.nvim_create_augroup("lg_session", { clear = true }),
+			group = vim.api.nvim_create_augroup("lg.session.session", { clear = true }),
 			callback = function() M.clear() end,
 		})
 
@@ -420,7 +420,7 @@ function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_cont
 		s._prompt_count = (s._prompt_count or 0) + 1
 		local token = nil
 		if #regions > 0 then
-			local svr = require("lg.server")
+			local svr = require("lg.session.server")
 			token = svr.create_token(regions)
 		end
 
@@ -442,7 +442,7 @@ end
 
 function M.clear()
 	_connect_queue = nil
-	require("lg.server").clear_tokens()
+	require("lg.session.server").clear_tokens()
 	if not state then return end
 	if state.proc then
 		pcall(function() state.proc:kill(9) end)
@@ -592,7 +592,7 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 		return
 	end
 	oneshot_active = true
-	local svr = require("lg.server")
+	local svr = require("lg.session.server")
 	local sid = svr.register_session(regions)
 
 	local function silent_handler(s, msg)
@@ -708,7 +708,7 @@ function M.send_git_subagent(prompt, on_done)
 				local content = update.content
 				if content and content.type == "text" and content.text then
 					agent_text = agent_text .. content.text
-					vim.schedule(function() require("lg.window").append_agent_text(content.text) end)
+					vim.schedule(function() require("lg.ui.window").append_agent_text(content.text) end)
 				end
 			end
 		elseif method == "session/request_permission" then
@@ -785,7 +785,7 @@ function M.send_quick_chat(prompt, on_done)
 			if update and update.sessionUpdate == "agent_message_chunk" then
 				local content = update.content
 				if content and content.type == "text" and content.text then
-					vim.schedule(function() require("lg.window").append_agent_text(content.text) end)
+					vim.schedule(function() require("lg.ui.window").append_agent_text(content.text) end)
 				end
 			end
 		elseif method == "session/request_permission" then

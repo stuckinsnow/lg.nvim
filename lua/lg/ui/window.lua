@@ -1,7 +1,7 @@
 --- Window: side column with stacked section windows + interactive markdown chat
 
-local paint = require("lg.paint")
-local session = require("lg.session")
+local paint = require("lg.ui.paint")
+local session = require("lg.session.session")
 
 local M = {}
 
@@ -110,7 +110,7 @@ local function render_context()
   ensure_highlights()
   local lines = {}
   local hls = {}
-  local ctx = require("lg.context").get_all()
+  local ctx = require("lg.tools.context").get_all()
   table.insert(lines, "Context (" .. #ctx .. ")")
   table.insert(hls, { 0, 0, -1, "LgTitle" })
   if #ctx == 0 then
@@ -131,12 +131,12 @@ local function render_context()
       end
     end
   end
-  local imgs = require("lg.context").get_files()
+  local imgs = require("lg.tools.context").get_files()
   for _, img in ipairs(imgs) do
     table.insert(lines, "  📎 " .. vim.fn.fnamemodify(img, ":~:."))
     table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
   end
-  local srch = require("lg.context").get_searches()
+  local srch = require("lg.tools.context").get_searches()
   for _, s in ipairs(srch) do
     table.insert(lines, string.format('  searched "%s" with nomic-embed-text (%d results)', s.query, #s.results))
     table.insert(hls, { #lines - 1, 0, -1, "LgFile" })

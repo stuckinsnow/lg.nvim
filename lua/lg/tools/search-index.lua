@@ -149,14 +149,14 @@ function M.find(query)
 						end
 					end,
 					["ctrl-p"] = function(selected)
-						local context = require("lg.context")
+						local context = require("lg.tools.context")
 						local sel_results = {}
 						for _, entry in ipairs(selected) do
 							local r = result_map[strip_ansi(entry)]
 							if r then table.insert(sel_results, r) end
 						end
 						context.add_search(query, sel_results)
-						require("lg.window").refresh()
+						require("lg.ui.window").refresh()
 						vim.notify(string.format("lg-find: added %d results as context", #sel_results))
 					end,
 				},

@@ -4,7 +4,7 @@
 
 local M = {}
 local api = vim.api
-local dns = api.nvim_create_namespace("lg_hunk")
+local dns = api.nvim_create_namespace("lg.ui.hunk")
 
 local hunks = {}
 local pending_approvals = {}
