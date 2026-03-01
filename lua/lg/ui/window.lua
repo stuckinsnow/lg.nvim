@@ -239,7 +239,9 @@ end
 function M.append_subagent_text(chunk)
   -- Each subagent run gets its own split; first chunk creates it
   if not state.sub_active then
-    state.sub_active = { text = "", buf = nil, win = nil }
+    state.sub_splits = state.sub_splits or {}
+    local num = #state.sub_splits + 1
+    state.sub_active = { text = "# AI — Subagent " .. num .. "\n\n", buf = nil, win = nil }
     if win_valid(state.wins.context) then
       local ctx_win = state.wins.context
       -- Find the bottommost subagent split to insert after, or use context
@@ -273,7 +275,7 @@ function M.append_subagent_text(chunk)
     vim.bo[sa.buf].modifiable = false
     if win_valid(sa.win) then
       pcall(vim.api.nvim_win_set_cursor, sa.win, { #lines, 0 })
-      vim.api.nvim_win_set_height(sa.win, math.min(#lines, 15))
+      vim.api.nvim_win_set_height(sa.win, math.max(6, math.min(#lines, 15)))
     end
   end
 end
