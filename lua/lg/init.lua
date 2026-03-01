@@ -56,7 +56,7 @@ function M.setup(opts)
 
 	-- Register blink.cmp completion source for @ prefixes
 	pcall(function()
-		local blink = require("blink.cmp")
+		local blink = require("blink.cmp") ---@type table
 		local add = blink.add_source_provider or blink.add_provider
 		add("lg", {
 			name = "lg",

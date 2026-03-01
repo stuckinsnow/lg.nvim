@@ -36,13 +36,13 @@ function M.quick_edit()
 		lines = lines,
 	}
 
-	require("lg.ui.prompt").open(function(prompt, has_lsp)
+	require("lg.ui.prompt").open(function(prompt, flags)
 		if not prompt or prompt == "" then
 			clear_highlight(buf)
 			return
 		end
 
-		if has_lsp then
+		if flags.has_lsp then
 			local info = require("lg.tools.lsp").gather(buf, start_line, end_line)
 			if info ~= "" then prompt = prompt .. "\n\nLSP Information:\n" .. info end
 		end

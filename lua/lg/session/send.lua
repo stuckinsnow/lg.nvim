@@ -89,7 +89,8 @@ function M.send(opts)
 		regions = all_regions -- fallback: nothing new, use all
 	end
 
-	local function do_send(prompt, has_lsp, has_tsc, has_diag, has_search, has_auto_paint, has_git, has_hint, has_sub, has_suggest)
+	local function do_send(prompt, flags)
+		flags = flags or {}
 		if prompt then
 			sent_region_count = #all_regions
 			local active
@@ -106,13 +107,13 @@ function M.send(opts)
 			end
 			prompt = prompt:gsub("#%./", "@")
 		end
-		if #regions == 0 and not opts.from_chat and not has_auto_paint and not has_git and not has_hint and not has_suggest then
+		if #regions == 0 and not opts.from_chat and not flags.has_auto_paint and not flags.has_git and not flags.has_hint and not flags.has_suggest then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
 		end
 		if not prompt or prompt == "" then return end
 
-		if has_git then
+		if flags.has_git then
 			local git_prompt = prompt:gsub("@GIT%s*", "")
 			window.add_prompt(prompt)
 			status.start("Git analysis (Haiku)...")
@@ -138,13 +139,13 @@ function M.send(opts)
 			return
 		end
 
-		if has_hint then
+		if flags.has_hint then
 			prompt = prompt:gsub("@SUB%s*", "")
 			prompt = prompt:gsub("@HINT%s*", "")
-			window.add_prompt((has_sub and "@SUB " or "") .. "@HINT " .. prompt)
-			status.start("Reviewing" .. (has_sub and " (subagent)" or "") .. "...")
+			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@HINT " .. prompt)
+			status.start("Reviewing" .. (flags.has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
-			local hint_fn = has_sub and session.send_hint_subagent or session.send_hint
+			local hint_fn = flags.has_sub and session.send_hint_subagent or session.send_hint
 			local retried = false
 			local ctx_regions = context.get_all()
 			local before = count_ai_diagnostics()
@@ -175,13 +176,13 @@ function M.send(opts)
 			return
 		end
 
-		if has_suggest then
+		if flags.has_suggest then
 			prompt = prompt:gsub("@SUB%s*", "")
 			prompt = prompt:gsub("@SUGGEST%s*", "")
-			window.add_prompt((has_sub and "@SUB " or "") .. "@SUGGEST " .. prompt)
-			status.start("Suggesting" .. (has_sub and " (subagent)" or "") .. "...")
+			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@SUGGEST " .. prompt)
+			status.start("Suggesting" .. (flags.has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
-			local suggest_fn = has_sub and session.send_suggest_subagent or session.send_suggest
+			local suggest_fn = flags.has_sub and session.send_suggest_subagent or session.send_suggest
 			local retried = false
 			local ctx_regions = context.get_all()
 			local before = count_ai_diagnostics()
@@ -213,7 +214,7 @@ function M.send(opts)
 		end
 
 		local tool_hints = {}
-		if has_auto_paint then
+		if flags.has_auto_paint then
 			prompt = prompt:gsub("@INFO%s*", "")
 			local history = window.get_history()
 			if history ~= "" then
@@ -221,11 +222,11 @@ function M.send(opts)
 			end
 			table.insert(tool_hints, "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.")
 		end
-		if has_diag then
+		if flags.has_diag then
 			prompt = prompt:gsub("@DIAG%s*", "")
 			table.insert(tool_hints, "Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits.")
 		end
-		if has_search then
+		if flags.has_search then
 			prompt = prompt:gsub("@SEARCH%s*", "")
 			table.insert(tool_hints, "Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed.")
 		end
@@ -234,7 +235,7 @@ function M.send(opts)
 		end
 
 		local lsp_context = nil
-		if has_lsp then
+		if flags.has_lsp then
 			prompt = prompt:gsub("@LSP%s*", "")
 			local lsp = require("lg.tools.lsp")
 			local parts = {}
@@ -253,7 +254,7 @@ function M.send(opts)
 		end
 
 		local tsc_context = nil
-		if has_tsc then
+		if flags.has_tsc then
 			prompt = prompt:gsub("@TSC%s*", "")
 			status.start("Running tsc…")
 			vim.system({ "tsc", "--noEmit" }, {}, vim.schedule_wrap(function(obj)
@@ -269,7 +270,7 @@ function M.send(opts)
 				window.add_prompt(prompt)
 				local sr = opts.from_chat and {} or regions
 				local spin = spinners.start(regions)
-				local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not has_auto_paint }) or nil
+				local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not flags.has_auto_paint }) or nil
 				session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
 					vim.schedule(function()
 						spin:stop()
@@ -284,7 +285,7 @@ function M.send(opts)
 		window.add_prompt(prompt)
 		local send_regions = opts.from_chat and {} or regions
 		local spin = spinners.start(regions)
-		local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not has_auto_paint }) or nil
+		local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not flags.has_auto_paint }) or nil
 		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
 			vim.schedule(function()
 				spin:stop()
@@ -296,12 +297,13 @@ function M.send(opts)
 
 	if opts.prompt then
 		local text = opts.prompt
-		local has_ap = text:match("@INFO") ~= nil
-		local has_git = text:match("@GIT") ~= nil
-		local has_hint = text:match("@HINT") ~= nil
-		local has_suggest = text:match("@SUGGEST") ~= nil
-		local has_sub = text:match("@SUB") ~= nil
-		do_send(text, false, false, false, false, has_ap, has_git, has_hint, has_sub, has_suggest)
+		do_send(text, {
+			has_auto_paint = text:match("@INFO") ~= nil,
+			has_git = text:match("@GIT") ~= nil,
+			has_hint = text:match("@HINT") ~= nil,
+			has_suggest = text:match("@SUGGEST") ~= nil,
+			has_sub = text:match("@SUB") ~= nil,
+		})
 	else
 		require("lg.ui.prompt").open(do_send)
 	end
