@@ -53,6 +53,10 @@ function M:get_completions(ctx, callback)
   local result = {}
   for _, item in ipairs(source) do
     if not line:find(item.label, 1, true) then
+      -- @SUB only shows when @HINT or @SUGGEST is already present
+      if item.label == "@SUB" and not (line:find("@HINT", 1, true) or line:find("@SUGGEST", 1, true)) then
+        goto continue
+      end
       table.insert(result, {
         kind = vim.lsp.protocol.CompletionItemKind.Keyword,
         label = item.label:sub(#prefix + 1),
@@ -60,6 +64,7 @@ function M:get_completions(ctx, callback)
         textEdit = { newText = item.label .. " ", range = edit_range },
         documentation = { kind = "markdown", value = item.detail },
       })
+      ::continue::
     end
   end
 

@@ -693,8 +693,11 @@ function M.send_git_subagent(prompt, on_done)
 					git_phase = "done"
 					vim.schedule(function()
 						status.stop("Git analysis done")
+						require("lg.ui.window").finish_subagent()
 						on_done(agent_text)
-						vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
+						vim.defer_fn(function()
+							pcall(function() s.proc:kill(9) end)
+						end, 500)
 					end)
 				end
 			end
@@ -704,11 +707,17 @@ function M.send_git_subagent(prompt, on_done)
 		local method = msg.method or ""
 		if method == "session/update" then
 			local update = msg.params and msg.params.update
-			if update and update.sessionUpdate == "agent_message_chunk" then
-				local content = update.content
-				if content and content.type == "text" and content.text then
-					agent_text = agent_text .. content.text
-					vim.schedule(function() require("lg.ui.window").append_agent_text(content.text) end)
+			if update then
+				if update.sessionUpdate == "agent_message_chunk" then
+					local content = update.content
+					if content and content.type == "text" and content.text then
+						agent_text = agent_text .. content.text
+						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
+					end
+				elseif update.sessionUpdate == "tool_call" then
+					vim.schedule(function() status.update("Git: " .. (update.title or "unknown")) end)
+				elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
+					vim.schedule(function() status.flash("Git tool failed: " .. (update.message or "unknown")) end)
 				end
 			end
 		elseif method == "session/request_permission" then
@@ -924,6 +933,7 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 						status.flash("Tool error: " .. tool_error)
 					end
 					status.stop("Review done")
+					require("lg.ui.window").finish_subagent()
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 					if on_done then on_done(tool_error) end
 				end)
@@ -936,7 +946,12 @@ function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 		if method == "session/update" then
 			local update = msg.params and msg.params.update
 			if update then
-				if update.sessionUpdate == "tool_call" then
+				if update.sessionUpdate == "agent_message_chunk" then
+					local content = update.content
+					if content and content.type == "text" and content.text then
+						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
+					end
+				elseif update.sessionUpdate == "tool_call" then
 					vim.schedule(function()
 						status.update("Tool: " .. (update.title or "unknown"))
 					end)
@@ -1055,6 +1070,7 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 						status.flash("Tool error: " .. tool_error)
 					end
 					status.stop("Suggestions done")
+					require("lg.ui.window").finish_subagent()
 					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 					if on_done then on_done(tool_error) end
 				end)
@@ -1067,7 +1083,12 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 		if method == "session/update" then
 			local update = msg.params and msg.params.update
 			if update then
-				if update.sessionUpdate == "tool_call" then
+				if update.sessionUpdate == "agent_message_chunk" then
+					local content = update.content
+					if content and content.type == "text" and content.text then
+						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
+					end
+				elseif update.sessionUpdate == "tool_call" then
 					vim.schedule(function()
 						status.update("Tool: " .. (update.title or "unknown"))
 					end)

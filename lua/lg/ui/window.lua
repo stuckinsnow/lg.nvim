@@ -236,6 +236,64 @@ function M.append_agent_text(chunk)
   M.refresh()
 end
 
+function M.append_subagent_text(chunk)
+  -- Each subagent run gets its own split; first chunk creates it
+  if not state.sub_active then
+    state.sub_active = { text = "", buf = nil, win = nil }
+    if win_valid(state.wins.context) then
+      local ctx_win = state.wins.context
+      -- Find the bottommost subagent split to insert after, or use context
+      local after = ctx_win
+      for _, s in ipairs(state.sub_splits or {}) do
+        if win_valid(s.win) then after = s.win end
+      end
+      vim.api.nvim_set_current_win(after)
+      vim.cmd("belowright 6split")
+      state.sub_active.win = vim.api.nvim_get_current_win()
+      state.sub_active.buf = vim.api.nvim_create_buf(false, true)
+      vim.bo[state.sub_active.buf].buftype = "nofile"
+      vim.bo[state.sub_active.buf].filetype = "markdown"
+      vim.api.nvim_win_set_buf(state.sub_active.win, state.sub_active.buf)
+      set_win_opts(state.sub_active.win)
+      vim.wo[state.sub_active.win].winfixheight = true
+      vim.keymap.set("n", "q", function() M.close_subagent() end, { buffer = state.sub_active.buf })
+      if win_valid(state.wins.chat) then
+        vim.api.nvim_set_current_win(state.wins.chat)
+      end
+    end
+    state.sub_splits = state.sub_splits or {}
+    table.insert(state.sub_splits, state.sub_active)
+  end
+  local sa = state.sub_active
+  sa.text = sa.text .. chunk
+  if buf_valid(sa.buf) then
+    local lines = vim.split(sa.text, "\n")
+    vim.bo[sa.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(sa.buf, 0, -1, false, lines)
+    vim.bo[sa.buf].modifiable = false
+    if win_valid(sa.win) then
+      pcall(vim.api.nvim_win_set_cursor, sa.win, { #lines, 0 })
+      vim.api.nvim_win_set_height(sa.win, math.min(#lines, 15))
+    end
+  end
+end
+
+--- Mark current subagent run as finished so next one gets a new split
+function M.finish_subagent()
+  state.sub_active = nil
+  table.insert(state.history, { type = "tool", text = "Subagent finished ✓" })
+  M.refresh()
+end
+
+function M.close_subagent()
+  for _, s in ipairs(state.sub_splits or {}) do
+    if win_valid(s.win) then vim.api.nvim_win_close(s.win, true) end
+    if buf_valid(s.buf) then vim.api.nvim_buf_delete(s.buf, { force = true }) end
+  end
+  state.sub_splits = {}
+  state.sub_active = nil
+end
+
 --- Get user input from the chat buffer and send it
 function M.submit()
   local buf = state.bufs.chat
@@ -319,6 +377,7 @@ local function setup_chat_keymaps(buf)
   vim.keymap.set("n", "<CR>", function()
     M.submit()
   end, { buffer = buf, desc = "Send prompt" })
+  vim.keymap.set("n", "q", function() M.close_subagent() end, { buffer = buf, desc = "Close subagent" })
 end
 
 function M.open()
@@ -358,6 +417,7 @@ function M.open()
 end
 
 function M.close()
+  M.close_subagent()
   for _, key in ipairs({ "chat", "context", "regions", "status" }) do
     if win_valid(state.wins[key]) then vim.api.nvim_win_close(state.wins[key], true) end
     state.wins[key] = nil
