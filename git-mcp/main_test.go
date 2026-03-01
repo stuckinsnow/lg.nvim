@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+
+	"lg-git-mcp/internal/git"
+	"lg-git-mcp/internal/protocol"
 	"strings"
 	"testing"
 )
@@ -53,18 +56,18 @@ func TestGitBlameNoPath(t *testing.T) {
 }
 
 func TestUnknownTool(t *testing.T) {
-	_, err := handleToolCall(json.RawMessage(`{"name": "nope", "arguments": {}}`))
+	_, err := git.HandleToolCall(json.RawMessage(`{"name": "nope", "arguments": {}}`))
 	if err == nil {
 		t.Fatal("expected error for unknown tool")
 	}
 }
 
-func callTool(t *testing.T, name, args string) toolResult {
+func callTool(t *testing.T, name, args string) protocol.ToolResult {
 	t.Helper()
 	params := json.RawMessage(`{"name": "` + name + `", "arguments": ` + args + `}`)
-	result, err := handleToolCall(params)
+	result, err := git.HandleToolCall(params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return result.(toolResult)
+	return result.(protocol.ToolResult)
 }

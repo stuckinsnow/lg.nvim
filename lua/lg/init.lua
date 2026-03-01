@@ -28,7 +28,9 @@ function M.setup(opts)
 		vim.api.nvim_create_autocmd("FileType", {
 			group = vim.api.nvim_create_augroup("lg_hint_lsp", { clear = true }),
 			callback = function(ev)
-				if vim.bo[ev.buf].buftype ~= "" then return end
+				if vim.bo[ev.buf].buftype ~= "" then
+					return
+				end
 				vim.lsp.start({
 					name = "lg-hint",
 					cmd = { lsp_bin },
@@ -38,7 +40,11 @@ function M.setup(opts)
 		})
 		-- Attach to already-open buffers
 		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-			if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) ~= "" then
+			if
+				vim.api.nvim_buf_is_loaded(buf)
+				and vim.bo[buf].buftype == ""
+				and vim.api.nvim_buf_get_name(buf) ~= ""
+			then
 				vim.lsp.start({
 					name = "lg-hint",
 					cmd = { lsp_bin },
@@ -58,8 +64,12 @@ function M.setup(opts)
 			enabled = true,
 			score_offset = 100,
 		})
-		pcall(function() blink.add_filetype_source("lgprompt", "lg") end)
-		pcall(function() blink.add_filetype_source("markdown", "lg") end)
+		pcall(function()
+			blink.add_filetype_source("lgprompt", "lg")
+		end)
+		pcall(function()
+			blink.add_filetype_source("markdown", "lg")
+		end)
 	end)
 
 	vim.api.nvim_create_autocmd("VimLeavePre", {

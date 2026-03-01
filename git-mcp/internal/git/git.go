@@ -1,50 +1,12 @@
-package main
+package git
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
+	"lg-git-mcp/internal/protocol"
 	"os/exec"
 	"strings"
 )
-
-type jsonRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type jsonRPCResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id"`
-	Result  any    `json:"result,omitempty"`
-	Error   any    `json:"error,omitempty"`
-}
-
-type textContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type toolResult struct {
-	Content []textContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
-}
-
-type toolSchema struct {
-	Type                 string         `json:"type"`
-	Properties           map[string]any `json:"properties"`
-	Required             []string       `json:"required"`
-	AdditionalProperties *bool          `json:"additionalProperties,omitempty"`
-}
-
-type toolDef struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	InputSchema toolSchema `json:"inputSchema"`
-}
 
 func git(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
@@ -58,7 +20,7 @@ func git(args ...string) (string, error) {
 	return string(out), nil
 }
 
-func handleToolCall(params json.RawMessage) (any, error) {
+func HandleToolCall(params json.RawMessage) (any, error) {
 	var call struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -73,7 +35,9 @@ func handleToolCall(params json.RawMessage) (any, error) {
 		N       int    `json:"n"`
 		Unified int    `json:"unified"`
 	}
-	json.Unmarshal(call.Arguments, &args)
+	if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		return nil, err
+	}
 
 	var out string
 	var err error
@@ -116,7 +80,7 @@ func handleToolCall(params json.RawMessage) (any, error) {
 
 	case "git_blame":
 		if args.Path == "" {
-			return toolResult{Content: []textContent{{Type: "text", Text: "path is required"}}, IsError: true}, nil
+			return protocol.ToolResult{Content: []protocol.TextContent{{Type: "text", Text: "path is required"}}, IsError: true}, nil
 		}
 		out, err = git("blame", args.Path)
 
@@ -125,21 +89,21 @@ func handleToolCall(params json.RawMessage) (any, error) {
 	}
 
 	if err != nil {
-		return toolResult{Content: []textContent{{Type: "text", Text: err.Error()}}, IsError: true}, nil
+		return protocol.ToolResult{Content: []protocol.TextContent{{Type: "text", Text: err.Error()}}, IsError: true}, nil
 	}
-	return toolResult{Content: []textContent{{Type: "text", Text: out}}}, nil
+	return protocol.ToolResult{Content: []protocol.TextContent{{Type: "text", Text: out}}}, nil
 }
 
-func handleToolsList() any {
+func HandleToolsList() any {
 	f := false
 	return struct {
-		Tools []toolDef `json:"tools"`
+		Tools []protocol.ToolDef `json:"tools"`
 	}{
-		Tools: []toolDef{
+		Tools: []protocol.ToolDef{
 			{
 				Name:        "git_log",
 				Description: "Show git commit log. Returns oneline format.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"n":    map[string]any{"type": "integer", "description": "Number of commits (default 20)"},
@@ -151,7 +115,7 @@ func handleToolsList() any {
 			{
 				Name:        "git_show",
 				Description: "Show a commit's full diff and message.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"ref":  map[string]any{"type": "string", "description": "Commit ref (default HEAD)"},
@@ -163,7 +127,7 @@ func handleToolsList() any {
 			{
 				Name:        "git_diff",
 				Description: "Show git diff. No ref = working tree vs index. Use ref like HEAD~1..HEAD for between commits.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"ref":     map[string]any{"type": "string", "description": "Diff ref (e.g. HEAD~1, HEAD~3..HEAD)"},
@@ -176,7 +140,7 @@ func handleToolsList() any {
 			{
 				Name:        "git_blame",
 				Description: "Show git blame for a file.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"path": map[string]any{"type": "string", "description": "File path to blame"},
@@ -185,53 +149,5 @@ func handleToolsList() any {
 				},
 			},
 		},
-	}
-}
-
-func main() {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			break
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		var req jsonRPCRequest
-		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			continue
-		}
-
-		var resp jsonRPCResponse
-		resp.JSONRPC = "2.0"
-		resp.ID = req.ID
-
-		switch req.Method {
-		case "initialize":
-			resp.Result = map[string]any{
-				"protocolVersion": "2024-11-05",
-				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "lg-git-mcp", "version": "0.1.0"},
-			}
-		case "notifications/initialized":
-			continue
-		case "tools/list":
-			resp.Result = handleToolsList()
-		case "tools/call":
-			result, callErr := handleToolCall(req.Params)
-			if callErr != nil {
-				resp.Error = map[string]any{"code": -32603, "message": callErr.Error()}
-			} else {
-				resp.Result = result
-			}
-		default:
-			resp.Error = map[string]any{"code": -32601, "message": "method not found: " + req.Method}
-		}
-
-		out, _ := json.Marshal(resp)
-		fmt.Println(string(out))
 	}
 }

@@ -39,10 +39,10 @@ type toolDef struct {
 }
 
 type toolSchema struct {
-	Type                 string              `json:"type"`
-	Properties           map[string]any      `json:"properties"`
-	Required             []string            `json:"required"`
-	AdditionalProperties *bool               `json:"additionalProperties,omitempty"`
+	Type                 string         `json:"type"`
+	Properties           map[string]any `json:"properties"`
+	Required             []string       `json:"required"`
+	AdditionalProperties *bool          `json:"additionalProperties,omitempty"`
 }
 
 type textContent struct {
@@ -74,9 +74,9 @@ type nvimBatchRequest struct {
 }
 
 var (
-	sockPath   string
-	indexURL   string
-	sessionID  string
+	sockPath  string
+	indexURL  string
+	sessionID string
 )
 
 func init() {
@@ -170,7 +170,7 @@ func sendToNeovim(req any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect to neovim socket: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	data, _ := json.Marshal(req)
 	data = append(data, '\n')
@@ -394,7 +394,7 @@ func handleToolsList() any {
 					Properties: map[string]any{
 						"edit_token": map[string]string{"type": "string", "description": "Edit token from prompt. Pass it exactly if provided."},
 					},
-					Required:   []string{},
+					Required: []string{},
 				},
 			},
 			{

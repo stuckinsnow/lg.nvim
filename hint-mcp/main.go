@@ -4,96 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"lg-hint-mcp/internal/hint"
+	"lg-hint-mcp/internal/protocol"
 )
-
-var hintSockPath string
-var lgSockPath string
-
-func init() {
-	hintSockPath = os.Getenv("LG_HINT_SOCK")
-	if hintSockPath == "" {
-		hintSockPath = "/dev/shm/lg-hint.sock"
-	}
-	lgSockPath = os.Getenv("LG_SOCK")
-	if lgSockPath == "" {
-		lgSockPath = "/dev/shm/lg.sock"
-	}
-}
-
-type jsonRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type jsonRPCResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id"`
-	Result  any    `json:"result,omitempty"`
-	Error   any    `json:"error,omitempty"`
-}
-
-type textContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type toolResult struct {
-	Content []textContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
-}
-
-type paintedRegion struct {
-	File      string `json:"file"`
-	StartLine int    `json:"start_line"`
-	EndLine   int    `json:"end_line"`
-}
-
-func getPaintedRegions() []paintedRegion {
-	conn, err := net.Dial("unix", lgSockPath)
-	if err != nil {
-		return nil
-	}
-	defer conn.Close()
-	data, _ := json.Marshal(map[string]string{"method": "get_regions"})
-	conn.Write(append(data, '\n'))
-	resp, err := bufio.NewReader(conn).ReadBytes('\n')
-	if err != nil {
-		return nil
-	}
-	var regions []paintedRegion
-	json.Unmarshal(resp, &regions)
-	return regions
-}
-
-func hintInScope(file string, line int, regions []paintedRegion) bool {
-	for _, r := range regions {
-		if r.File == file && line >= r.StartLine && line <= r.EndLine {
-			return true
-		}
-	}
-	return false
-}
-
-func sendToLSP(req any) ([]byte, error) {
-	conn, err := net.Dial("unix", hintSockPath)
-	if err != nil {
-		return nil, fmt.Errorf("connect to hint LSP: %w", err)
-	}
-	defer conn.Close()
-	data, _ := json.Marshal(req)
-	data = append(data, '\n')
-	if _, err := conn.Write(data); err != nil {
-		return nil, err
-	}
-	reader := bufio.NewReader(conn)
-	return reader.ReadBytes('\n')
-}
 
 func main() {
 	f := false
@@ -109,12 +26,12 @@ func main() {
 			continue
 		}
 
-		var req jsonRPCRequest
+		var req protocol.Request
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
 			continue
 		}
 
-		var resp jsonRPCResponse
+		var resp protocol.Response
 		resp.JSONRPC = "2.0"
 		resp.ID = req.ID
 
@@ -195,7 +112,7 @@ func main() {
 				}
 
 				// Filter hints to painted regions if any exist
-				regions := getPaintedRegions()
+				regions := hint.GetPaintedRegions()
 				var filtered []json.RawMessage
 				var outOfScope []string
 				if len(regions) > 0 {
@@ -205,7 +122,7 @@ func main() {
 							Line int    `json:"line"`
 						}
 						json.Unmarshal(raw, &h)
-						if hintInScope(h.File, h.Line, regions) {
+						if hint.HintInScope(h.File, h.Line, regions) {
 							filtered = append(filtered, raw)
 						} else {
 							outOfScope = append(outOfScope, fmt.Sprintf("line %d of %s is outside painted regions", h.Line, h.File))
@@ -216,19 +133,22 @@ func main() {
 				}
 
 				if len(filtered) == 0 && len(outOfScope) > 0 {
-					msg := "All hints were outside painted regions — only suggest within painted lines.\n"
+					var b strings.Builder
+					b.WriteString("All hints were outside painted regions — only suggest within painted lines.\n")
 					for _, f := range outOfScope {
-						msg += "- " + f + "\n"
+						b.WriteString("- ")
+						b.WriteString(f)
+						b.WriteByte('\n')
 					}
-					resp.Result = toolResult{
-						Content: []textContent{{Type: "text", Text: msg}},
+					resp.Result = protocol.ToolResult{
+						Content: []protocol.TextContent{{Type: "text", Text: b.String()}},
 						IsError: true,
 					}
 				} else {
-					lspResp, err := sendToLSP(map[string]any{"method": "set_hints", "hints": filtered})
+					lspResp, err := hint.SendToLSP(map[string]any{"method": "set_hints", "hints": filtered})
 					if err != nil {
-						resp.Result = toolResult{
-							Content: []textContent{{Type: "text", Text: "hint failed: " + err.Error()}},
+						resp.Result = protocol.ToolResult{
+							Content: []protocol.TextContent{{Type: "text", Text: "hint failed: " + err.Error()}},
 							IsError: true,
 						}
 					} else {
@@ -240,17 +160,21 @@ func main() {
 						json.Unmarshal(lspResp, &result)
 
 						msg := fmt.Sprintf("%d/%d hint(s) matched and published as diagnostics", result.Matched, result.Total)
+						var b strings.Builder
+						b.WriteString(msg)
 						if len(outOfScope) > 0 {
-							msg += fmt.Sprintf("\n\n%d hint(s) were outside painted regions and were dropped.", len(outOfScope))
+							fmt.Fprintf(&b, "\n\n%d hint(s) were outside painted regions and were dropped.", len(outOfScope))
 						}
 						if len(result.Failures) > 0 {
-							msg += "\n\nFailed to match (these hints were NOT shown to the user — fix and re-call):\n"
+							b.WriteString("\n\nFailed to match (these hints were NOT shown to the user — fix and re-call):\n")
 							for _, f := range result.Failures {
-								msg += "- " + f + "\n"
+								b.WriteString("- ")
+								b.WriteString(f)
+								b.WriteByte('\n')
 							}
 						}
-						resp.Result = toolResult{
-							Content: []textContent{{Type: "text", Text: msg}},
+						resp.Result = protocol.ToolResult{
+							Content: []protocol.TextContent{{Type: "text", Text: b.String()}},
 							IsError: len(result.Failures) > 0,
 						}
 					}

@@ -2,6 +2,11 @@ package main
 
 import (
 	"bufio"
+
+	"lg-lsp/internal/hints"
+	"lg-lsp/internal/lsptype"
+	"lg-lsp/internal/socket"
+	"lg-lsp/internal/transport"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -20,9 +25,9 @@ func TestHintSocket(t *testing.T) {
 	origStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	stdout = bufio.NewWriter(w)
+	transport.Writer = bufio.NewWriter(w)
 
-	startHintSocket()
+	socket.Start(sockPath)
 	time.Sleep(50 * time.Millisecond)
 
 	// Send hints via socket
@@ -47,7 +52,7 @@ func TestHintSocket(t *testing.T) {
 	conn.Close()
 
 	// Read LSP output
-	stdout.Flush()
+	transport.Writer.Flush()
 	w.Close()
 	var lspOut strings.Builder
 	buf := make([]byte, 4096)
@@ -80,10 +85,10 @@ func TestHintSocket(t *testing.T) {
 	if idx < 0 {
 		t.Fatal("no JSON in output")
 	}
-	var msg lspMessage
+	var msg lsptype.Message
 	json.Unmarshal([]byte(output[idx:]), &msg)
 
-	var params publishDiagnosticsParams
+	var params lsptype.PublishDiagnosticsParams
 	json.Unmarshal(msg.Params, &params)
 
 	if len(params.Diagnostics) != 1 {
@@ -119,9 +124,9 @@ func TestHintSocketMatch(t *testing.T) {
 	origStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	stdout = bufio.NewWriter(w)
+	transport.Writer = bufio.NewWriter(w)
 
-	startHintSocket()
+	socket.Start(sockPath)
 	time.Sleep(50 * time.Millisecond)
 
 	conn, err := net.Dial("unix", sockPath)
@@ -136,7 +141,7 @@ func TestHintSocketMatch(t *testing.T) {
 	scanner.Scan()
 	conn.Close()
 
-	stdout.Flush()
+	transport.Writer.Flush()
 	w.Close()
 	var lspOut strings.Builder
 	buf := make([]byte, 4096)
@@ -154,10 +159,10 @@ func TestHintSocketMatch(t *testing.T) {
 
 	output := lspOut.String()
 	idx := strings.Index(output, "{")
-	var msg lspMessage
+	var msg lsptype.Message
 	json.Unmarshal([]byte(output[idx:]), &msg)
 
-	var params publishDiagnosticsParams
+	var params lsptype.PublishDiagnosticsParams
 	json.Unmarshal(msg.Params, &params)
 
 	if len(params.Diagnostics) != 1 {
@@ -181,16 +186,16 @@ func TestHover(t *testing.T) {
 	os.Remove(sockPath)
 
 	// Reset stored diags
-	diagMu.Lock()
-	storedDiags = map[string][]diagnostic{}
-	diagMu.Unlock()
+	hints.Mu.Lock()
+	hints.Diags = map[string][]lsptype.Diagnostic{}
+	hints.Mu.Unlock()
 
 	origStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	stdout = bufio.NewWriter(w)
+	transport.Writer = bufio.NewWriter(w)
 
-	startHintSocket()
+	socket.Start(sockPath)
 	time.Sleep(50 * time.Millisecond)
 
 	// Publish a hint at line 10, cols 4-14
@@ -205,14 +210,14 @@ func TestHover(t *testing.T) {
 	conn.Close()
 
 	// Drain the publishDiagnostics output
-	stdout.Flush()
+	transport.Writer.Flush()
 
 	// Now simulate a textDocument/hover LSP request by calling the handler directly
 	// We check storedDiags to verify hover would work
-	diagMu.Lock()
+	hints.Mu.Lock()
 	uri := "file:///tmp/hover-test.go"
-	diags := storedDiags[uri]
-	diagMu.Unlock()
+	diags := hints.Diags[uri]
+	hints.Mu.Unlock()
 
 	if len(diags) != 1 {
 		// drain pipe before fatal
@@ -227,7 +232,7 @@ func TestHover(t *testing.T) {
 	// Verify the diagnostic is at the right position for hover hit-testing
 	d := diags[0]
 	// Hover at line 9 (0-based), col 5 — should be inside range [4,14)
-	pos := position{Line: 9, Character: 5}
+	pos := lsptype.Position{Line: 9, Character: 5}
 	hit := d.Range.Start.Line <= pos.Line && d.Range.End.Line >= pos.Line &&
 		(d.Range.Start.Line < pos.Line || d.Range.Start.Character <= pos.Character) &&
 		(d.Range.End.Line > pos.Line || d.Range.End.Character >= pos.Character)
@@ -252,7 +257,7 @@ func TestHover(t *testing.T) {
 	}
 
 	// Hover at line 0, col 0 — should miss
-	pos2 := position{Line: 0, Character: 0}
+	pos2 := lsptype.Position{Line: 0, Character: 0}
 	hit2 := d.Range.Start.Line <= pos2.Line && d.Range.End.Line >= pos2.Line
 	if hit2 {
 		w.Close()
@@ -278,9 +283,9 @@ func TestHintSocketClear(t *testing.T) {
 	origStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	stdout = bufio.NewWriter(w)
+	transport.Writer = bufio.NewWriter(w)
 
-	startHintSocket()
+	socket.Start(sockPath)
 	time.Sleep(50 * time.Millisecond)
 
 	conn, err := net.Dial("unix", sockPath)
@@ -298,7 +303,7 @@ func TestHintSocketClear(t *testing.T) {
 	}
 	conn.Close()
 
-	stdout.Flush()
+	transport.Writer.Flush()
 	w.Close()
 	var lspOut strings.Builder
 	buf := make([]byte, 4096)
