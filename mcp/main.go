@@ -2,229 +2,14 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
+	"lg-mcp/internal/nvim"
+	"lg-mcp/internal/protocol"
+	"lg-mcp/internal/search"
 	"os"
-	"os/exec"
 	"strings"
 )
-
-type jsonRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type jsonRPCResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id"`
-	Result  any    `json:"result,omitempty"`
-	Error   any    `json:"error,omitempty"`
-}
-
-type mcpError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type toolDef struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	InputSchema toolSchema `json:"inputSchema"`
-}
-
-type toolSchema struct {
-	Type                 string         `json:"type"`
-	Properties           map[string]any `json:"properties"`
-	Required             []string       `json:"required"`
-	AdditionalProperties *bool          `json:"additionalProperties,omitempty"`
-}
-
-type textContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type toolResult struct {
-	Content []textContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
-}
-
-type nvimRegion struct {
-	RegionID  int      `json:"region_id"`
-	File      string   `json:"file"`
-	StartLine int      `json:"start_line"`
-	EndLine   int      `json:"end_line"`
-	Lines     []string `json:"lines"`
-}
-
-type nvimEdit struct {
-	RegionID int    `json:"region_id"`
-	NewCode  string `json:"new_code"`
-}
-
-type nvimBatchRequest struct {
-	Method string     `json:"method"`
-	Edits  []nvimEdit `json:"edits"`
-}
-
-var (
-	sockPath  string
-	indexURL  string
-	sessionID string
-)
-
-func init() {
-	sockPath = os.Getenv("LG_SOCK")
-	indexURL = os.Getenv("LG_INDEX_URL")
-	sessionID = os.Getenv("LG_SESSION")
-}
-
-func detectGitInfo() (repo, branch, head string) {
-	if out, err := exec.Command("git", "remote", "get-url", "origin").Output(); err == nil {
-		s := strings.TrimSpace(string(out))
-		if i := strings.LastIndex(s, "/"); i >= 0 {
-			repo = strings.TrimSuffix(s[i+1:], ".git")
-		}
-	}
-	if out, err := exec.Command("git", "branch", "--show-current").Output(); err == nil {
-		branch = strings.TrimSpace(string(out))
-	}
-	if branch != "" {
-		if out, err := exec.Command("git", "rev-parse", "origin/"+branch).Output(); err == nil {
-			head = strings.TrimSpace(string(out))
-		}
-	}
-	return
-}
-
-func searchIndex(query string, topN int) (string, error) {
-	repo, branch, head := detectGitInfo()
-	if repo == "" {
-		return "", fmt.Errorf("cannot detect git repo")
-	}
-	if topN == 0 {
-		topN = 15
-	}
-	body, _ := json.Marshal(map[string]any{
-		"repo": repo, "branch": branch, "query": query, "top_n": topN, "head": head,
-	})
-	resp, err := http.Post(indexURL+"/find", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("index API: %s", string(data))
-	}
-	var results []struct {
-		File      string  `json:"file"`
-		StartLine int     `json:"start_line"`
-		EndLine   int     `json:"end_line"`
-		Score     float64 `json:"score"`
-		Content   string  `json:"content"`
-	}
-	if err := json.Unmarshal(data, &results); err != nil {
-		return "", err
-	}
-	if len(results) == 0 {
-		return "No results found.", nil
-	}
-	var sb strings.Builder
-	fullCount := 5
-	if fullCount > len(results) {
-		fullCount = len(results)
-	}
-	for i := 0; i < fullCount; i++ {
-		r := results[i]
-		ext := ""
-		if i := strings.LastIndex(r.File, "."); i >= 0 {
-			ext = r.File[i+1:]
-		}
-		fmt.Fprintf(&sb, "### %s (lines %d-%d, score: %.2f)\n```%s\n%s\n```\n\n", r.File, r.StartLine, r.EndLine, r.Score, ext, r.Content)
-	}
-	var refs []string
-	for i := fullCount; i < len(results); i++ {
-		r := results[i]
-		if r.Score < 0.3 {
-			break
-		}
-		refs = append(refs, fmt.Sprintf("- %s (lines %d-%d, score: %.2f)", r.File, r.StartLine, r.EndLine, r.Score))
-	}
-	if len(refs) > 0 {
-		sb.WriteString("### Also relevant\n")
-		sb.WriteString(strings.Join(refs, "\n"))
-		sb.WriteString("\n")
-	}
-	return sb.String(), nil
-}
-
-func sendToNeovim(req any) ([]byte, error) {
-	conn, err := net.Dial("unix", sockPath)
-	if err != nil {
-		return nil, fmt.Errorf("connect to neovim socket: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	data, _ := json.Marshal(req)
-	data = append(data, '\n')
-	if _, err := conn.Write(data); err != nil {
-		return nil, err
-	}
-
-	reader := bufio.NewReader(conn)
-	return reader.ReadBytes('\n')
-}
-
-func getRegions(editToken string) ([]nvimRegion, error) {
-	req := map[string]string{"method": "get_regions"}
-	if sessionID != "" {
-		req["session"] = sessionID
-	}
-	if editToken != "" {
-		req["edit_token"] = editToken
-	}
-	resp, err := sendToNeovim(req)
-	if err != nil {
-		return nil, err
-	}
-	var regions []nvimRegion
-	if err := json.Unmarshal(resp, &regions); err != nil {
-		return nil, err
-	}
-	return regions, nil
-}
-
-func applyEdits(edits []nvimEdit, editToken string) error {
-	req := map[string]any{"method": "apply_edits", "edits": edits}
-	if sessionID != "" {
-		req["session"] = sessionID
-	}
-	if editToken != "" {
-		req["edit_token"] = editToken
-	}
-	resp, err := sendToNeovim(req)
-	if err != nil {
-		return err
-	}
-	var result struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return err
-	}
-	if result.Error != "" {
-		return fmt.Errorf("%s", result.Error)
-	}
-	return nil
-}
 
 func handleToolCall(params json.RawMessage) (any, error) {
 	var call struct {
@@ -238,48 +23,48 @@ func handleToolCall(params json.RawMessage) (any, error) {
 	switch call.Name {
 	case "paint_edit":
 		var args struct {
-			Edits     []nvimEdit `json:"edits"`
-			EditToken string     `json:"edit_token"`
+			Edits     []protocol.NvimEdit `json:"edits"`
+			EditToken string              `json:"edit_token"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-
-		if err := applyEdits(args.Edits, args.EditToken); err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "edit failed: " + err.Error()}},
+		if err := nvim.ApplyEdits(args.Edits, args.EditToken); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "edit failed: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-
-		return toolResult{
-			Content: []textContent{{Type: "text", Text: fmt.Sprintf("%d region(s) updated", len(args.Edits))}},
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: fmt.Sprintf("%d region(s) updated", len(args.Edits))}},
 		}, nil
 
 	case "get_painted_regions":
 		var args struct {
 			EditToken string `json:"edit_token"`
 		}
-		json.Unmarshal(call.Arguments, &args)
-		regions, err := getRegions(args.EditToken)
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			return nil, err
+		}
+		regions, err := nvim.GetRegions(args.EditToken)
 		if err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "failed to get regions: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "failed to get regions: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
 		data, _ := json.MarshalIndent(regions, "", "  ")
-		return toolResult{
-			Content: []textContent{{Type: "text", Text: string(data)}},
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: string(data)}},
 		}, nil
 
 	case "lg_search_codebase":
-		if indexURL == "" {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "LG_INDEX_URL not set"}},
+		if search.IndexURL == "" {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "LG_INDEX_URL not set"}},
 				IsError: true,
 			}, nil
 		}
@@ -288,20 +73,20 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			TopN  int    `json:"top_n"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-		data, err := searchIndex(args.Query, args.TopN)
+		data, err := search.SearchIndex(args.Query, args.TopN)
 		if err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "search failed: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "search failed: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-		return toolResult{
-			Content: []textContent{{Type: "text", Text: data}},
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: data}},
 		}, nil
 
 	case "get_diagnostics":
@@ -314,15 +99,15 @@ func handleToolCall(params json.RawMessage) (any, error) {
 		if args.Severity == 0 {
 			args.Severity = 2
 		}
-		diags, err := getDiagnostics(args.Severity)
+		diags, err := nvim.GetDiagnostics(args.Severity)
 		if err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "failed to get diagnostics: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "failed to get diagnostics: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-		return toolResult{
-			Content: []textContent{{Type: "text", Text: formatDiagnostics(diags)}},
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: nvim.FormatDiagnostics(diags)}},
 		}, nil
 
 	case "lg_paint_regions":
@@ -335,20 +120,20 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			} `json:"regions"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-		resp, err := sendToNeovim(map[string]any{"method": "paint_regions", "regions": args.Regions})
+		resp, err := nvim.SendToNeovim(map[string]any{"method": "paint_regions", "regions": args.Regions})
 		if err != nil {
-			return toolResult{
-				Content: []textContent{{Type: "text", Text: "paint failed: " + err.Error()}},
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "paint failed: " + err.Error()}},
 				IsError: true,
 			}, nil
 		}
-		return toolResult{
-			Content: []textContent{{Type: "text", Text: string(resp)}},
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: string(resp)}},
 		}, nil
 
 	default:
@@ -359,13 +144,13 @@ func handleToolCall(params json.RawMessage) (any, error) {
 func handleToolsList() any {
 	f := false
 	return struct {
-		Tools []toolDef `json:"tools"`
+		Tools []protocol.ToolDef `json:"tools"`
 	}{
-		Tools: []toolDef{
+		Tools: []protocol.ToolDef{
 			{
 				Name:        "paint_edit",
 				Description: "Replace code in painted regions. Call get_painted_regions first. Send ALL edits in one call.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"edits": map[string]any{
@@ -389,7 +174,7 @@ func handleToolsList() any {
 			{
 				Name:        "get_painted_regions",
 				Description: "List painted regions with their code content.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"edit_token": map[string]string{"type": "string", "description": "Edit token from prompt. Pass it exactly if provided."},
@@ -400,7 +185,7 @@ func handleToolsList() any {
 			{
 				Name:        "lg_search_codebase",
 				Description: "Semantic search over codebase via embeddings.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"query": map[string]string{"type": "string", "description": "Search query"},
@@ -413,7 +198,7 @@ func handleToolsList() any {
 			{
 				Name:        "get_diagnostics",
 				Description: "Get LSP diagnostics from open buffers. Only use when explicitly asked.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"severity": map[string]any{"type": "integer", "description": "Min severity: 1=Error 2=Warn 3=Info 4=Hint"},
@@ -425,7 +210,7 @@ func handleToolsList() any {
 			{
 				Name:        "lg_paint_regions",
 				Description: "Highlight code regions in Neovim. Opens files if needed.",
-				InputSchema: toolSchema{
+				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{
 						"regions": map[string]any{
@@ -451,7 +236,11 @@ func handleToolsList() any {
 }
 
 func main() {
-	if sockPath == "" {
+	nvim.SockPath = os.Getenv("LG_SOCK")
+	nvim.SessionID = os.Getenv("LG_SESSION")
+	search.IndexURL = os.Getenv("LG_INDEX_URL")
+
+	if nvim.SockPath == "" {
 		fmt.Fprintf(os.Stderr, "LG_SOCK not set\n")
 		os.Exit(1)
 	}
@@ -468,12 +257,12 @@ func main() {
 			continue
 		}
 
-		var req jsonRPCRequest
+		var req protocol.JSONRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
 			continue
 		}
 
-		var resp jsonRPCResponse
+		var resp protocol.JSONRPCResponse
 		resp.JSONRPC = "2.0"
 		resp.ID = req.ID
 
@@ -491,12 +280,12 @@ func main() {
 		case "tools/call":
 			result, callErr := handleToolCall(req.Params)
 			if callErr != nil {
-				resp.Error = mcpError{Code: -32603, Message: callErr.Error()}
+				resp.Error = protocol.MCPError{Code: -32603, Message: callErr.Error()}
 			} else {
 				resp.Result = result
 			}
 		default:
-			resp.Error = mcpError{Code: -32601, Message: "method not found: " + req.Method}
+			resp.Error = protocol.MCPError{Code: -32601, Message: "method not found: " + req.Method}
 		}
 
 		out, _ := json.Marshal(resp)
