@@ -282,6 +282,9 @@ function M.send(opts)
 			return
 		end
 
+		if opts.from_chat then
+			prompt = "You are in chat mode. Do NOT use lg_paint_regions, get_painted_regions, or paint_edit tools. Edit files directly with write/edit.\n\n" .. prompt
+		end
 		window.add_prompt(prompt)
 		local send_regions = opts.from_chat and {} or regions
 		local spin = spinners.start(regions)
