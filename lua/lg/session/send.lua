@@ -244,22 +244,40 @@ function M.send(opts)
 		end
 
 		local lsp_context = nil
-		if flags.has_lsp then
+		if flags.has_file_lsp then
+			prompt = prompt:gsub("@FILE_LSP%s*", "")
+			local lsp = require("lg.tools.lsp")
+			local bufnr = vim.api.nvim_get_current_buf()
+			local line_count = vim.api.nvim_buf_line_count(bufnr)
+			local info, errors, warns = lsp.gather_diagnostics(bufnr, 1, line_count)
+			if info ~= "" then
+				local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":~:.")
+				lsp_context = "LSP diagnostics for " .. fname .. ":\n" .. info
+				local summary = fname .. " — " .. errors .. " error(s), " .. warns .. " warning(s)"
+				window.add_tool(summary)
+			end
+		elseif flags.has_lsp then
 			prompt = prompt:gsub("@LSP%s*", "")
 			local lsp = require("lg.tools.lsp")
 			local parts = {}
+			local total_errors, total_warns, total_types = 0, 0, 0
 			for _, r in ipairs(regions) do
 				if vim.api.nvim_buf_is_valid(r.bufnr) then
-					local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
+					local info, e, w, t = lsp.gather(r.bufnr, r.start_line, r.end_line)
 					if info ~= "" then
 						local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.")
 						table.insert(parts, "LSP info for " .. fname .. ":\n" .. info)
-						window.add_result("LSP info for " .. fname .. ":\n" .. info)
+						total_errors = total_errors + e
+						total_warns = total_warns + w
+						total_types = total_types + t
 					end
 				end
 			end
-			if #parts > 0 then lsp_context = table.concat(parts, "\n\n") end
-			window.refresh()
+			if #parts > 0 then
+				lsp_context = table.concat(parts, "\n\n")
+				local summary = #parts .. " region(s): " .. total_errors .. "E " .. total_warns .. "W " .. total_types .. " types"
+				window.add_tool(summary)
+			end
 		end
 
 		local tsc_context = nil
@@ -307,6 +325,8 @@ function M.send(opts)
 	if opts.prompt then
 		local text = opts.prompt
 		do_send(text, {
+			has_file_lsp = text:match("@FILE_LSP") ~= nil,
+			has_lsp = text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
 			has_auto_paint = text:match("@INFO") ~= nil,
 			has_git = text:match("@GIT") ~= nil,
 			has_hint = text:match("@HINT") ~= nil,

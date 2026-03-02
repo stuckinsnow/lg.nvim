@@ -3,6 +3,7 @@
 local M = {}
 
 --- @class PromptFlags
+--- @field has_file_lsp boolean
 --- @field has_lsp boolean
 --- @field has_tsc boolean
 --- @field has_diag boolean
@@ -50,7 +51,8 @@ function M.open(cb, on_cancel)
 		vim.api.nvim_buf_delete(buf, { force = true })
 		if text ~= "" then
 			cb(text, {
-				has_lsp = text:match("@LSP") ~= nil,
+				has_file_lsp = text:match("@FILE_LSP") ~= nil,
+				has_lsp = text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
 				has_tsc = text:match("@TSC") ~= nil,
 				has_diag = text:match("@DIAG") ~= nil,
 				has_search = text:match("@SEARCH") ~= nil,
