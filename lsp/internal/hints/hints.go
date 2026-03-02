@@ -18,7 +18,7 @@ var Details = map[string][]string{} // parallel to Diags — hover content
 var Mu sync.Mutex
 
 func SeverityToLSP(s string) int {
-	return 3 // always info
+	return 4 // always hint
 }
 
 func FileToURI(path string) string {
