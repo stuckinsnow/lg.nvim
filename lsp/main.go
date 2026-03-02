@@ -77,6 +77,7 @@ func main() {
 			}
 			json.Unmarshal(msg.Params, &p)
 			var parts []string
+			var hoverRange *lsptype.Range
 			hints.Mu.Lock()
 			diags := hints.Diags[p.TextDocument.URI]
 			details := hints.Details[p.TextDocument.URI]
@@ -84,6 +85,9 @@ func main() {
 				if d.Range.Start.Line <= p.Position.Line && d.Range.End.Line >= p.Position.Line &&
 					(d.Range.Start.Line < p.Position.Line || d.Range.Start.Character <= p.Position.Character) &&
 					(d.Range.End.Line > p.Position.Line || d.Range.End.Character >= p.Position.Character) {
+					if hoverRange == nil {
+						hoverRange = &d.Range
+					}
 					if i < len(details) && details[i] != "" {
 						parts = append(parts, details[i])
 					} else {
@@ -94,9 +98,13 @@ func main() {
 			hints.Mu.Unlock()
 			if len(parts) > 0 {
 				combined := strings.Join(parts, "\n\n---\n\n")
-				result, _ := json.Marshal(map[string]any{
+				resp := map[string]any{
 					"contents": map[string]string{"kind": "markdown", "value": combined},
-				})
+				}
+				if hoverRange != nil {
+					resp["range"] = hoverRange
+				}
+				result, _ := json.Marshal(resp)
 				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(result)})
 			} else {
 				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: nil})

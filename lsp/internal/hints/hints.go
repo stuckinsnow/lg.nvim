@@ -30,6 +30,10 @@ func Truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
+func isWordChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+}
+
 func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string) {
 	// Cache file lines
 	fileLines := map[string][]string{}
@@ -92,8 +96,29 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 			col = 0
 		}
 		if endCol < 0 {
-			endLine = endLine + 1
-			endCol = 0
+			// No end column — expand to word at col position
+			lines := readFile(h.File)
+			if lines != nil && line < len(lines) && col < len(lines[line]) {
+				l := lines[line]
+				start, end_ := col, col
+				for start > 0 && isWordChar(l[start-1]) {
+					start--
+				}
+				for end_ < len(l) && isWordChar(l[end_]) {
+					end_++
+				}
+				if end_ > start {
+					col = start
+					endCol = end_
+					endLine = line
+				} else {
+					endLine = line + 1
+					endCol = 0
+				}
+			} else {
+				endLine = endLine + 1
+				endCol = 0
+			}
 		}
 
 		uri := FileToURI(h.File)
