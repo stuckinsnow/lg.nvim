@@ -24,11 +24,13 @@ lua/lg/
 └── window.lua    -- Optional side panel (regions + history)
 
 mcp/
-├── main.go       -- MCP server (paint_edit + get_painted_regions tools)
-├── git-mcp/
-│   └── main.go   -- Git MCP server (git_log, git_show, git_diff, git_blame)
-└── hint-mcp/
-    └── main.go   -- Hint MCP server (lg_hint tool for AI diagnostics)
+└── main.go       -- MCP server (paint_edit + get_painted_regions tools)
+
+git-mcp/
+└── main.go       -- Git MCP server (git_log, git_show, git_diff, git_blame)
+
+hint-mcp/
+└── main.go       -- Hint MCP server (lg_hint tool for AI diagnostics)
 
 lsp/
 └── main.go       -- Hint LSP display server (receives hints, publishes diagnostics)
@@ -82,8 +84,8 @@ A `build.sh` script builds all Go binaries:
 
 This builds:
 - `mcp/lg-mcp` — main MCP server
-- `mcp/git-mcp/lg-git-mcp` — git MCP server
-- `mcp/hint-mcp/lg-hint-mcp` — hint MCP server
+- `git-mcp/lg-git-mcp` — git MCP server
+- `hint-mcp/lg-hint-mcp` — hint MCP server
 - `lsp/lg-lsp` — hint LSP display server
 
 To run tests:
@@ -91,7 +93,7 @@ To run tests:
 ```bash
 cd lsp && go test -v
 cd mcp && go test -v
-cd mcp/git-mcp && go test -v
+cd git-mcp && go test -v
 ```
 
 ## MCP Server Setup
@@ -111,7 +113,7 @@ Add to `~/.kiro/settings/mcp.json`:
       "env": { "LG_SOCK": "/dev/shm/lg.sock" }
     },
     "lg-git": {
-      "command": "/path/to/lg/mcp/git-mcp/lg-git-mcp",
+      "command": "/path/to/lg/git-mcp/lg-git-mcp",
       "args": []
     }
   }
@@ -125,7 +127,7 @@ For the reviewer agent mode, add to `~/.kiro/agents/reviewer.json`:
   "name": "reviewer",
   "mcpServers": {
     "lg-hint": {
-      "command": "/path/to/lg/mcp/hint-mcp/lg-hint-mcp",
+      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
       "args": [],
       "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock" }
     }
@@ -150,7 +152,7 @@ Add to `~/.config/opencode/opencode.json`:
     },
     "lg-git": {
       "type": "local",
-      "command": ["/path/to/lg/mcp/git-mcp/lg-git-mcp"],
+      "command": ["/path/to/lg/git-mcp/lg-git-mcp"],
       "enabled": true
     }
   }
