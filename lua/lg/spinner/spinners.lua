@@ -33,10 +33,21 @@ local function render()
 	end
 end
 
-local function clear_regions(regions)
+local function clear_regions(regions, other_handles)
+	-- Collect buffers used by other active handles
+	local busy = {}
+	for _, h in ipairs(other_handles) do
+		for _, r in ipairs(h.regions) do busy[r.bufnr] = true end
+	end
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
-			pcall(vim.api.nvim_buf_clear_namespace, r.bufnr, ns, r.start_line - 1, r.end_line)
+			if busy[r.bufnr] then
+				-- Other spinner active on same buffer — clear original range only
+				pcall(vim.api.nvim_buf_clear_namespace, r.bufnr, ns, r.start_line - 1, r.end_line)
+			else
+				-- Safe to clear entire namespace for this buffer
+				pcall(vim.api.nvim_buf_clear_namespace, r.bufnr, ns, 0, -1)
+			end
 		end
 	end
 end
@@ -66,7 +77,7 @@ function M.start(regions)
 			for i, h in ipairs(handles) do
 				if h == handle then table.remove(handles, i); break end
 			end
-			clear_regions(snapshot)
+			clear_regions(snapshot, handles)
 			stop_timer()
 		end,
 	}

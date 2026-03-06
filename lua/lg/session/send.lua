@@ -145,7 +145,7 @@ function M.send(opts)
 			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@HINT " .. prompt)
 			status.start("Reviewing" .. (flags.has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
-			local hint_fn = flags.has_sub and session.send_hint_subagent or session.send_hint
+			local hint_fn = (flags.has_sub or session.is_busy()) and session.send_hint_subagent or session.send_hint
 			local retried = false
 			local ctx_regions = context.get_all()
 			local before = count_ai_diagnostics()
@@ -182,7 +182,7 @@ function M.send(opts)
 			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@SUGGEST " .. prompt)
 			status.start("Suggesting" .. (flags.has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
-			local suggest_fn = flags.has_sub and session.send_suggest_subagent or session.send_suggest
+			local suggest_fn = (flags.has_sub or session.is_busy()) and session.send_suggest_subagent or session.send_suggest
 			local retried = false
 			local ctx_regions = context.get_all()
 			local before = count_ai_diagnostics()
