@@ -15,7 +15,9 @@ local function count_ai_diagnostics()
 	local n = 0
 	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
 		local ns = vim.lsp.diagnostic.get_namespace(client.id, false)
-		if ns then n = n + #vim.diagnostic.get(nil, { namespace = ns }) end
+		if ns then
+			n = n + #vim.diagnostic.get(nil, { namespace = ns })
+		end
 	end
 	return n
 end
@@ -29,44 +31,56 @@ local function git_snapshot_cb(snap_opts)
 		baseline = (obj.code == 0 and obj.stdout) or ""
 	end)
 	return function()
-		vim.system({ "git", "diff", "--unified=0" }, {}, vim.schedule_wrap(function(obj)
-			local current = (obj.code == 0 and obj.stdout) or ""
-			if current == baseline then return end
-			local cwd = vim.fn.getcwd() .. "/"
-			local items = {}
-			local file
-			for line in current:gmatch("[^\n]+") do
-				local f = line:match("^%+%+%+ b/(.+)")
-				if f then file = cwd .. f end
-				if file then
-					local s = line:match("^@@ .+ %+(%d+)")
-					if s then
-						table.insert(items, { file = file, line = tonumber(s) })
-					end
+		vim.system(
+			{ "git", "diff", "--unified=0" },
+			{},
+			vim.schedule_wrap(function(obj)
+				local current = (obj.code == 0 and obj.stdout) or ""
+				if current == baseline then
+					return
 				end
-			end
-			if #items > 0 then
-				local old_hunks = {}
-				local bf
-				for line in baseline:gmatch("[^\n]+") do
+				local cwd = vim.fn.getcwd() .. "/"
+				local items = {}
+				local file
+				for line in string.gmatch(current, "[^\n]+") do
 					local f = line:match("^%+%+%+ b/(.+)")
-					if f then bf = cwd .. f end
-					if bf then
+					if f then
+						file = cwd .. f
+					end
+					if file then
 						local s = line:match("^@@ .+ %+(%d+)")
-						if s then old_hunks[bf .. ":" .. s] = true end
+						if s then
+							table.insert(items, { file = file, line = tonumber(s) })
+						end
 					end
 				end
-				local new_items = {}
-				for _, item in ipairs(items) do
-					if not old_hunks[item.file .. ":" .. item.line] then
-						table.insert(new_items, item)
+				if #items > 0 then
+					local old_hunks = {}
+					local bf
+					for line in string.gmatch(baseline or "", "[^\n]+") do
+						local f = line:match("^%+%+%+ b/(.+)")
+						if f then
+							bf = cwd .. f
+						end
+						if bf then
+							local s = line:match("^@@ .+ %+(%d+)")
+							if s then
+								old_hunks[bf .. ":" .. s] = true
+							end
+						end
+					end
+					local new_items = {}
+					for _, item in ipairs(items) do
+						if not old_hunks[item.file .. ":" .. item.line] then
+							table.insert(new_items, item)
+						end
+					end
+					if #new_items > 0 then
+						require("lg.changes").set(new_items, { skip_qf = snap_opts.skip_qf })
 					end
 				end
-				if #new_items > 0 then
-					require("lg.changes").set(new_items, { skip_qf = snap_opts.skip_qf })
-				end
-			end
-		end))
+			end)
+		)
 	end
 end
 
@@ -107,29 +121,49 @@ function M.send(opts)
 			end
 			prompt = prompt:gsub("#%./", "@")
 		end
-		if #regions == 0 and not opts.from_chat and not flags.has_auto_paint and not flags.has_git and not flags.has_hint and not flags.has_suggest then
+		if
+			#regions == 0
+			and not opts.from_chat
+			and not flags.has_auto_paint
+			and not flags.has_git
+			and not flags.has_hint
+			and not flags.has_suggest
+		then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
 		end
-		if not prompt or prompt == "" then return end
+		if not prompt or prompt == "" then
+			return
+		end
 
 		if flags.has_git then
 			local git_prompt = prompt:gsub("@GIT%s*", "")
 			window.add_prompt(prompt)
 			status.start("Git analysis (Haiku)...")
 			session.send_git_subagent(
-				"You are a git analysis assistant. Use the git tools to investigate the user's question. Be concise and specific — your output will be used as context for another AI.\n\n" .. git_prompt,
+				"You are a git analysis assistant. Use the git tools to investigate the user's question. Be concise and specific — your output will be used as context for another AI.\n\n"
+					.. git_prompt,
 				function(result)
 					vim.schedule(function()
 						if result and result ~= "" then
-							local full_prompt = "The following git analysis was already shown to the user by a subagent — do NOT repeat or summarize it. Just act on the user's request using this context.\n\nGit analysis:\n" .. result .. "\n\nUser request:\n" .. git_prompt
+							local full_prompt = "The following git analysis was already shown to the user by a subagent — do NOT repeat or summarize it. Just act on the user's request using this context.\n\nGit analysis:\n"
+								.. result
+								.. "\n\nUser request:\n"
+								.. git_prompt
 							local send_regions = opts.from_chat and {} or regions
-							session.send(full_prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
-								vim.schedule(function()
-									spinners.stop()
-									if not opts.from_chat then window.refresh() end
-								end)
-							end)
+							session.send(
+								full_prompt,
+								send_regions,
+								opts.from_chat and {} or context.get_all(),
+								function()
+									vim.schedule(function()
+										spinners.stop()
+										if not opts.from_chat then
+											window.refresh()
+										end
+									end)
+								end
+							)
 						else
 							status.stop("Git analysis empty")
 						end
@@ -156,16 +190,22 @@ function M.send(opts)
 						retried = true
 						status.flash("No hints published — retrying")
 						status.start("Retrying review…")
-						hint_fn("Your previous attempt produced zero diagnostics in the editor. You MUST call the lg_hint tool. If the tool errored, fix the arguments and try again.\n\n" .. prompt, regions, ctx_regions, function()
-							vim.defer_fn(function()
-								spin:stop()
-								local n2 = count_ai_diagnostics() - before
-								if n2 <= 0 then
-									status.flash("Retry failed — no hints")
-								end
-								status.stop("Review done — " .. math.max(n2, 0) .. " hint(s)")
-							end, 500)
-						end)
+						hint_fn(
+							"Your previous attempt produced zero diagnostics in the editor. You MUST call the lg_hint tool. If the tool errored, fix the arguments and try again.\n\n"
+								.. prompt,
+							regions,
+							ctx_regions,
+							function()
+								vim.defer_fn(function()
+									spin:stop()
+									local n2 = count_ai_diagnostics() - before
+									if n2 <= 0 then
+										status.flash("Retry failed — no hints")
+									end
+									status.stop("Review done — " .. math.max(n2, 0) .. " hint(s)")
+								end, 500)
+							end
+						)
 					else
 						spin:stop()
 						status.stop("Review done — " .. n .. " hint(s)")
@@ -182,7 +222,8 @@ function M.send(opts)
 			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@SUGGEST " .. prompt)
 			status.start("Suggesting" .. (flags.has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
-			local suggest_fn = (flags.has_sub or session.is_busy()) and session.send_suggest_subagent or session.send_suggest
+			local suggest_fn = (flags.has_sub or session.is_busy()) and session.send_suggest_subagent
+				or session.send_suggest
 			local retried = false
 			local ctx_regions = context.get_all()
 			local before = count_ai_diagnostics()
@@ -193,16 +234,22 @@ function M.send(opts)
 						retried = true
 						status.flash("No suggestions published — retrying")
 						status.start("Retrying suggestions…")
-						suggest_fn("Your previous attempt produced zero diagnostics in the editor. You MUST call the lg_suggest tool. If the tool errored, fix the arguments and try again.\n\n" .. prompt, regions, ctx_regions, function()
-							vim.defer_fn(function()
-								spin:stop()
-								local n2 = count_ai_diagnostics() - before
-								if n2 <= 0 then
-									status.flash("Retry failed — no suggestions")
-								end
-								status.stop("Suggestions done — " .. math.max(n2, 0) .. " suggestion(s)")
-							end, 500)
-						end)
+						suggest_fn(
+							"Your previous attempt produced zero diagnostics in the editor. You MUST call the lg_suggest tool. If the tool errored, fix the arguments and try again.\n\n"
+								.. prompt,
+							regions,
+							ctx_regions,
+							function()
+								vim.defer_fn(function()
+									spin:stop()
+									local n2 = count_ai_diagnostics() - before
+									if n2 <= 0 then
+										status.flash("Retry failed — no suggestions")
+									end
+									status.stop("Suggestions done — " .. math.max(n2, 0) .. " suggestion(s)")
+								end, 500)
+							end
+						)
 					else
 						spin:stop()
 						status.stop("Suggestions done — " .. n .. " suggestion(s)")
@@ -233,11 +280,17 @@ function M.send(opts)
 		end
 		if flags.has_diag then
 			prompt = prompt:gsub("@DIAG%s*", "")
-			table.insert(tool_hints, "Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits.")
+			table.insert(
+				tool_hints,
+				"Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits."
+			)
 		end
 		if flags.has_search then
 			prompt = prompt:gsub("@SEARCH%s*", "")
-			table.insert(tool_hints, "Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed.")
+			table.insert(
+				tool_hints,
+				"Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed."
+			)
 		end
 		if #tool_hints > 0 then
 			prompt = table.concat(tool_hints, "\n") .. "\n\n" .. prompt
@@ -275,7 +328,14 @@ function M.send(opts)
 			end
 			if #parts > 0 then
 				lsp_context = table.concat(parts, "\n\n")
-				local summary = #parts .. " region(s): " .. total_errors .. "E " .. total_warns .. "W " .. total_types .. " types"
+				local summary = #parts
+					.. " region(s): "
+					.. total_errors
+					.. "E "
+					.. total_warns
+					.. "W "
+					.. total_types
+					.. " types"
 				window.add_tool(summary)
 			end
 		end
@@ -284,28 +344,36 @@ function M.send(opts)
 		if flags.has_tsc then
 			prompt = prompt:gsub("@TSC%s*", "")
 			status.start("Running tsc…")
-			vim.system({ "tsc", "--noEmit" }, {}, vim.schedule_wrap(function(obj)
-				if obj.code ~= 0 and obj.stdout ~= "" then
-					tsc_context = obj.stdout
-					window.add_result("tsc --noEmit:\n" .. obj.stdout)
-				else
-					window.add_result("tsc: no errors")
-				end
-				window.refresh()
-				status.stop("tsc done")
+			vim.system(
+				{ "tsc", "--noEmit" },
+				{},
+				vim.schedule_wrap(function(obj)
+					if obj.code ~= 0 and obj.stdout ~= "" then
+						tsc_context = obj.stdout
+						window.add_result("tsc --noEmit:\n" .. obj.stdout)
+					else
+						window.add_result("tsc: no errors")
+					end
+					window.refresh()
+					status.stop("tsc done")
 
-				window.add_prompt(prompt)
-				local sr = opts.from_chat and {} or regions
-				local spin = spinners.start(regions)
-				local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not flags.has_auto_paint }) or nil
-				session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
-					vim.schedule(function()
-						spin:stop()
-						if not opts.from_chat then window.refresh() end
-						if on_done then on_done() end
-					end)
-				end, lsp_context, tsc_context)
-			end))
+					window.add_prompt(prompt)
+					local sr = opts.from_chat and {} or regions
+					local spin = spinners.start(regions)
+					local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not flags.has_auto_paint }) or nil
+					session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
+						vim.schedule(function()
+							spin:stop()
+							if not opts.from_chat then
+								window.refresh()
+							end
+							if on_done then
+								on_done()
+							end
+						end)
+					end, lsp_context, tsc_context)
+				end)
+			)
 			return
 		end
 
@@ -316,8 +384,12 @@ function M.send(opts)
 		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
 			vim.schedule(function()
 				spin:stop()
-				if not opts.from_chat then window.refresh() end
-				if on_done then on_done() end
+				if not opts.from_chat then
+					window.refresh()
+				end
+				if on_done then
+					on_done()
+				end
 			end)
 		end, lsp_context, tsc_context)
 	end
@@ -325,13 +397,13 @@ function M.send(opts)
 	if opts.prompt then
 		local text = opts.prompt
 		do_send(text, {
-			has_file_lsp = text:match("@FILE_LSP") ~= nil,
-			has_lsp = text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
-			has_auto_paint = text:match("@INFO") ~= nil,
-			has_git = text:match("@GIT") ~= nil,
-			has_hint = text:match("@HINT") ~= nil,
-			has_suggest = text:match("@SUGGEST") ~= nil,
-			has_sub = text:match("@SUB") ~= nil,
+			has_file_lsp = text and text:match("@FILE_LSP") ~= nil,
+			has_lsp = text and text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
+			has_auto_paint = text and text:match("@INFO") ~= nil,
+			has_git = text and text:match("@GIT") ~= nil,
+			has_hint = text and text:match("@HINT") ~= nil,
+			has_suggest = text and text:match("@SUGGEST") ~= nil,
+			has_sub = text and text:match("@SUB") ~= nil,
 		})
 	else
 		require("lg.ui.prompt").open(do_send)

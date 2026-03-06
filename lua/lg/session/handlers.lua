@@ -43,11 +43,15 @@ function M.handle_main(session, msg)
 	if msg.id and not msg.method then
 		if msg.result and msg.result.stopReason then
 			local cb = session._on_done and session._on_done[msg.id]
-			if cb then session._on_done[msg.id] = nil end
+			if cb then
+				session._on_done[msg.id] = nil
+			end
 			vim.schedule(function()
 				status.stop("Done")
 				vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-				if cb then cb() end
+				if cb then
+					cb()
+				end
 			end)
 		end
 		return
@@ -112,7 +116,6 @@ function M.handle_main(session, msg)
 				if not session._seen_tool_calls[update.toolCallId] then
 					session._seen_tool_calls[update.toolCallId] = true
 					local hunk = require("lg.ui.hunk")
-					local loc_path = update.locations and update.locations[1] and update.locations[1].path
 					for _, c in ipairs(update.content) do
 						if c.type == "diff" and c.path and c.oldText and c.newText then
 							hunk.propose_edit(c.path, c.oldText, c.newText)

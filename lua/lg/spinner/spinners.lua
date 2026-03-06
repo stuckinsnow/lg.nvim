@@ -23,7 +23,9 @@ end
 local function render()
 	tick = tick + 1
 	local Spinner = get_spinner_mod()
-	if not Spinner.render_region then return end
+	if not Spinner.render_region then
+		return
+	end
 	for _, h in ipairs(handles) do
 		for _, r in ipairs(h.regions) do
 			if vim.api.nvim_buf_is_valid(r.bufnr) then
@@ -37,7 +39,9 @@ local function clear_regions(regions, other_handles)
 	-- Collect buffers used by other active handles
 	local busy = {}
 	for _, h in ipairs(other_handles) do
-		for _, r in ipairs(h.regions) do busy[r.bufnr] = true end
+		for _, r in ipairs(h.regions) do
+			busy[r.bufnr] = true
+		end
 	end
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
@@ -53,18 +57,34 @@ local function clear_regions(regions, other_handles)
 end
 
 local function start_timer()
-	if timer then return end
+	if timer then
+		return
+	end
 	tick = 0
 	timer = vim.uv.new_timer()
-	timer:start(0, 150, vim.schedule_wrap(function()
-		if #handles == 0 then return end
-		render()
-	end))
+	if timer then
+		timer:start(
+			0,
+			150,
+			vim.schedule_wrap(function()
+				if #handles == 0 then
+					return
+				end
+				render()
+			end)
+		)
+	end
 end
 
 local function stop_timer()
-	if #handles > 0 then return end
-	if timer then timer:stop(); timer:close(); timer = nil end
+	if #handles > 0 then
+		return
+	end
+	if timer then
+		timer:stop()
+		timer:close()
+		timer = nil
+	end
 end
 
 function M.start(regions)
@@ -75,7 +95,10 @@ function M.start(regions)
 	return {
 		stop = function()
 			for i, h in ipairs(handles) do
-				if h == handle then table.remove(handles, i); break end
+				if h == handle then
+					table.remove(handles, i)
+					break
+				end
 			end
 			clear_regions(snapshot, handles)
 			stop_timer()
