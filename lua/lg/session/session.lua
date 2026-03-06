@@ -582,6 +582,146 @@ function M.info()
 	vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
 
+-- ── Auto-approve permission requests ───────────────────────────────
+
+local function auto_approve(s, msg)
+	local tool_options = msg.params and msg.params.options or {}
+	local option_id
+	for _, opt in ipairs(tool_options) do
+		if opt.kind == "allow_always" or opt.kind == "allow_once" then
+			option_id = opt.optionId; break
+		end
+	end
+	option_id = option_id or (tool_options[1] and tool_options[1].optionId)
+	if option_id and msg.id then
+		write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
+	end
+end
+
+-- ── Generic ephemeral subagent ─────────────────────────────────────
+--
+-- Lifecycle: spawn → [set_model] → set_mode → prompt → done → kill
+--
+--- @param config { mode_id?: string, client_name: string, prompt: table, model_id?: string, cmd?: string[], label: string, on_text?: fun(text:string), on_done: fun(text:string, tool_error:string?), on_fail?: fun(), track_tool_errors?: boolean, finish_subagent?: boolean, fire_autocmds?: boolean }
+local function run_subagent(config)
+	local agent_text = ""
+	local tool_error = nil
+	-- Determine starting phase: set_model → set_mode → prompt (skipping steps that aren't needed)
+	local phase = (config.model_id and "set_model") or (config.mode_id and "set_mode") or "prompt"
+
+	local function advance_to_prompt(s)
+		if phase == "set_model" then
+			phase = config.mode_id and "set_mode" or "prompt"
+		elseif phase == "set_mode" then
+			phase = "prompt"
+		end
+		if phase == "set_mode" then
+			local id = s.next_id; s.next_id = id + 1
+			write(s, {
+				jsonrpc = "2.0", id = id, method = "session/set_mode",
+				params = { sessionId = s.session_id, modeId = config.mode_id },
+			})
+		elseif phase == "prompt" then
+			local id = s.next_id; s.next_id = id + 1
+			write(s, {
+				jsonrpc = "2.0", id = id, method = "session/prompt",
+				params = { sessionId = s.session_id, prompt = config.prompt },
+			})
+		end
+	end
+
+	local function handler(s, msg)
+		if msg.id and not msg.method then
+			if msg.error then
+				vim.schedule(function()
+					status.stop(config.label .. " error")
+					status.flash("RPC error: " .. (msg.error.message or vim.inspect(msg.error)))
+				end)
+				return
+			end
+
+			if phase == "set_model" or phase == "set_mode" then
+				advance_to_prompt(s)
+			elseif phase == "prompt" and msg.result and msg.result.stopReason then
+				vim.schedule(function()
+					if tool_error then status.flash("Tool error: " .. tool_error) end
+					status.stop(config.label .. " done")
+					if config.finish_subagent ~= false then require("lg.ui.window").finish_subagent() end
+					if config.fire_autocmds ~= false then vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" }) end
+					config.on_done(agent_text, tool_error)
+				end)
+				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
+			end
+			return
+		end
+
+		local method = msg.method or ""
+		if method == "session/update" then
+			local update = msg.params and msg.params.update
+			if not update then return end
+			if update.sessionUpdate == "agent_message_chunk" then
+				local content = update.content
+				if content and content.type == "text" and content.text then
+					agent_text = agent_text .. content.text
+					if config.on_text then
+						vim.schedule(function() config.on_text(content.text) end)
+					else
+						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
+					end
+				end
+			elseif update.sessionUpdate == "tool_call" then
+				vim.schedule(function() status.update(config.label .. ": " .. (update.title or "unknown")) end)
+			elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
+				if config.track_tool_errors ~= false then
+					tool_error = update.message or update.title or "unknown error"
+				end
+				vim.schedule(function() status.flash("Tool failed: " .. (update.message or update.title or "unknown")) end)
+			end
+		elseif method == "session/request_permission" then
+			auto_approve(s, msg)
+		end
+	end
+
+	status.start(config.label .. "...")
+	if config.fire_autocmds ~= false then
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+	end
+
+	spawn_session({
+		cmd = config.cmd or opts.cmd,
+		mcp_servers = {},
+		client_name = config.client_name,
+		on_message = handler,
+		on_fail = function()
+			status.stop(config.label .. " failed")
+			if config.on_fail then config.on_fail()
+			else config.on_done("", nil) end
+		end,
+	}, function(s)
+		if not s then return end
+		if config.model_id then
+			local id = s.next_id; s.next_id = id + 1
+			write(s, {
+				jsonrpc = "2.0", id = id, method = "session/set_model",
+				params = { sessionId = s.session_id, modelId = config.model_id },
+			})
+		elseif config.mode_id then
+			local id = s.next_id; s.next_id = id + 1
+			write(s, {
+				jsonrpc = "2.0", id = id, method = "session/set_mode",
+				params = { sessionId = s.session_id, modeId = config.mode_id },
+			})
+		else
+			-- No model or mode to set — go straight to prompt
+			local id = s.next_id; s.next_id = id + 1
+			write(s, {
+				jsonrpc = "2.0", id = id, method = "session/prompt",
+				params = { sessionId = s.session_id, prompt = config.prompt },
+			})
+		end
+	end)
+end
+
 -- ── Oneshot session (ephemeral) ────────────────────────────────────
 
 local oneshot_active = false
@@ -595,63 +735,26 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 	local svr = require("lg.session.server")
 	local sid = svr.register_session(regions)
 
-	local function silent_handler(s, msg)
-		if msg.id and not msg.method then
-			if msg.result and msg.result.stopReason then
-				vim.schedule(function()
-					status.stop("Quick edit done")
-					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if s._on_done then s._on_done(); s._on_done = nil end
-				end)
-			end
-			return
-		end
-		local method = msg.method or ""
-		if method == "session/request_permission" then
-			local tool_options = msg.params and msg.params.options or {}
-			local option_id
-			for _, opt in ipairs(tool_options) do
-				if opt.kind == "allow_always" or opt.kind == "allow_once" then
-					option_id = opt.optionId; break
-				end
-			end
-			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
-			if option_id and msg.id then
-				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
-			end
-		end
-	end
+	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
+	status.start("Quick edit...")
 
-	spawn_session({
-		cmd = opts.cmd,
-		mcp_servers = {},
+	run_subagent({
+		mode_id = "lg-oneshot",
 		client_name = "lg-quick",
-		on_message = silent_handler,
-	}, function(sess)
-		if not sess then oneshot_active = false; svr.unregister_session(sid); return end
-
-		local mid = sess.next_id; sess.next_id = mid + 1
-		write(sess, {
-			jsonrpc = "2.0", id = mid, method = "session/set_mode",
-			params = { sessionId = sess.session_id, modeId = "lg-oneshot" },
-		})
-
-		sess._on_done = function()
+		prompt = messages,
+		label = "Quick edit",
+		finish_subagent = false,
+		track_tool_errors = false,
+		on_done = function()
 			oneshot_active = false
 			svr.unregister_session(sid)
 			if on_done then on_done() end
-			vim.defer_fn(function() pcall(function() sess.proc:kill(9) end) end, 500)
-		end
-
-		local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
-		status.start("Quick edit...")
-		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-		local id = sess.next_id; sess.next_id = id + 1
-		write(sess, {
-			jsonrpc = "2.0", id = id, method = "session/prompt",
-			params = { sessionId = sess.session_id, prompt = messages },
-		})
-	end)
+		end,
+		on_fail = function()
+			oneshot_active = false
+			svr.unregister_session(sid)
+		end,
+	})
 end
 
 -- ── Git subagent (ephemeral, custom message handler) ───────────────
@@ -665,168 +768,43 @@ function M.send_git_subagent(prompt, on_done)
 	}
 	local model_id = cheap_models[opts.provider] or "claude-haiku-4.5"
 
-	local agent_text = ""
-	local git_phase = "set_model" -- after spawn_session: set_model → prompt → done
-
-	--- Custom message handler for the git subagent
-	local function git_handler(s, msg)
-		if msg.id and not msg.method then
-			if msg.error then
-				vim.schedule(function()
-					status.stop("Git agent error")
-					vim.notify("lg-git: " .. vim.inspect(msg.error), vim.log.levels.ERROR)
-				end)
-				return
-			end
-			local result = msg.result or {}
-
-			if git_phase == "set_model" then
-				git_phase = "prompt"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/prompt",
-					params = { sessionId = s.session_id, prompt = { { type = "text", text = prompt } } },
-				})
-
-			elseif git_phase == "prompt" then
-				if result.stopReason then
-					git_phase = "done"
-					vim.schedule(function()
-						status.stop("Git analysis done")
-						require("lg.ui.window").finish_subagent()
-						on_done(agent_text)
-						vim.defer_fn(function()
-							pcall(function() s.proc:kill(9) end)
-						end, 500)
-					end)
-				end
-			end
-			return
-		end
-
-		local method = msg.method or ""
-		if method == "session/update" then
-			local update = msg.params and msg.params.update
-			if update then
-				if update.sessionUpdate == "agent_message_chunk" then
-					local content = update.content
-					if content and content.type == "text" and content.text then
-						agent_text = agent_text .. content.text
-						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
-					end
-				elseif update.sessionUpdate == "tool_call" then
-					vim.schedule(function() status.update("Git: " .. (update.title or "unknown")) end)
-				elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
-					vim.schedule(function() status.flash("Git tool failed: " .. (update.message or "unknown")) end)
-				end
-			end
-		elseif method == "session/request_permission" then
-			local tool_options = msg.params and msg.params.options or {}
-			local option_id
-			for _, opt in ipairs(tool_options) do
-				if opt.kind == "allow_always" or opt.kind == "allow_once" then
-					option_id = opt.optionId
-					break
-				end
-			end
-			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
-			if option_id and msg.id then
-				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
-			end
-		end
-	end
-
-	status.start("Git analysis (" .. model_id .. ")...")
-
-	spawn_session({
-		cmd = opts.cmd,
-		mcp_servers = {},
+	run_subagent({
 		client_name = "lg-git",
-		on_message = git_handler,
+		prompt = { { type = "text", text = prompt } },
+		model_id = model_id,
+		label = "Git analysis (" .. model_id .. ")",
+		on_done = function(text) on_done(text) end,
 		on_fail = function()
 			status.stop("Git agent failed")
 			on_done("")
 		end,
-	}, function(s)
-		if not s then return end
-
-		-- First step after session ready: set model
-		local id = s.next_id; s.next_id = id + 1
-		write(s, {
-			jsonrpc = "2.0", id = id, method = "session/set_model",
-			params = { sessionId = s.session_id, modelId = model_id },
-		})
-	end)
+	})
 end
 
 -- ── Quick chat (ephemeral, opencode gpt-4.1) ──────────────────────
 
 function M.send_quick_chat(prompt, on_done)
 	local model_id = "github-copilot/gpt-4.1"
-	local phase = "set_model"
-
 	ephemeral_override = { provider = "opencode", model = model_id }
 
-	local function handler(s, msg)
-		if msg.id and not msg.method then
-			if phase == "set_model" then
-				phase = "prompt"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/prompt",
-					params = { sessionId = s.session_id, prompt = { { type = "text", text = prompt } } },
-				})
-			elseif phase == "prompt" and msg.result and msg.result.stopReason then
-				vim.schedule(function()
-					ephemeral_override = nil
-					status.stop()
-					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if on_done then on_done() end
-				end)
-				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
-			end
-			return
-		end
-
-		local method = msg.method or ""
-		if method == "session/update" then
-			local update = msg.params and msg.params.update
-			if update and update.sessionUpdate == "agent_message_chunk" then
-				local content = update.content
-				if content and content.type == "text" and content.text then
-					vim.schedule(function() require("lg.ui.window").append_agent_text(content.text) end)
-				end
-			end
-		elseif method == "session/request_permission" then
-			local tool_options = msg.params and msg.params.options or {}
-			local option_id = tool_options[1] and tool_options[1].optionId
-			if option_id and msg.id then
-				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
-			end
-		end
-	end
-
-	status.start("Quick chat (GPT-4.1)...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-
-	spawn_session({
+	run_subagent({
 		cmd = { "opencode", "acp" },
-		mcp_servers = {},
 		client_name = "lg-quick-chat",
-		on_message = handler,
+		prompt = { { type = "text", text = prompt } },
+		model_id = model_id,
+		label = "Quick chat (GPT-4.1)",
+		finish_subagent = false,
+		on_text = function(text) require("lg.ui.window").append_agent_text(text) end,
+		on_done = function()
+			ephemeral_override = nil
+			if on_done then on_done() end
+		end,
 		on_fail = function()
 			ephemeral_override = nil
 			status.stop("Quick chat failed")
 			if on_done then on_done() end
 		end,
-	}, function(s)
-		if not s then return end
-		local id = s.next_id; s.next_id = id + 1
-		write(s, {
-			jsonrpc = "2.0", id = id, method = "session/set_model",
-			params = { sessionId = s.session_id, modelId = model_id },
-		})
-	end)
+	})
 end
 
 -- ── Planner mode (set_mode on main session) ───────────────────────
@@ -901,191 +879,37 @@ end
 -- ── Hint subagent (ephemeral, doesn't block main session) ─────────
 
 function M.send_hint_subagent(prompt, regions, context_regions, on_done)
-	local phase = "set_mode"
-	local tool_error = nil
-
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
 	local has_scope = #regions > 0
 	local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "hints" } or nil)
 
-	local function handler(s, msg)
-		if msg.id and not msg.method then
-			if msg.error then
-				vim.schedule(function()
-					status.stop("Hint subagent error")
-					status.flash("RPC error: " .. (msg.error.message or vim.inspect(msg.error)))
-				end)
-				return
-			end
-
-			if phase == "set_mode" then
-				phase = "prompt"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/prompt",
-					params = { sessionId = s.session_id, prompt = messages },
-				})
-			elseif phase == "prompt" and msg.result and msg.result.stopReason then
-				vim.schedule(function()
-					if tool_error then
-						status.flash("Tool error: " .. tool_error)
-					end
-					status.stop("Review done")
-					require("lg.ui.window").finish_subagent()
-					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if on_done then on_done(tool_error) end
-				end)
-				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
-			end
-			return
-		end
-
-		local method = msg.method or ""
-		if method == "session/update" then
-			local update = msg.params and msg.params.update
-			if update then
-				if update.sessionUpdate == "agent_message_chunk" then
-					local content = update.content
-					if content and content.type == "text" and content.text then
-						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
-					end
-				elseif update.sessionUpdate == "tool_call" then
-					vim.schedule(function()
-						status.update("Tool: " .. (update.title or "unknown"))
-					end)
-				elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
-					tool_error = update.message or update.title or "unknown error"
-					vim.schedule(function()
-						status.flash("Tool failed: " .. tool_error)
-					end)
-				end
-			end
-		elseif method == "session/request_permission" then
-			local tool_options = msg.params and msg.params.options or {}
-			local option_id
-			for _, opt in ipairs(tool_options) do
-				if opt.kind == "allow_always" or opt.kind == "allow_once" then
-					option_id = opt.optionId; break
-				end
-			end
-			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
-			if option_id and msg.id then
-				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
-			end
-		end
-	end
-
-	status.start("Reviewing (subagent)...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-
-	spawn_session({
-		cmd = opts.cmd,
-		mcp_servers = {},
+	run_subagent({
+		mode_id = "reviewer",
 		client_name = "lg-hint-sub",
-		on_message = handler,
-		on_fail = function()
-			status.stop("Hint subagent failed")
-			if on_done then on_done() end
-		end,
-	}, function(s)
-		if not s then return end
-		local id = s.next_id; s.next_id = id + 1
-		write(s, {
-			jsonrpc = "2.0", id = id, method = "session/set_mode",
-			params = { sessionId = s.session_id, modeId = "reviewer" },
-		})
-	end)
+		prompt = messages,
+		label = "Reviewing (subagent)",
+		on_done = function(_, tool_error) if on_done then on_done(tool_error) end end,
+	})
 end
 
 -- ── Info paint subagent (ephemeral, uses lg_paint_regions) ────────
 
 function M.send_info_subagent(prompt, regions, context_regions, on_done)
-	local phase = "set_mode"
-
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
 	local messages = protocol.build_prompt({}, all_ctx, prompt)
 
-	local function handler(s, msg)
-		if msg.id and not msg.method then
-			if msg.error then
-				vim.schedule(function()
-					status.stop("Info subagent error")
-					status.flash("RPC error: " .. (msg.error.message or vim.inspect(msg.error)))
-				end)
-				return
-			end
-
-			if phase == "set_mode" then
-				phase = "prompt"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/prompt",
-					params = { sessionId = s.session_id, prompt = messages },
-				})
-			elseif phase == "prompt" and msg.result and msg.result.stopReason then
-				vim.schedule(function()
-					status.stop("Info paint done")
-					require("lg.ui.window").finish_subagent()
-					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if on_done then on_done() end
-				end)
-				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
-			end
-			return
-		end
-
-		local method = msg.method or ""
-		if method == "session/update" then
-			local update = msg.params and msg.params.update
-			if update then
-				if update.sessionUpdate == "agent_message_chunk" then
-					local content = update.content
-					if content and content.type == "text" and content.text then
-						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
-					end
-				elseif update.sessionUpdate == "tool_call" then
-					vim.schedule(function() status.update("Info: " .. (update.title or "unknown")) end)
-				end
-			end
-		elseif method == "session/request_permission" then
-			local tool_options = msg.params and msg.params.options or {}
-			local option_id
-			for _, opt in ipairs(tool_options) do
-				if opt.kind == "allow_always" or opt.kind == "allow_once" then
-					option_id = opt.optionId; break
-				end
-			end
-			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
-			if option_id and msg.id then
-				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
-			end
-		end
-	end
-
-	status.start("Info paint (subagent)...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-
-	spawn_session({
-		cmd = opts.cmd,
-		mcp_servers = {},
+	run_subagent({
+		mode_id = "lg-info",
 		client_name = "lg-info",
-		on_message = handler,
-		on_fail = function()
-			status.stop("Info subagent failed")
-			if on_done then on_done() end
-		end,
-	}, function(s)
-		if not s then return end
-		local id = s.next_id; s.next_id = id + 1
-		write(s, {
-			jsonrpc = "2.0", id = id, method = "session/set_mode",
-			params = { sessionId = s.session_id, modeId = "lg-info" },
-		})
-	end)
+		prompt = messages,
+		label = "Info paint (subagent)",
+		track_tool_errors = false,
+		on_done = function() if on_done then on_done() end end,
+	})
 end
 
 -- ── Suggest (uses main session, switches to suggester mode) ───────
@@ -1127,102 +951,19 @@ end
 -- ── Suggest subagent (ephemeral) ──────────────────────────────────
 
 function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
-	local phase = "set_mode"
-	local tool_error = nil
-
 	local all_ctx = {}
 	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
 	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
 	local has_scope = #regions > 0
 	local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "suggestions" } or nil)
 
-	local function handler(s, msg)
-		if msg.id and not msg.method then
-			if msg.error then
-				vim.schedule(function()
-					status.stop("Suggest subagent error")
-					status.flash("RPC error: " .. (msg.error.message or vim.inspect(msg.error)))
-				end)
-				return
-			end
-
-			if phase == "set_mode" then
-				phase = "prompt"
-				local id = s.next_id; s.next_id = id + 1
-				write(s, {
-					jsonrpc = "2.0", id = id, method = "session/prompt",
-					params = { sessionId = s.session_id, prompt = messages },
-				})
-			elseif phase == "prompt" and msg.result and msg.result.stopReason then
-				vim.schedule(function()
-					if tool_error then
-						status.flash("Tool error: " .. tool_error)
-					end
-					status.stop("Suggestions done")
-					require("lg.ui.window").finish_subagent()
-					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
-					if on_done then on_done(tool_error) end
-				end)
-				vim.defer_fn(function() pcall(function() s.proc:kill(9) end) end, 500)
-			end
-			return
-		end
-
-		local method = msg.method or ""
-		if method == "session/update" then
-			local update = msg.params and msg.params.update
-			if update then
-				if update.sessionUpdate == "agent_message_chunk" then
-					local content = update.content
-					if content and content.type == "text" and content.text then
-						vim.schedule(function() require("lg.ui.window").append_subagent_text(content.text) end)
-					end
-				elseif update.sessionUpdate == "tool_call" then
-					vim.schedule(function()
-						status.update("Tool: " .. (update.title or "unknown"))
-					end)
-				elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
-					tool_error = update.message or update.title or "unknown error"
-					vim.schedule(function()
-						status.flash("Tool failed: " .. tool_error)
-					end)
-				end
-			end
-		elseif method == "session/request_permission" then
-			local tool_options = msg.params and msg.params.options or {}
-			local option_id
-			for _, opt in ipairs(tool_options) do
-				if opt.kind == "allow_always" or opt.kind == "allow_once" then
-					option_id = opt.optionId; break
-				end
-			end
-			option_id = option_id or (tool_options[1] and tool_options[1].optionId)
-			if option_id and msg.id then
-				write(s, { jsonrpc = "2.0", id = msg.id, result = { outcome = { outcome = "selected", optionId = option_id } } })
-			end
-		end
-	end
-
-	status.start("Suggesting (subagent)...")
-	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-
-	spawn_session({
-		cmd = opts.cmd,
-		mcp_servers = {},
+	run_subagent({
+		mode_id = "suggester",
 		client_name = "lg-suggest-sub",
-		on_message = handler,
-		on_fail = function()
-			status.stop("Suggest subagent failed")
-			if on_done then on_done() end
-		end,
-	}, function(s)
-		if not s then return end
-		local id = s.next_id; s.next_id = id + 1
-		write(s, {
-			jsonrpc = "2.0", id = id, method = "session/set_mode",
-			params = { sessionId = s.session_id, modeId = "suggester" },
-		})
-	end)
+		prompt = messages,
+		label = "Suggesting (subagent)",
+		on_done = function(_, tool_error) if on_done then on_done(tool_error) end end,
+	})
 end
 
 return M

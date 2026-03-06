@@ -95,8 +95,8 @@ func TestHintSocket(t *testing.T) {
 		t.Fatalf("expected 1 diagnostic, got %d", len(params.Diagnostics))
 	}
 	d := params.Diagnostics[0]
-	if d.Severity != 3 {
-		t.Errorf("expected severity 3 (info), got %d", d.Severity)
+	if d.Severity != 4 {
+		t.Errorf("expected severity 4 (hint), got %d", d.Severity)
 	}
 	if d.Range.Start.Line != 9 { // 0-indexed
 		t.Errorf("expected start line 9, got %d", d.Range.Start.Line)
