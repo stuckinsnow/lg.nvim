@@ -12,6 +12,8 @@ local status = require("lg.status")
 
 local M = {}
 
+local _planner_active = false
+
 --- @type lg.Process?
 local shared_process = nil
 --- @type lg.ProcessSession?
@@ -223,14 +225,19 @@ function M.send_chat(prompt, on_done)
 	connect(function(s)
 		if not s then return end
 
-		-- Switch to lg-chat mode
-		require("lg.ui.window").add_status("Switching to chat mode")
+		local target_mode = _planner_active and "planner" or "lg-chat"
+		local return_mode = _planner_active and "planner" or "lg"
+
+		-- Switch to appropriate mode (only show message if actually switching)
+		if not _planner_active then
+			require("lg.ui.window").add_status("Switching to chat mode")
+		end
 		local mid = s:next_rpc_id()
 		s:write({
 			jsonrpc = "2.0",
 			id = mid,
 			method = "session/set_mode",
-			params = { sessionId = s.session_id, modeId = "lg-chat" },
+			params = { sessionId = s.session_id, modeId = target_mode },
 		})
 
 		local messages = protocol.build_prompt({}, {}, prompt)
@@ -241,14 +248,16 @@ function M.send_chat(prompt, on_done)
 		local id = s:next_rpc_id()
 		if not s._on_done then s._on_done = {} end
 		s._on_done[id] = function()
-			-- Switch back to lg mode
-			require("lg.ui.window").add_status("Switching to paint mode")
+			-- Switch back to original mode
+			if not _planner_active then
+				require("lg.ui.window").add_status("Switching to paint mode")
+			end
 			local rid = s:next_rpc_id()
 			s:write({
 				jsonrpc = "2.0",
 				id = rid,
 				method = "session/set_mode",
-				params = { sessionId = s.session_id, modeId = "lg" },
+				params = { sessionId = s.session_id, modeId = return_mode },
 			})
 			if on_done then on_done() end
 			flush_send_queue(s)
@@ -552,9 +561,8 @@ end
 
 -- ── Planner mode (set_mode on main session) ───────────────────────
 
-local _planner_active = false
-
 function M.set_planner(enabled, callback)
+	_planner_active = enabled
 	connect(function(s)
 		if not s then
 			if callback then
@@ -570,7 +578,6 @@ function M.set_planner(enabled, callback)
 			method = "session/set_mode",
 			params = { sessionId = s.session_id, modeId = mode_id },
 		})
-		_planner_active = enabled
 		if callback then
 			callback(true)
 		end
