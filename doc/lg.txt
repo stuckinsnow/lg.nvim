@@ -1,0 +1,250 @@
+*lg.txt*  Paint regions, let AI edit them via ACP
+
+==============================================================================
+CONTENTS                                                        *lg-contents*
+
+  1. Overview ............................................. |lg-overview|
+  2. Usage ................................................ |lg-usage|
+  3. Keymaps .............................................. |lg-keymaps|
+  4. Prompt prefixes ...................................... |lg-prefixes|
+  5. Chat mode ............................................ |lg-chat|
+  6. AI hints ............................................. |lg-hints|
+  7. Git subagent ......................................... |lg-git|
+  8. Commands ............................................. |lg-commands|
+  9. Config ............................................... |lg-config|
+ 10. MCP setup ............................................ |lg-mcp|
+ 11. Building ............................................. |lg-building|
+ 12. Architecture ......................................... |lg-architecture|
+
+==============================================================================
+1. OVERVIEW                                                     *lg-overview*
+
+lg lets you paint regions in Neovim, then send them to an AI CLI (kiro-cli
+or opencode) which edits only those regions via ACP. The session persists
+between edits — clear it when you want fresh context.
+
+Providers: kiro-cli, opencode
+
+==============================================================================
+2. USAGE                                                           *lg-usage*
+
+  1. Select lines in visual mode → `<leader>ap` to paint them
+  2. Paint more regions if needed (across files too)
+  3. `<leader>ae` → type your prompt → edits applied automatically
+  4. Session persists — next edit has conversation context
+  5. `<leader>aX` to clear session and start fresh
+
+==============================================================================
+3. KEYMAPS                                                       *lg-keymaps*
+
+  Paint ~
+    `<leader>ap`    Paint visual selection
+    `<leader>aP`    Clear all painted regions
+    `<leader>au`    Undo last paint
+
+  Send ~
+    `<leader>ae`    Send painted regions with prompt
+
+  Chat ~
+    `<leader>ac`    Open chat panel
+
+  Management ~
+    `<leader>am`    Clear edit markers
+    `<leader>aX`    Clear session (start fresh)
+    `<leader>aW`    Toggle side panel
+
+  Info paint ~
+    `<leader>aA`    Convert info paint to real paint
+    `<leader>aI`    Clear info paint
+
+  Hints ~
+    `<leader>aH`    Clear AI hints
+
+  Hunks (chat mode inline diffs) ~
+    `]h` / `[h`     Navigate hunks
+    `<leader>aha`   Accept hunk
+    `<leader>ahr`   Reject hunk
+
+==============================================================================
+4. PROMPT PREFIXES                                              *lg-prefixes*
+
+Type these at the start of your prompt. Combine freely:
+`@DIAG @SEARCH fix the auth bug`
+
+  `@INFO`       AI highlights regions and explains what to do — no code
+              written. Use `<leader>aA` to convert to real paint.
+
+  `@HINT`       AI reviews code and publishes findings as native Neovim
+              diagnostics (squiggly underlines + hover). Read-only.
+
+  `@SUGGEST`    AI publishes code suggestions as diagnostics — hover to
+              see recommended code.
+
+  `@GIT`        Spawns a cheap subagent to analyze git history, injects
+              the result as context into the main session.
+
+  `@SEARCH`     Semantic codebase search (nomic-embed-text) before acting.
+              Requires `LG_INDEX_URL`.
+
+  `@DIAG`       Check LSP diagnostics in open buffers before editing.
+
+  `@LSP`        Gather LSP info (types, references) for painted regions
+              and include as context.
+
+  `@FILE_LSP`   Gather LSP info for the entire current file.
+
+  `@TSC`        Run `tsc --noEmit` and include type errors as context.
+
+  `@SUB`        Run next prefix as a subagent (e.g. `@SUB HINT`).
+              Doesn't block the main session.
+
+Autocomplete: type `@` in the prompt and blink.cmp will suggest prefixes.
+
+==============================================================================
+5. CHAT MODE                                                       *lg-chat*
+
+Open with `<leader>ac`. Chat mode uses a dedicated agent (`lg-chat`) that
+edits files via the `lg_write_file` MCP tool with inline diff review.
+
+  - No painted regions needed — AI writes files directly
+  - Each edit shows as an inline diff hunk (accept/reject)
+  - Mode switches automatically: lg-chat for sending, lg for paint
+  - All `@` prefixes work in chat mode too
+
+==============================================================================
+6. AI HINTS                                                       *lg-hints*
+
+`@HINT` switches to a reviewer agent that can only annotate, not edit.
+
+  - Squiggly underlines on exact expressions
+  - Hover messages with explanations
+  - Navigate with `[d` / `]d`
+  - Clear with `<leader>aH`
+
+Uses a separate LSP server (`lg-lsp`) started automatically.
+
+Example: `@HINT find potential null pointer issues in this code`
+
+==============================================================================
+7. GIT SUBAGENT                                                     *lg-git*
+
+`@GIT` spawns a separate ACP session on a cheap model:
+
+  - kiro: claude-haiku-4.5
+  - opencode: github-copilot/gpt-4.1
+
+Tools: `git_log`, `git_show`, `git_diff`, `git_blame`
+
+Analysis is injected into the main session as context automatically.
+
+Example: `@GIT something broke in the last 3 commits, find what changed`
+
+==============================================================================
+8. COMMANDS                                                     *lg-commands*
+
+  `:LgPaint`            Paint current visual selection
+  `:LgClear`            Clear all painted regions
+  `:LgClearLast`        Clear the last painted region
+  `:LgSend` [prompt]    Send painted regions to AI
+  `:LgClearSession`     Kill session, start fresh
+  `:LgToggle`           Toggle side panel
+
+==============================================================================
+9. CONFIG                                                        *lg-config*
+
+>lua
+  require("lg").setup({
+    session = {
+      provider = "kiro",   -- "kiro" or "opencode"
+    },
+    window = {
+      width = 50,
+      position = "right",  -- "right" or "left"
+    },
+  })
+<
+
+==============================================================================
+10. MCP SETUP                                                       *lg-mcp*
+
+lg uses MCP servers to expose tools to the AI CLI. A unix socket starts at
+`/dev/shm/lg.sock` on setup.
+
+kiro-cli: add to `~/.kiro/settings/mcp.json` ~
+>json
+  {
+    "mcpServers": {
+      "lg": {
+        "command": "/path/to/lg/mcp/lg-mcp",
+        "args": [],
+        "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+      },
+      "lg-git": {
+        "command": "/path/to/lg/git-mcp/lg-git-mcp",
+        "args": []
+      }
+    }
+  }
+<
+
+opencode: add to `~/.config/opencode/opencode.json` ~
+>json
+  {
+    "mcp": {
+      "lg": {
+        "type": "local",
+        "command": ["/path/to/lg/mcp/lg-mcp"],
+        "environment": { "LG_SOCK": "/dev/shm/lg.sock" },
+        "enabled": true
+      },
+      "lg-git": {
+        "type": "local",
+        "command": ["/path/to/lg/git-mcp/lg-git-mcp"],
+        "enabled": true
+      }
+    }
+  }
+<
+
+Replace `/path/to/lg` with the plugin install path.
+
+==============================================================================
+11. BUILDING                                                   *lg-building*
+
+>bash
+  ./build.sh
+<
+
+Builds:
+  - `mcp/lg-mcp` — main MCP server
+  - `git-mcp/lg-git-mcp` — git MCP server
+  - `hint-mcp/lg-hint-mcp` — hint MCP server
+  - `lsp/lg-lsp` — hint LSP display server
+
+Tests:
+>bash
+  cd mcp && go test -v
+  cd git-mcp && go test -v
+  cd lsp && go test -v
+<
+
+==============================================================================
+12. ARCHITECTURE                                           *lg-architecture*
+
+>
+  lua/lg/
+  ├── init.lua      Entry point, thin orchestrator
+  ├── paint.lua     Visual region painting with extmarks
+  ├── diff.lua      Buffer editing + gutter markers
+  ├── session.lua   ACP subprocess lifecycle
+  ├── protocol.lua  ACP/JSON-RPC message building
+  ├── server.lua    Unix socket server for MCP bridge
+  └── window.lua    Side panel (regions + history)
+
+  mcp/              MCP server (paint_edit, lg_write_file, lg_search_codebase)
+  git-mcp/          Git MCP server (git_log, git_show, git_diff, git_blame)
+  hint-mcp/         Hint MCP server (lg_hint tool)
+  lsp/              Hint LSP display server
+<
+
+ vim:tw=78:ts=8:ft=help:norl:
