@@ -1,13 +1,12 @@
 --- Chat mode: inline diff preview with per-hunk accept/reject
 --- Shows proposed changes as virtual text. Does NOT modify the buffer.
---- Accept = approve CLI permission (CLI writes). Reject = deny permission.
+--- Accept = write file + ack RPC. Reject = send error response.
 
 local M = {}
 local api = vim.api
 local dns = api.nvim_create_namespace("lg.ui.hunk")
 
 local hunks = {}
-local pending_approvals = {}
 
 local function hl()
 	api.nvim_set_hl(0, "LgHunkOld", { default = true })
@@ -90,20 +89,9 @@ local function jump(idx)
 end
 
 local function resolve(h, accepted)
-	-- Kiro: has pending permission
-	if #pending_approvals > 0 then
-		local a = table.remove(pending_approvals, 1)
-		local oid = accepted and a.option_id or "reject_once"
-		a.write_fn(a.s, {
-			jsonrpc = "2.0", id = a.msg_id,
-			result = { outcome = { outcome = "selected", optionId = oid } },
-		})
-		if accepted and a.bufnr and api.nvim_buf_is_valid(a.bufnr) then
-			vim.bo[a.bufnr].autoread = true
-			vim.defer_fn(function()
-				if api.nvim_buf_is_valid(a.bufnr) then vim.cmd("checktime " .. a.bufnr) end
-			end, 300)
-		end
+	if h.on_resolve then
+		h.on_resolve(accepted)
+		h.on_resolve = nil
 		return
 	end
 	-- Opencode: file already on disk
@@ -157,10 +145,16 @@ end
 
 -- ── Public ────────────────────────────────────────────────────────
 
-function M.hold_permission(s, msg_id, option_id, write_fn, bufnr)
-	pending_approvals[#pending_approvals + 1] = {
-		s = s, msg_id = msg_id, option_id = option_id, write_fn = write_fn, bufnr = bufnr,
-	}
+--- Propose a file write for review. Calls on_resolve(accepted) when user decides.
+function M.propose_write(path, old_content, new_content, on_resolve)
+	local ok = M.propose_edit(path, old_content, new_content)
+	if not ok then
+		-- Couldn't show diff (e.g. old text not found in buffer) — accept directly
+		on_resolve(true)
+		return
+	end
+	-- Attach callback to the last hunk
+	hunks[#hunks].on_resolve = on_resolve
 end
 
 function M.propose_edit(path, old_text, new_text)
@@ -308,16 +302,14 @@ function M.reject_all()
 end
 
 function M.clear()
-	for _, h in ipairs(hunks) do clear_extmarks(h) end
-	hunks = {}
-	-- Reject any remaining held permissions
-	for _, a in ipairs(pending_approvals) do
-		a.write_fn(a.s, {
-			jsonrpc = "2.0", id = a.msg_id,
-			result = { outcome = { outcome = "selected", optionId = "reject_once" } },
-		})
+	for _, h in ipairs(hunks) do
+		clear_extmarks(h)
+		if h.on_resolve then
+			h.on_resolve(false)
+			h.on_resolve = nil
+		end
 	end
-	pending_approvals = {}
+	hunks = {}
 end
 
 return M

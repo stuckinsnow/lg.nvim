@@ -1,8 +1,8 @@
 --- Main session message handler
 ---
---- Handles: session/update (streaming, tool calls, hunk review),
---- session/request_permission (edit review, create/delete confirm, auto-approve),
---- fs/read_text_file, fs/write_text_file.
+--- Handles: session/update (streaming, tool calls),
+--- session/request_permission (create/delete confirm, auto-approve),
+--- fs/read_text_file, fs/write_text_file (inline diff review).
 
 local status = require("lg.status")
 
@@ -77,51 +77,6 @@ function M.handle_main(session, msg)
 				status.update("Tool: " .. title)
 				require("lg.ui.window").add_tool(title)
 				vim.api.nvim_exec_autocmds("User", { pattern = "LgToolCall", data = { title = title } })
-				if update.kind == "edit" and update.content and update.toolCallId then
-					if not session._seen_tool_calls then
-						session._seen_tool_calls = {}
-					end
-					if not session._seen_tool_calls[update.toolCallId] then
-						session._seen_tool_calls[update.toolCallId] = true
-						local hunk = require("lg.ui.hunk")
-						local any = false
-						local loc_path = update.locations and update.locations[1] and update.locations[1].path
-						for _, c in ipairs(update.content) do
-							local p = c.path or loc_path
-							local old = c.oldText
-							local new = c.newText
-							if p and old and new and (c.type == "diff" or old ~= new) then
-								if hunk.propose_edit(p, old, new) then
-									any = true
-								end
-							end
-						end
-						if not any then
-							session._seen_tool_calls[update.toolCallId] = "failed"
-						end
-					end
-				end
-			end)
-		elseif
-			update.sessionUpdate == "tool_call_update"
-			and update.status == "completed"
-			and update.kind == "edit"
-			and update.content
-			and update.toolCallId
-		then
-			vim.schedule(function()
-				if not session._seen_tool_calls then
-					session._seen_tool_calls = {}
-				end
-				if not session._seen_tool_calls[update.toolCallId] then
-					session._seen_tool_calls[update.toolCallId] = true
-					local hunk = require("lg.ui.hunk")
-					for _, c in ipairs(update.content) do
-						if c.type == "diff" and c.path and c.oldText and c.newText then
-							hunk.propose_edit(c.path, c.oldText, c.newText)
-						end
-					end
-				end
 			end)
 		elseif update.sessionUpdate == "tool_call_update" and update.status == "error" then
 			vim.schedule(function()
@@ -141,43 +96,7 @@ function M.handle_main(session, msg)
 		end
 		option_id = option_id or (tool_options[1] and tool_options[1].optionId)
 		if option_id and msg.id then
-			if title:match("^Editing ") then
-				local tcid = tc and tc.toolCallId
-				local failed = tcid and session._seen_tool_calls and session._seen_tool_calls[tcid] == "failed"
-				if failed then
-					vim.schedule(function()
-						status.update("Auto-approved: " .. title)
-					end)
-					session:write({
-						jsonrpc = "2.0",
-						id = msg.id,
-						result = { outcome = { outcome = "selected", optionId = option_id } },
-					})
-				else
-					vim.schedule(function()
-						status.update("Review: " .. title)
-						local fname = title:match("^Editing (.+)$")
-						local bufnr
-						if fname then
-							for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-								if
-									vim.api.nvim_buf_is_loaded(buf)
-									and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t") == fname
-								then
-									bufnr = buf
-									break
-								end
-							end
-						end
-						-- hunk.hold_permission expects (s, id, option_id, write_fn, bufnr)
-						-- Wrap session:write as a compatible write function
-						local function write_fn(_, rpc_msg)
-							session:write(rpc_msg)
-						end
-						require("lg.ui.hunk").hold_permission(session, msg.id, option_id, write_fn, bufnr)
-					end)
-				end
-			elseif
+			if
 				title:match("^Creating ")
 				or title:match("^Deleting ")
 				or (title:match("^Running") and title:match("[:%s]rm "))

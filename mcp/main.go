@@ -110,6 +110,45 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []protocol.TextContent{{Type: "text", Text: nvim.FormatDiagnostics(diags)}},
 		}, nil
 
+	case "lg_write_file":
+		var args struct {
+			Path    string `json:"path"`
+			OldText string `json:"old_text"`
+			NewText string `json:"new_text"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		resp, err := nvim.SendToNeovim(map[string]any{"method": "edit_file", "path": args.Path, "old_text": args.OldText, "new_text": args.NewText})
+		if err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "edit failed: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		var result struct {
+			OK     bool   `json:"ok"`
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: string(resp)}},
+			}, nil
+		}
+		if !result.OK {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: result.Error}},
+				IsError: true,
+			}, nil
+		}
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: "Edit " + result.Status + ": " + args.Path}},
+		}, nil
+
 	case "lg_paint_regions":
 		var args struct {
 			Regions []struct {
@@ -204,6 +243,20 @@ func handleToolsList() any {
 						"severity": map[string]any{"type": "integer", "description": "Min severity: 1=Error 2=Warn 3=Info 4=Hint"},
 					},
 					Required:             []string{},
+					AdditionalProperties: &f,
+				},
+			},
+			{
+				Name:        "lg_write_file",
+				Description: "Edit a file by replacing a text snippet. Shows an inline diff for user review. Only the changed portion is needed — not the whole file. If the user rejects, do NOT retry.",
+				InputSchema: protocol.ToolSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"path":     map[string]string{"type": "string", "description": "Absolute file path"},
+						"old_text": map[string]string{"type": "string", "description": "Exact text to find and replace (include enough context for a unique match)"},
+						"new_text": map[string]string{"type": "string", "description": "Replacement text"},
+					},
+					Required:             []string{"path", "old_text", "new_text"},
 					AdditionalProperties: &f,
 				},
 			},

@@ -219,6 +219,51 @@ function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_cont
 	end)
 end
 
+function M.send_chat(prompt, on_done)
+	connect(function(s)
+		if not s then return end
+
+		-- Switch to lg-chat mode
+		require("lg.ui.window").add_status("Switching to chat mode")
+		local mid = s:next_rpc_id()
+		s:write({
+			jsonrpc = "2.0",
+			id = mid,
+			method = "session/set_mode",
+			params = { sessionId = s.session_id, modeId = "lg-chat" },
+		})
+
+		local messages = protocol.build_prompt({}, {}, prompt)
+
+		status.start("Thinking...")
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+		local id = s:next_rpc_id()
+		if not s._on_done then s._on_done = {} end
+		s._on_done[id] = function()
+			-- Switch back to lg mode
+			require("lg.ui.window").add_status("Switching to paint mode")
+			local rid = s:next_rpc_id()
+			s:write({
+				jsonrpc = "2.0",
+				id = rid,
+				method = "session/set_mode",
+				params = { sessionId = s.session_id, modeId = "lg" },
+			})
+			if on_done then on_done() end
+			flush_send_queue(s)
+		end
+
+		s:track_response(id)
+		s:write({
+			jsonrpc = "2.0",
+			id = id,
+			method = "session/prompt",
+			params = { sessionId = s.session_id, prompt = messages },
+		})
+	end)
+end
+
 function M.clear()
 	_connect_queue = nil
 	_send_queue = {}

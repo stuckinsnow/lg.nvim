@@ -182,6 +182,48 @@ function M.handle_message(data)
 		end
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true, count = #edits })
+	elseif msg.method == "edit_file" then
+		local path = msg.path
+		local old_text = msg.old_text
+		local new_text = msg.new_text
+		if not path or not old_text or not new_text then
+			return vim.json.encode({ error = "path, old_text, new_text required" })
+		end
+		local hunk = require("lg.ui.hunk")
+		local result = nil
+		hunk.propose_write(path, old_text, new_text, function(accepted)
+			if accepted then
+				-- Apply the edit to disk
+				local resolved = vim.fn.fnamemodify(path, ":p")
+				local f = io.open(resolved, "r")
+				if f then
+					local content = f:read("*a")
+					f:close()
+					local s, e = content:find(old_text, 1, true)
+					if s then
+						local updated = content:sub(1, s - 1) .. new_text .. content:sub(e + 1)
+						local fw = io.open(resolved, "w")
+						if fw then
+							fw:write(updated)
+							fw:close()
+						end
+					end
+				end
+				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+					if vim.api.nvim_buf_is_loaded(buf) then
+						local bname = vim.api.nvim_buf_get_name(buf)
+						if bname == resolved or bname == path then
+							vim.bo[buf].autoread = true
+							vim.cmd("checktime " .. buf)
+						end
+					end
+				end
+				result = vim.json.encode({ ok = true, status = "accepted" })
+			else
+				result = vim.json.encode({ ok = false, status = "rejected", error = "User rejected edit" })
+			end
+		end)
+		return nil, function() return result end
 	elseif msg.method == "paint_regions" then
 		local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
 		local regions = msg.regions or {}
@@ -294,11 +336,14 @@ function M.start()
 		server:accept(client)
 
 		local buf = ""
+		local active_timer = nil
 		client:read_start(function(read_err, data)
 			if read_err or not data then
-				if client then
-					client:close()
+				if active_timer then
+					pcall(function() active_timer:stop(); active_timer:close() end)
+					active_timer = nil
 				end
+				pcall(function() if client then client:close() end end)
 				return
 			end
 			buf = buf .. data
@@ -310,9 +355,22 @@ function M.start()
 				local line = buf:sub(1, nl - 1)
 				buf = buf:sub(nl + 1)
 				vim.schedule(function()
-					local response = M.handle_message(line)
-					if client then
-						client:write(response .. "\n")
+					local response, poll_fn = M.handle_message(line)
+					if response then
+						pcall(function() if client then client:write(response .. "\n") end end)
+					elseif poll_fn then
+						-- Async: poll until result is ready
+						local timer = vim.uv.new_timer()
+						active_timer = timer
+						timer:start(50, 50, vim.schedule_wrap(function()
+							local result = poll_fn()
+							if result then
+								timer:stop()
+								timer:close()
+								active_timer = nil
+								pcall(function() if client then client:write(result .. "\n") end end)
+							end
+						end))
 					end
 				end)
 			end

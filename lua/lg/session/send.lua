@@ -22,68 +22,6 @@ local function count_ai_diagnostics()
 	return n
 end
 
---- Snapshot git diff, return callback that highlights new changes
---- @param snap_opts? { skip_qf?: boolean }
-local function git_snapshot_cb(snap_opts)
-	snap_opts = snap_opts or {}
-	local baseline = nil
-	vim.system({ "git", "diff", "--unified=0" }, {}, function(obj)
-		baseline = (obj.code == 0 and obj.stdout) or ""
-	end)
-	return function()
-		vim.system(
-			{ "git", "diff", "--unified=0" },
-			{},
-			vim.schedule_wrap(function(obj)
-				local current = (obj.code == 0 and obj.stdout) or ""
-				if current == baseline then
-					return
-				end
-				local cwd = vim.fn.getcwd() .. "/"
-				local items = {}
-				local file
-				for line in string.gmatch(current, "[^\n]+") do
-					local f = line:match("^%+%+%+ b/(.+)")
-					if f then
-						file = cwd .. f
-					end
-					if file then
-						local s = line:match("^@@ .+ %+(%d+)")
-						if s then
-							table.insert(items, { file = file, line = tonumber(s) })
-						end
-					end
-				end
-				if #items > 0 then
-					local old_hunks = {}
-					local bf
-					for line in string.gmatch(baseline or "", "[^\n]+") do
-						local f = line:match("^%+%+%+ b/(.+)")
-						if f then
-							bf = cwd .. f
-						end
-						if bf then
-							local s = line:match("^@@ .+ %+(%d+)")
-							if s then
-								old_hunks[bf .. ":" .. s] = true
-							end
-						end
-					end
-					local new_items = {}
-					for _, item in ipairs(items) do
-						if not old_hunks[item.file .. ":" .. item.line] then
-							table.insert(new_items, item)
-						end
-					end
-					if #new_items > 0 then
-						require("lg.changes").set(new_items, { skip_qf = snap_opts.skip_qf })
-					end
-				end
-			end)
-		)
-	end
-end
-
 local sent_region_count = 0
 
 function M.reset_region_count()
@@ -150,20 +88,23 @@ function M.send(opts)
 								.. result
 								.. "\n\nUser request:\n"
 								.. git_prompt
-							local send_regions = opts.from_chat and {} or regions
-							session.send(
-								full_prompt,
-								send_regions,
-								opts.from_chat and {} or context.get_all(),
-								function()
-									vim.schedule(function()
-										spinners.stop()
-										if not opts.from_chat then
+							if opts.from_chat then
+								session.send_chat(full_prompt, function()
+									vim.schedule(function() spinners.stop() end)
+								end)
+							else
+								session.send(
+									full_prompt,
+									regions,
+									context.get_all(),
+									function()
+										vim.schedule(function()
+											spinners.stop()
 											window.refresh()
-										end
-									end)
-								end
-							)
+										end)
+									end
+								)
+							end
 						else
 							status.stop("Git analysis empty")
 						end
@@ -358,20 +299,21 @@ function M.send(opts)
 					status.stop("tsc done")
 
 					window.add_prompt(prompt)
-					local sr = opts.from_chat and {} or regions
 					local spin = spinners.start(regions)
-					local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not flags.has_auto_paint }) or nil
-					session.send(prompt, sr, opts.from_chat and {} or context.get_all(), function()
-						vim.schedule(function()
-							spin:stop()
-							if not opts.from_chat then
-								window.refresh()
-							end
-							if on_done then
-								on_done()
-							end
+					if opts.from_chat then
+						session.send_chat(prompt, function()
+							vim.schedule(function()
+								spin:stop()
+							end)
 						end)
-					end, lsp_context, tsc_context)
+					else
+						session.send(prompt, regions, context.get_all(), function()
+							vim.schedule(function()
+								spin:stop()
+								window.refresh()
+							end)
+						end, lsp_context, tsc_context)
+					end
 				end)
 			)
 			return
@@ -380,18 +322,20 @@ function M.send(opts)
 		window.add_prompt(prompt)
 		local send_regions = opts.from_chat and {} or regions
 		local spin = spinners.start(regions)
-		local on_done = opts.from_chat and git_snapshot_cb({ skip_qf = not flags.has_auto_paint }) or nil
-		session.send(prompt, send_regions, opts.from_chat and {} or context.get_all(), function()
-			vim.schedule(function()
-				spin:stop()
-				if not opts.from_chat then
-					window.refresh()
-				end
-				if on_done then
-					on_done()
-				end
+		if opts.from_chat then
+			session.send_chat(prompt, function()
+				vim.schedule(function()
+					spin:stop()
+				end)
 			end)
-		end, lsp_context, tsc_context)
+		else
+			session.send(prompt, send_regions, context.get_all(), function()
+				vim.schedule(function()
+					spin:stop()
+					window.refresh()
+				end)
+			end, lsp_context, tsc_context)
+		end
 	end
 
 	if opts.prompt then

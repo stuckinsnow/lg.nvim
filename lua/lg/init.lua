@@ -151,7 +151,6 @@ end
 function M.clear_marks()
 	diff.clear()
 	require("lg.ui.hunk").clear()
-	require("lg.changes").clear()
 end
 
 function M.clear_hints()

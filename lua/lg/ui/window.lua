@@ -178,6 +178,10 @@ local function render_chat()
       table.insert(lines, "")
       table.insert(lines, "⚙ " .. entry.text)
       tool_lines[#lines] = true
+    elseif entry.type == "status" then
+      table.insert(lines, "")
+      table.insert(lines, "🔀 " .. entry.text)
+      tool_lines[#lines] = true
     end
   end
   -- Input area
@@ -223,6 +227,11 @@ end
 
 function M.add_tool(text)
   table.insert(state.history, { type = "tool", text = text })
+  M.refresh()
+end
+
+function M.add_status(text)
+  table.insert(state.history, { type = "status", text = text })
   M.refresh()
 end
 
