@@ -225,8 +225,8 @@ function M.send_chat(prompt, on_done)
 	connect(function(s)
 		if not s then return end
 
-		local target_mode = _planner_active and "planner" or "lg-chat"
-		local return_mode = _planner_active and "planner" or "lg"
+		local target_mode = _planner_active and "kiro_planner" or "lg-chat"
+		local return_mode = _planner_active and "kiro_planner" or "lg"
 
 		-- Switch to appropriate mode (only show message if actually switching)
 		if not _planner_active then
@@ -570,7 +570,7 @@ function M.set_planner(enabled, callback)
 			end
 			return
 		end
-		local mode_id = enabled and "planner" or "kiro_default"
+		local mode_id = enabled and "kiro_planner" or "kiro_default"
 		local id = s:next_rpc_id()
 		s:write({
 			jsonrpc = "2.0",
