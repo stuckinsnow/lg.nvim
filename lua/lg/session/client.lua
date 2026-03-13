@@ -204,6 +204,14 @@ function M.get_models(callback)
 	M.send({ method = "get_models" }, callback)
 end
 
+function M.list_sessions(cwd, callback)
+	M.send({ method = "list_sessions", cwd = cwd }, callback)
+end
+
+function M.load_session(session_id, cwd, callback)
+	M.send({ method = "load_session", session_id = session_id, cwd = cwd }, callback)
+end
+
 function M.terminate()
 	M.send({ method = "terminate" })
 end

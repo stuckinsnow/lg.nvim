@@ -59,6 +59,13 @@ function M.setup(user_opts)
 	if saved.provider and providers[saved.provider] then
 		opts.provider = saved.provider
 	end
+
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = vim.api.nvim_create_augroup("lg.session.session", { clear = true }),
+		callback = function()
+			M.clear()
+		end,
+	})
 end
 
 -- ── lg-acp process management ──────────────────────────────────────
@@ -172,10 +179,30 @@ local function connect(on_ready)
 		client.create_session(vim.fn.getcwd(), opts.mcp_servers, function(resp)
 			lg_log("create_session response: " .. vim.inspect(resp))
 			if resp.error then
+				-- Retry once: disconnect, respawn, reconnect
+				if not _connect_retried then
+					_connect_retried = true
+					lg_log("retrying after error...")
+					client.disconnect()
+					vim.fn.delete(acp_sock)
+					if acp_proc then
+						pcall(function() acp_proc:kill(9) end)
+						acp_proc = nil
+					end
+					local q = _connect_queue
+					_connect_queue = nil
+					-- Re-enter connect for each queued callback
+					for _, cb in ipairs(q) do
+						connect(cb)
+					end
+					return
+				end
+				_connect_retried = nil
 				status.stop("Session failed: " .. resp.error)
 				flush(nil)
 				return
 			end
+			_connect_retried = nil
 
 			main_session_id = resp.session_id
 			if resp.models then
@@ -199,13 +226,6 @@ local function connect(on_ready)
 
 			status.stop("Session ready")
 
-			vim.api.nvim_create_autocmd("VimLeavePre", {
-				group = vim.api.nvim_create_augroup("lg.session.session", { clear = true }),
-				callback = function()
-					M.clear()
-				end,
-			})
-
 			flush(main_session_id)
 		end)
 	end)
@@ -216,10 +236,13 @@ function M._setup_event_handlers()
 	client.clear_handlers()
 
 	client.on("text", function(ev)
-		require("lg.ui.window").append_agent_text(ev.text)
+		if ev.text then
+			require("lg.ui.window").append_agent_text(ev.text)
+		end
 	end)
 
 	client.on("tool_call", function(ev)
+		if M._restoring then return end
 		status.update("Tool: " .. (ev.text or "unknown"))
 		require("lg.ui.window").add_tool(ev.text or "unknown")
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgToolCall", data = { title = ev.text } })
@@ -407,8 +430,12 @@ function M.clear()
 		main_session_id = nil
 	end
 	session_models = nil
+	client.terminate()
 	client.disconnect()
 	if acp_proc then
+		pcall(function() acp_proc:kill(15) end)
+		-- Give it a moment then force kill
+		vim.uv.sleep(200)
 		pcall(function() acp_proc:kill(9) end)
 		acp_proc = nil
 	end
@@ -960,6 +987,160 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 			end
 		end,
 	})
+end
+
+-- ── Session restore ────────────────────────────────────────────────
+
+--- Read kiro session files from disk and return sorted list.
+--- @param cwd string filter by cwd
+--- @return table[] sessions { id, cwd, date, title, preview }
+local function read_kiro_sessions(cwd)
+	local dir = vim.fn.expand("~/.kiro/sessions/cli")
+	local files = vim.fn.glob(dir .. "/*.json", false, true)
+	local sessions = {}
+	for _, path in ipairs(files) do
+		local f = io.open(path, "r")
+		if f then
+			local ok, data = pcall(vim.json.decode, f:read("*a"))
+			f:close()
+			if ok and data.cwd == cwd then
+				local state = data.session_state or {}
+				local meta = state.conversation_metadata or {}
+				local turns = meta.user_turn_metadatas or {}
+
+				-- Extract first assistant text as title + build preview
+				local title
+				local preview_lines = {}
+				for _, turn in ipairs(turns) do
+					if turn.result and turn.result.Ok then
+						local content = turn.result.Ok.content or {}
+						for _, c in ipairs(content) do
+							if c.kind == "text" and c.data and #c.data > 0 then
+								local text = c.data:gsub("^%s+", "")
+								if not title then
+									title = text:sub(1, 80)
+								end
+								for _, line in ipairs(vim.split(text, "\n")) do
+									preview_lines[#preview_lines + 1] = line
+									if #preview_lines >= 40 then break end
+								end
+							end
+						end
+					end
+					if #preview_lines >= 40 then break end
+				end
+
+				table.insert(sessions, {
+					id = data.session_id,
+					cwd = data.cwd,
+					date = (data.updated_at or ""):sub(1, 16):gsub("T", " "),
+					title = title or "(untitled)",
+					preview = table.concat(preview_lines, "\n"),
+				})
+			end
+		end
+	end
+	table.sort(sessions, function(a, b) return a.date > b.date end)
+	return sessions
+end
+
+function M.restore_session()
+	local sessions = read_kiro_sessions(vim.fn.getcwd())
+	if #sessions == 0 then
+		vim.notify("lg: no previous sessions for this project", vim.log.levels.INFO)
+		return
+	end
+
+	local entries = {}
+	local id_by_idx = {}
+	local preview_by_idx = {}
+	for i, s in ipairs(sessions) do
+		-- ANSI: \27[36m = cyan, \27[33m = yellow, \27[0m = reset
+		local entry = string.format("\x1b[36m%s\x1b[0m  \x1b[33m%s\x1b[0m", s.date, s.title)
+		entries[i] = entry
+		id_by_idx[i] = s.id
+		preview_by_idx[i] = s.preview
+	end
+
+	-- Write preview files for fzf
+	local preview_dir = "/dev/shm/lg-session-preview"
+	vim.fn.mkdir(preview_dir, "p")
+	for i, s in ipairs(sessions) do
+		local pf = io.open(preview_dir .. "/" .. s.id, "w")
+		if pf then
+			pf:write(s.preview or "(no preview)")
+			pf:close()
+		end
+		-- Prefix entry with hidden session id for preview lookup
+		entries[i] = s.id .. "\t" .. entries[i]
+		id_by_idx[i] = s.id
+	end
+
+	require("fzf-lua").fzf_exec(entries, {
+		prompt = "  ",
+		fzf_opts = {
+			["--ansi"] = "",
+			["--delimiter"] = "\t",
+			["--with-nth"] = "2..",
+			["--preview"] = "bat --style=plain --color=always --wrap=auto -l md " .. preview_dir .. "/{1}",
+			["--preview-window"] = "right:50%:wrap",
+		},
+		winopts = {
+			title = " 󰋚 Restore Session ",
+			title_pos = "center",
+			height = 0.6,
+			width = 0.75,
+		},
+		actions = {
+			["default"] = function(selected)
+				vim.fn.delete(preview_dir, "rf")
+				if not selected or #selected == 0 then return end
+				local sid = selected[1]:match("^([^\t]+)")
+				if sid then
+					M._do_load_session(sid)
+				end
+			end,
+		},
+	})
+end
+
+function M._do_load_session(session_id)
+	if main_session_id then
+		client.destroy_session(main_session_id)
+		main_session_id = nil
+	end
+
+	status.start("Restoring session...")
+	M._restoring = true
+
+	ensure_acp(function(ok)
+		if not ok then
+			status.stop("Connection failed")
+			return
+		end
+
+		M._setup_event_handlers()
+
+		-- Listen for session_loaded to know replay is done
+		local unsub
+		unsub = client.on("session_loaded", function(ev)
+			if ev.session_id ~= session_id then return end
+			if unsub then unsub() end
+			M._restoring = false
+			client.set_mode(session_id, "lg")
+			status.stop("Session restored")
+		end)
+
+		client.load_session(session_id, vim.fn.getcwd(), function(resp)
+			if resp.error then
+				if unsub then unsub() end
+				M._restoring = false
+				status.stop("Restore failed: " .. resp.error)
+				return
+			end
+			main_session_id = resp.session_id
+		end)
+	end)
 end
 
 return M

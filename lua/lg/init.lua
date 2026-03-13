@@ -241,6 +241,10 @@ function M.info()
 	session.info()
 end
 
+function M.restore_session()
+	session.restore_session()
+end
+
 -- ── UI ─────────────────────────────────────────────────────────────
 
 function M.toggle_window()

@@ -171,7 +171,7 @@ local function render_chat()
         table.insert(lines, "# AI")
         table.insert(lines, "")
       end
-      for _, l in ipairs(vim.split(entry.text, "\n")) do
+      for _, l in ipairs(vim.split(entry.text or "", "\n")) do
         table.insert(lines, l)
       end
     elseif entry.type == "tool" then

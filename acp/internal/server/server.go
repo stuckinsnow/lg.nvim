@@ -42,6 +42,7 @@ type Response struct {
 	OK        bool            `json:"ok"`
 	SessionID string          `json:"session_id,omitempty"`
 	Models    json.RawMessage `json:"models,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
 	Error     string          `json:"error,omitempty"`
 	Active    int             `json:"active,omitempty"`
 }
@@ -222,6 +223,40 @@ func (s *Server) handleConn(nc net.Conn) {
 			} else {
 				c.writeLine(Response{OK: true})
 			}
+
+		case "list_sessions":
+			cwd := req.CWD
+			if cwd == "" {
+				cwd, _ = os.Getwd()
+			}
+			log.Printf("acp: list_sessions cwd=%s", cwd)
+			result, err := s.mgr.ListSessions(cwd)
+			if err != nil {
+				c.writeLine(Response{Error: err.Error()})
+				continue
+			}
+			c.writeLine(Response{OK: true, Data: result})
+
+		case "load_session":
+			cwd := req.CWD
+			if cwd == "" {
+				cwd, _ = os.Getwd()
+			}
+			if req.SessionID == "" {
+				c.writeLine(Response{Error: "missing session_id"})
+				continue
+			}
+			log.Printf("acp: load_session id=%s", req.SessionID)
+			sess, err := s.mgr.LoadSession(req.SessionID, cwd)
+			if err != nil {
+				c.writeLine(Response{Error: err.Error()})
+				continue
+			}
+			c.writeLine(Response{OK: true, SessionID: sess.ID})
+			c.mu.Lock()
+			c.sessions = append(c.sessions, sess)
+			c.mu.Unlock()
+			go c.streamEvents(sess)
 
 		case "status":
 			c.writeLine(Response{OK: true, Active: len(s.mgr.Sessions())})

@@ -170,6 +170,22 @@ func SessionCancelNotification(sessionID string) Message {
 	return Message{JSONRPC: "2.0", Method: "session/cancel", Params: params}
 }
 
+func SessionListRequest(id int, cwd string) Message {
+	params, _ := json.Marshal(map[string]any{"cwd": cwd})
+	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/list", Params: params}
+}
+
+func SessionLoadRequest(id int, sessionID, cwd string, mcpServers map[string]any) Message {
+	params := map[string]any{"sessionId": sessionID, "cwd": cwd}
+	if len(mcpServers) > 0 {
+		params["mcpServers"] = mcpServers
+	} else {
+		params["mcpServers"] = []any{}
+	}
+	data, _ := json.Marshal(params)
+	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/load", Params: data}
+}
+
 func PermissionResponse(id *RPCID, optionID string) Message {
 	result, _ := json.Marshal(map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": optionID}})
 	return Message{JSONRPC: "2.0", ID: id, Result: result}

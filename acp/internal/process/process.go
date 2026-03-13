@@ -12,6 +12,7 @@ import (
 	"log"
 	"os/exec"
 	"sync"
+	"syscall"
 )
 
 // Process wraps a single ACP subprocess.
@@ -39,6 +40,7 @@ type MessageHandler func(msg *protocol.Message)
 // a ready Process. Blocks until handshake completes or fails.
 func Spawn(args []string, clientName string) (*Process, error) {
 	cmd := exec.Command(args[0], args[1:]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -150,10 +152,11 @@ func (p *Process) SetModels(m *protocol.ModelsInfo) {
 	}
 }
 
-// Terminate kills the subprocess.
+// Terminate kills the subprocess and its process group.
 func (p *Process) Terminate() {
 	if p.cmd != nil && p.cmd.Process != nil {
-		p.cmd.Process.Kill()
+		// Kill the entire process group
+		syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
 

@@ -198,6 +198,66 @@ func (m *Manager) GetSession(id string) *Session {
 	return m.sessions[id]
 }
 
+// ListSessions calls session/list on the ACP process.
+func (m *Manager) ListSessions(cwd string) (json.RawMessage, error) {
+	if err := m.ensureProcess(); err != nil {
+		return nil, err
+	}
+	id := m.proc.NextID()
+	ch := make(chan *protocol.Message, 1)
+	m.proc.TrackResponse(id, func(msg *protocol.Message) { ch <- msg })
+	if err := m.proc.Write(protocol.SessionListRequest(id, cwd)); err != nil {
+		return nil, err
+	}
+	msg := <-ch
+	if msg.Error != nil {
+		return nil, fmt.Errorf("%s", msg.Error.Message)
+	}
+	return msg.Result, nil
+}
+
+// LoadSession loads a previous session by ID, returning a Session that streams replayed events.
+func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
+	if err := m.ensureProcess(); err != nil {
+		return nil, err
+	}
+
+	s := &Session{
+		ID:           sessionID,
+		State:        StateActive,
+		proc:         m.proc,
+		events:       make(chan Event, 256),
+		onDone:       make(map[int]func()),
+		pendingPerms: make(map[int]*protocol.RPCID),
+	}
+
+	m.proc.RegisterSession(sessionID, func(msg *protocol.Message) {
+		s.handleMessage(msg)
+	})
+	m.mu.Lock()
+	m.sessions[sessionID] = s
+	m.mu.Unlock()
+
+	id := m.proc.NextID()
+	m.proc.TrackResponse(id, func(msg *protocol.Message) {
+		if msg.Error != nil {
+			s.events <- Event{Type: "error", Error: msg.Error.Message}
+			return
+		}
+		// session/load response means replay is done
+		s.events <- Event{Type: "session_loaded", SessionID: sessionID}
+	})
+
+	m.mu.Lock()
+	servers := m.mcpServers
+	m.mu.Unlock()
+
+	if err := m.proc.Write(protocol.SessionLoadRequest(id, sessionID, cwd, servers)); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
 // RemoveSession cleans up a session.
 func (m *Manager) RemoveSession(id string) {
 	m.mu.Lock()
