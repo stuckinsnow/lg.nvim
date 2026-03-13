@@ -309,4 +309,8 @@ function M.list_regions()
 	require("lg.tools.paint-commits").list_regions()
 end
 
+function M.smart_paint()
+	require("lg.tools.smart-paint").pick()
+end
+
 return M
