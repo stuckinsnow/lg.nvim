@@ -23,6 +23,7 @@ local node_labels = {
 	switch_statement = "switch",
 	match_expression = "match",
 	impl_item = "impl block",
+	for_in_statement = "for-in loop",
 	export_statement = "export",
 }
 

@@ -313,4 +313,43 @@ function M.smart_paint()
 	require("lg.tools.smart-paint").pick()
 end
 
+function M.clear_menu()
+	local actions = {
+		{ icon = "󰏝", label = "Paint regions", fn = function() M.clear() end },
+		{ icon = "󰗅", label = "Context regions", fn = function() M.clear_context() end },
+		{ icon = "󰕍", label = "Last paint", fn = function() M.clear_last() end },
+		{ icon = "󰈮", label = "Edit markers", fn = function() M.clear_marks() end },
+		{ icon = "󰌪", label = "Info paint", fn = function() M.clear_info_paint() end },
+		{ icon = "󱃓", label = "AI hints", fn = function() M.clear_hints() end },
+		{ icon = "󰚃", label = "Session (full reset)", fn = function() M.clear_session() end },
+		{ icon = "󰗩", label = "Everything", fn = function() M.clear_session() end },
+	}
+
+	local entries = {}
+	for _, a in ipairs(actions) do
+		table.insert(entries, a.icon .. "  " .. a.label)
+	end
+
+	require("fzf-lua").fzf_exec(entries, {
+		prompt = "  ",
+		winopts = {
+			title = " 󰃢 Clear ",
+			title_pos = "center",
+			height = 0.35,
+			width = 0.35,
+		},
+		actions = {
+			["default"] = function(selected)
+				if not selected or #selected == 0 then return end
+				for i, e in ipairs(entries) do
+					if e == selected[1] then
+						actions[i].fn()
+						return
+					end
+				end
+			end,
+		},
+	})
+end
+
 return M
