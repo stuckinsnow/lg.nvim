@@ -15,4 +15,7 @@ cd hint-mcp && go build -o lg-hint-mcp . && cd ..
 echo "Building lg-lsp..."
 cd lsp && go build -o lg-lsp . && cd ..
 
+echo "Building lg-acp..."
+cd acp && go build -o lg-acp . && cd ..
+
 echo "Done."
