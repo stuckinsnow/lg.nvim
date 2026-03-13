@@ -66,7 +66,13 @@ local function collect_ancestors()
 	return results
 end
 
-function M.pick()
+function M.pick(pick_opts)
+	pick_opts = pick_opts or {}
+	local paint_fn = pick_opts.paint_fn or function(buf, s, e)
+		require("lg.ui.paint").add(buf, s, e)
+		pcall(function() require("lg.ui.window").refresh() end)
+	end
+
 	local nodes = collect_ancestors()
 	if not nodes or #nodes == 0 then
 		vim.notify("lg: no treesitter nodes at cursor", vim.log.levels.WARN)
@@ -97,6 +103,47 @@ function M.pick()
 		vim.fn.shellescape(file)
 	)
 
+	local extra = pick_opts.extra_actions ~= false
+	local header = extra
+		and ":: ENTER=paint :: ctrl-p=context paint :: ctrl-i=info paint ::"
+		or ":: ENTER=paint ::"
+
+	local actions = {
+		["default"] = function(selected)
+			if not selected or #selected == 0 then return end
+			for i, e in ipairs(entries) do
+				if e == selected[1] then
+					paint_fn(vim.api.nvim_get_current_buf(), nodes[i].start_line, nodes[i].end_line)
+					return
+				end
+			end
+		end,
+	}
+
+	if extra then
+		actions["ctrl-p"] = function(selected)
+			if not selected or #selected == 0 then return end
+			for i, e in ipairs(entries) do
+				if e == selected[1] then
+					local n = nodes[i]
+					require("lg.tools.context").add(vim.api.nvim_get_current_buf(), n.start_line, n.end_line)
+					pcall(function() require("lg.ui.window").refresh() end)
+					return
+				end
+			end
+		end
+		actions["ctrl-i"] = function(selected)
+			if not selected or #selected == 0 then return end
+			for i, e in ipairs(entries) do
+				if e == selected[1] then
+					local n = nodes[i]
+					require("lg.session.server").add_info_region(vim.api.nvim_get_current_buf(), n.start_line, n.end_line)
+					return
+				end
+			end
+		end
+	end
+
 	require("fzf-lua").fzf_exec(entries, {
 		prompt = "  ",
 		winopts = {
@@ -107,46 +154,10 @@ function M.pick()
 			preview = { layout = "horizontal", horizontal = "right:55%" },
 		},
 		fzf_opts = {
-			["--header"] = ":: ENTER=paint :: ctrl-p=context paint :: ctrl-i=info paint ::",
+			["--header"] = header,
 			["--preview"] = preview_cmd,
 		},
-		actions = {
-			["default"] = function(selected)
-				if not selected or #selected == 0 then return end
-				for i, e in ipairs(entries) do
-					if e == selected[1] then
-						local n = nodes[i]
-						local buf = vim.api.nvim_get_current_buf()
-						require("lg.ui.paint").add(buf, n.start_line, n.end_line)
-						pcall(function() require("lg.ui.window").refresh() end)
-						return
-					end
-				end
-			end,
-			["ctrl-p"] = function(selected)
-				if not selected or #selected == 0 then return end
-				for i, e in ipairs(entries) do
-					if e == selected[1] then
-						local n = nodes[i]
-						local buf = vim.api.nvim_get_current_buf()
-						require("lg.tools.context").add(buf, n.start_line, n.end_line)
-						pcall(function() require("lg.ui.window").refresh() end)
-						return
-					end
-				end
-			end,
-			["ctrl-i"] = function(selected)
-				if not selected or #selected == 0 then return end
-				for i, e in ipairs(entries) do
-					if e == selected[1] then
-						local n = nodes[i]
-						local buf = vim.api.nvim_get_current_buf()
-						require("lg.session.server").add_info_region(buf, n.start_line, n.end_line)
-						return
-					end
-				end
-			end,
-		},
+		actions = actions,
 	})
 end
 
