@@ -24,6 +24,9 @@ local node_labels = {
 	match_expression = "match",
 	impl_item = "impl block",
 	for_in_statement = "for-in loop",
+	element = "element",
+	jsx_element = "jsx element",
+	jsx_self_closing_element = "jsx element",
 	export_statement = "export",
 }
 
@@ -104,7 +107,7 @@ function M.pick()
 			preview = { layout = "horizontal", horizontal = "right:55%" },
 		},
 		fzf_opts = {
-			["--header"] = ":: ENTER=paint :: ctrl-p=context paint ::",
+			["--header"] = ":: ENTER=paint :: ctrl-p=context paint :: ctrl-i=info paint ::",
 			["--preview"] = preview_cmd,
 		},
 		actions = {
@@ -128,6 +131,17 @@ function M.pick()
 						local buf = vim.api.nvim_get_current_buf()
 						require("lg.tools.context").add(buf, n.start_line, n.end_line)
 						pcall(function() require("lg.ui.window").refresh() end)
+						return
+					end
+				end
+			end,
+			["ctrl-i"] = function(selected)
+				if not selected or #selected == 0 then return end
+				for i, e in ipairs(entries) do
+					if e == selected[1] then
+						local n = nodes[i]
+						local buf = vim.api.nvim_get_current_buf()
+						require("lg.session.server").add_info_region(buf, n.start_line, n.end_line)
 						return
 					end
 				end
