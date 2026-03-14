@@ -365,8 +365,10 @@ function M.start()
 						timer:start(50, 50, vim.schedule_wrap(function()
 							local result = poll_fn()
 							if result then
-								timer:stop()
-								timer:close()
+								if not timer:is_closing() then
+									timer:stop()
+									timer:close()
+								end
 								active_timer = nil
 								pcall(function() if client then client:write(result .. "\n") end end)
 							end
