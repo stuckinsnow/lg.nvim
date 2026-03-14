@@ -46,6 +46,7 @@ function M.gather_diagnostics(bufnr, start_line, end_line)
 end
 
 --- Diagnostics + type info (for @LSP on painted regions)
+--- Only includes symbols defined outside the painted region.
 --- @param bufnr number
 --- @param start_line number 1-indexed
 --- @param end_line number 1-indexed
@@ -62,28 +63,59 @@ function M.gather(bufnr, start_line, end_line)
     local buf_lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
     local seen = {}
     local hover_info = {}
+    local uri = vim.uri_from_bufnr(bufnr)
 
     for i, line in ipairs(buf_lines) do
       for col_start, word in line:gmatch("()([%a_][%w_]*)") do
-        if not keywords[word] and not seen[word] then
+        if #word > 1 and not keywords[word] and not seen[word] then
           seen[word] = true
+          local pos = { line = start_line + i - 2, character = col_start - 1 }
           local params = {
             textDocument = vim.lsp.util.make_text_document_params(bufnr),
-            position = { line = start_line + i - 2, character = col_start - 1 },
+            position = pos,
           }
-          local results = vim.lsp.buf_request_sync(bufnr, "textDocument/hover", params, 100)
-          if results then
-            for _, res in pairs(results) do
-              local content = res and res.result and res.result.contents
-              if type(content) == "table" and content.value then
-                local val = content.value:gsub("```%w*\n?", ""):gsub("\n", " "):gsub("%s+", " "):sub(1, 120)
-                if val ~= "" then
-                  table.insert(hover_info, word .. ": " .. val)
-                  type_count = type_count + 1
+
+          -- Check if defined inside the painted region — skip if so
+          local def_results = vim.lsp.buf_request_sync(bufnr, "textDocument/definition", params, 200)
+          if def_results then
+            local external = false
+            for _, res in pairs(def_results) do
+              local defs = res and res.result
+              if defs then
+                if defs.uri or defs.targetUri then defs = { defs } end
+                for _, d in ipairs(defs) do
+                  local def_uri = d.uri or d.targetUri
+                  local def_range = d.range or d.targetSelectionRange
+                  if def_uri and def_range then
+                    local def_line = def_range.start.line -- 0-indexed
+                    if def_uri ~= uri or def_line < (start_line - 1) or def_line >= end_line then
+                      external = true
+                      break
+                    end
+                  end
+                end
+              end
+              if external then break end
+            end
+            if not external then goto continue end
+          end
+
+          do
+            local hover_results = vim.lsp.buf_request_sync(bufnr, "textDocument/hover", params, 100)
+            if hover_results then
+              for _, res in pairs(hover_results) do
+                local content = res and res.result and res.result.contents
+                if type(content) == "table" and content.value then
+                  local val = content.value:gsub("```%w*\n?", ""):gsub("\n", " "):gsub("%s+", " "):sub(1, 120)
+                  if val ~= "" then
+                    table.insert(hover_info, word .. ": " .. val)
+                    type_count = type_count + 1
+                  end
                 end
               end
             end
           end
+          ::continue::
         end
       end
     end
