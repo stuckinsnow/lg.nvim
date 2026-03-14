@@ -1,9 +1,9 @@
 go 1.23.4
 
 use (
-	./lsp
-	./mcp
+	./acp
 	./git-mcp
 	./hint-mcp
-	./acp
+	./lsp
+	./mcp
 )

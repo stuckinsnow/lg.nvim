@@ -1,32 +1,13 @@
 // Package server implements the unix socket API that Neovim (Lua) talks to.
-//
-// One connection receives ALL session events. Lua filters by session_id.
-//
-// Requests:
-//   {"method":"create_session","cwd":"/path"}
-//   {"method":"prompt","session_id":"...","prompt":[...]}
-//   {"method":"set_mode","session_id":"...","mode_id":"lg"}
-//   {"method":"set_model","session_id":"...","model_id":"claude-sonnet-4-5"}
-//   {"method":"cancel","session_id":"..."}
-//   {"method":"destroy_session","session_id":"..."}
-//   {"method":"respond_permission","session_id":"...","rpc_id":5,"option_id":"once"}
-//   {"method":"get_models"}
-//   {"method":"status"}
-//   {"method":"terminate"}
 package server
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"lg-acp/internal/session"
 	"log"
 	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -58,9 +39,9 @@ type Server struct {
 	sockPath string
 	provider string
 
-	mu         sync.Mutex
-	connCount  int
-	idleTimer  *time.Timer
+	mu        sync.Mutex
+	connCount int
+	idleTimer *time.Timer
 }
 
 func New(mgr *session.Manager, sockPath, provider string) *Server {
@@ -77,13 +58,13 @@ func (s *Server) Start() error {
 	s.startIdleTimer()
 	log.Printf("acp: listening on %s", s.sockPath)
 	for {
-		conn, err := ln.Accept()
+		nc, err := ln.Accept()
 		if err != nil {
 			return nil
 		}
 		s.addConn()
 		go func() {
-			s.handleConn(conn)
+			newConn(nc, s).serve()
 			s.removeConn()
 		}()
 	}
@@ -124,363 +105,4 @@ func (s *Server) Stop() {
 		s.listener.Close()
 	}
 	os.Remove(s.sockPath)
-}
-
-// listOpencodeSessions queries opencode's SQLite DB for sessions with preview text.
-type sessionEntry struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Date    string `json:"date"`
-	Preview string `json:"preview"`
-}
-
-func listOpencodeSessions(cwd string) (json.RawMessage, error) {
-	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, ".local", "share", "opencode", "opencode.db")
-	if _, err := os.Stat(dbPath); err != nil {
-		return json.Marshal([]sessionEntry{})
-	}
-
-	query := fmt.Sprintf(`SELECT json_group_array(json_object(
-		'id', s.id, 'title', s.title,
-		'date', datetime(s.time_updated / 1000, 'unixepoch', 'localtime'),
-		'preview', (SELECT group_concat(json_extract(p.data, '$.text'), char(10)||'---'||char(10))
-		            FROM (SELECT p2.data FROM part p2
-		                  WHERE p2.session_id = s.id
-		                  AND json_extract(p2.data, '$.type') = 'text'
-		                  ORDER BY p2.time_created LIMIT 2) p)
-	)) FROM (
-		SELECT * FROM session s WHERE s.directory = '%s'
-		AND s.title NOT LIKE 'ACP Session %%'
-		AND s.title NOT LIKE 'New session - %%'
-		ORDER BY s.time_updated DESC LIMIT 50
-	) s`, cwd)
-
-	out, err := exec.Command("sqlite3", dbPath, query).Output()
-	if err != nil {
-		return nil, fmt.Errorf("sqlite3: %w", err)
-	}
-	return json.RawMessage(out), nil
-}
-
-func listKiroSessions(cwd string) (json.RawMessage, error) {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".kiro", "sessions", "cli")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return json.Marshal([]sessionEntry{})
-	}
-
-	type kiroFile struct {
-		SessionID string `json:"session_id"`
-		CWD       string `json:"cwd"`
-		UpdatedAt string `json:"updated_at"`
-		State     struct {
-			Conv struct {
-				Turns []struct {
-					Result struct {
-						Ok struct {
-							Content []struct {
-								Kind string `json:"kind"`
-								Data string `json:"data"`
-							} `json:"content"`
-						} `json:"Ok"`
-					} `json:"result"`
-				} `json:"user_turn_metadatas"`
-			} `json:"conversation_metadata"`
-		} `json:"session_state"`
-	}
-
-	var sessions []sessionEntry
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".json" {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			continue
-		}
-		var f kiroFile
-		if json.Unmarshal(data, &f) != nil || f.CWD != cwd {
-			continue
-		}
-
-		var title string
-		var previewLines int
-		var preview strings.Builder
-		for _, turn := range f.State.Conv.Turns {
-			for _, c := range turn.Result.Ok.Content {
-				if c.Kind == "text" && c.Data != "" {
-					text := strings.TrimLeft(c.Data, " \t\n")
-					if title == "" {
-						first, _, _ := strings.Cut(text, "\n")
-						if len(first) > 80 {
-							first = first[:80]
-						}
-						title = first
-					}
-					for _, line := range strings.Split(text, "\n") {
-						if previewLines > 0 {
-							preview.WriteByte('\n')
-						}
-						preview.WriteString(line)
-						previewLines++
-						if previewLines >= 40 {
-							break
-						}
-					}
-				}
-			}
-			if previewLines >= 40 {
-				break
-			}
-		}
-		if title == "" {
-			title = "(untitled)"
-		}
-
-		date := f.UpdatedAt
-		if len(date) > 16 {
-			date = date[:16]
-		}
-		date = strings.ReplaceAll(date, "T", " ")
-
-		p := preview.String()
-		if strings.TrimSpace(p) == "" {
-			continue
-		}
-		sessions = append(sessions, sessionEntry{
-			ID:      f.SessionID,
-			Title:   title,
-			Date:    date,
-			Preview: p,
-		})
-	}
-
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].Date > sessions[j].Date
-	})
-	if len(sessions) > 50 {
-		sessions = sessions[:50]
-	}
-	return json.Marshal(sessions)
-}
-
-func deleteOpencodeSession(sessionID string) error {
-	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, ".local", "share", "opencode", "opencode.db")
-	return exec.Command("sqlite3", dbPath, fmt.Sprintf("DELETE FROM session WHERE id = '%s'", sessionID)).Run()
-}
-
-// conn holds the write mutex and a list of sessions whose events we're streaming.
-type conn struct {
-	net.Conn
-	mu       sync.Mutex
-	sessions []*session.Session // all sessions created on this connection
-}
-
-func (c *conn) writeLine(v any) {
-	data, _ := json.Marshal(v)
-	c.mu.Lock()
-	c.Conn.Write(append(data, '\n'))
-	c.mu.Unlock()
-}
-
-// streamEvents drains a session's event channel and writes to the connection.
-func (c *conn) streamEvents(sess *session.Session) {
-	for ev := range sess.Events() {
-		c.writeLine(ev)
-	}
-}
-
-func (s *Server) handleConn(nc net.Conn) {
-	c := &conn{Conn: nc}
-	defer func() {
-		c.Close()
-	}()
-
-	scanner := bufio.NewScanner(nc)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
-
-	for scanner.Scan() {
-		var req Request
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			c.writeLine(Response{Error: "bad json"})
-			continue
-		}
-
-		switch req.Method {
-		case "create_session":
-			cwd := req.CWD
-			if cwd == "" {
-				cwd, _ = os.Getwd()
-			}
-			if len(req.MCPServers) > 0 {
-				var servers map[string]any
-				if err := json.Unmarshal(req.MCPServers, &servers); err == nil && len(servers) > 0 {
-					s.mgr.SetMCPServers(servers)
-				}
-			}
-			log.Printf("acp: create_session cwd=%s", cwd)
-			sess, err := s.mgr.CreateSession(cwd)
-			if err != nil {
-				log.Printf("acp: create_session error: %v", err)
-				c.writeLine(Response{Error: err.Error()})
-				continue
-			}
-			log.Printf("acp: waiting for session ready event...")
-			// Wait for ready
-			ev := <-sess.Events()
-			log.Printf("acp: got event type=%s", ev.Type)
-			if ev.Type == "error" {
-				c.writeLine(Response{Error: ev.Error})
-				continue
-			}
-			// Extract just the models from the full session/new result
-			var result struct {
-				Models json.RawMessage `json:"models"`
-			}
-			if json.Unmarshal(ev.Data, &result) == nil && result.Models != nil {
-				c.writeLine(Response{OK: true, SessionID: sess.ID, Models: result.Models})
-			} else {
-				c.writeLine(Response{OK: true, SessionID: sess.ID})
-			}
-			// Stream all future events for this session on this connection
-			c.mu.Lock()
-			c.sessions = append(c.sessions, sess)
-			c.mu.Unlock()
-			go c.streamEvents(sess)
-
-		case "prompt":
-			sess := s.mgr.GetSession(req.SessionID)
-			if sess == nil {
-				c.writeLine(Response{Error: "unknown session"})
-				continue
-			}
-			if err := sess.Prompt(req.Prompt, func() {}); err != nil {
-				c.writeLine(Response{Error: err.Error()})
-				continue
-			}
-			c.writeLine(Response{OK: true})
-
-		case "set_mode":
-			sess := s.mgr.GetSession(req.SessionID)
-			if sess == nil {
-				c.writeLine(Response{Error: "unknown session"})
-				continue
-			}
-			if err := sess.SetMode(req.ModeID); err != nil {
-				c.writeLine(Response{Error: err.Error()})
-				continue
-			}
-			c.writeLine(Response{OK: true})
-
-		case "set_model":
-			sess := s.mgr.GetSession(req.SessionID)
-			if sess == nil {
-				c.writeLine(Response{Error: "unknown session"})
-				continue
-			}
-			if err := sess.SetModel(req.ModelID); err != nil {
-				c.writeLine(Response{Error: err.Error()})
-				continue
-			}
-			c.writeLine(Response{OK: true})
-
-		case "cancel":
-			if sess := s.mgr.GetSession(req.SessionID); sess != nil {
-				sess.Cancel()
-			}
-			c.writeLine(Response{OK: true})
-
-		case "destroy_session":
-			if sess := s.mgr.GetSession(req.SessionID); sess != nil {
-				sess.Cancel()
-				s.mgr.RemoveSession(req.SessionID)
-			}
-			c.writeLine(Response{OK: true})
-
-		case "respond_permission":
-			if sess := s.mgr.GetSession(req.SessionID); sess != nil {
-				sess.RespondPermission(req.RPCID, req.OptionID)
-			}
-			c.writeLine(Response{OK: true})
-
-		case "get_models":
-			models := s.mgr.Models()
-			if models != nil {
-				data, _ := json.Marshal(models)
-				c.writeLine(Response{OK: true, Models: data})
-			} else {
-				c.writeLine(Response{OK: true})
-			}
-
-		case "list_sessions":
-			cwd := req.CWD
-			if cwd == "" {
-				cwd, _ = os.Getwd()
-			}
-			log.Printf("acp: list_sessions cwd=%s", cwd)
-			var data json.RawMessage
-			var err error
-			if s.provider == "opencode" {
-				data, err = listOpencodeSessions(cwd)
-			} else {
-				data, err = listKiroSessions(cwd)
-			}
-			if err != nil {
-				c.writeLine(Response{Error: err.Error()})
-				continue
-			}
-			c.writeLine(Response{OK: true, Data: data})
-
-		case "delete_session":
-			if req.SessionID == "" {
-				c.writeLine(Response{Error: "missing session_id"})
-				continue
-			}
-			log.Printf("acp: delete_session id=%s", req.SessionID)
-			if s.provider == "opencode" {
-				if err := deleteOpencodeSession(req.SessionID); err != nil {
-					c.writeLine(Response{Error: err.Error()})
-					continue
-				}
-			} else {
-				home, _ := os.UserHomeDir()
-				os.Remove(filepath.Join(home, ".kiro", "sessions", "cli", req.SessionID+".json"))
-			}
-			c.writeLine(Response{OK: true})
-
-		case "load_session":
-			cwd := req.CWD
-			if cwd == "" {
-				cwd, _ = os.Getwd()
-			}
-			if req.SessionID == "" {
-				c.writeLine(Response{Error: "missing session_id"})
-				continue
-			}
-			log.Printf("acp: load_session id=%s", req.SessionID)
-			sess, err := s.mgr.LoadSession(req.SessionID, cwd)
-			if err != nil {
-				c.writeLine(Response{Error: err.Error()})
-				continue
-			}
-			c.writeLine(Response{OK: true, SessionID: sess.ID})
-			c.mu.Lock()
-			c.sessions = append(c.sessions, sess)
-			c.mu.Unlock()
-			go c.streamEvents(sess)
-
-		case "status":
-			c.writeLine(Response{OK: true, Active: len(s.mgr.Sessions())})
-
-		case "terminate":
-			s.mgr.Terminate()
-			c.writeLine(Response{OK: true})
-
-		default:
-			c.writeLine(Response{Error: "unknown method: " + req.Method})
-		}
-	}
 }

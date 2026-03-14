@@ -1,353 +1,23 @@
-// Package session manages ACP session lifecycle and state.
-//
-// Each session tracks: creation, prompting, mode/model switching,
-// permission handling, fs operations, and streaming updates.
 package session
 
 import (
 	"encoding/json"
-	"fmt"
-	"lg-acp/internal/protocol"
 	"lg-acp/internal/process"
+	"lg-acp/internal/protocol"
 	"log"
 	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
-// State represents the session lifecycle.
-type State string
-
-const (
-	StateCreating  State = "creating"
-	StateActive    State = "active"
-	StateCompleted State = "completed"
-	StateCancelled State = "cancelled"
-)
-
-// Event is streamed back to the Lua client over the socket.
-type Event struct {
-	Type      string          `json:"type"`
-	SessionID string          `json:"session_id,omitempty"`
-	Data      json.RawMessage `json:"data,omitempty"`
-	Text      string          `json:"text,omitempty"`
-	Error     string          `json:"error,omitempty"`
-}
-
-// Session is a single ACP session on a shared process.
-type Session struct {
-	ID    string
-	State State
-	proc  *process.Process
-
-	mu             sync.Mutex
-	pendingUpdates []*protocol.Message
-	events         chan Event
-	promptCount    int
-	onDone         map[int]func()              // rpc id -> callback
-	pendingPerms   map[int]*protocol.RPCID      // lua-facing int key -> original RPCID
-	nextPermKey    int
-}
-
-// Manager owns the shared process and all sessions.
-type Manager struct {
-	proc     *process.Process
-	mu       sync.Mutex
-	sessions map[string]*Session
-	nextTemp int64
-
-	cmd        []string
-	clientName string
-	mcpServers map[string]any
-}
-
-// NewManager creates a session manager for the given ACP command.
-func NewManager(cmd []string, clientName string) *Manager {
-	return &Manager{
-		cmd:        cmd,
-		clientName: clientName,
-		sessions:   make(map[string]*Session),
-		mcpServers: make(map[string]any),
-	}
-}
-
-// SetMCPServers configures MCP servers for new sessions.
-func (m *Manager) SetMCPServers(servers map[string]any) {
-	m.mu.Lock()
-	m.mcpServers = servers
-	m.mu.Unlock()
-}
-
-// ensureProcess spawns the ACP subprocess if not already running.
-func (m *Manager) ensureProcess() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.proc != nil {
-		return nil
-	}
-	proc, err := process.Spawn(m.cmd, m.clientName)
-	if err != nil {
-		return err
-	}
-	m.proc = proc
-	return nil
-}
-
-// CreateSession creates a new ACP session and returns it.
-// The session's Events channel streams updates back to the caller.
-func (m *Manager) CreateSession(cwd string) (*Session, error) {
-	if err := m.ensureProcess(); err != nil {
-		return nil, fmt.Errorf("process: %w", err)
-	}
-
-	s := &Session{
-		State:  StateCreating,
-		proc:   m.proc,
-		events: make(chan Event, 256),
-		onDone:       make(map[int]func()),
-		pendingPerms: make(map[int]*protocol.RPCID),
-	}
-
-	tempID := fmt.Sprintf("temp-%d", atomic.AddInt64(&m.nextTemp, 1))
-
-	// Register a temporary handler for routing during creation
-	m.proc.RegisterSession(tempID, func(msg *protocol.Message) {
-		s.handleMessage(msg)
-	})
-
-	m.mu.Lock()
-	m.sessions[tempID] = s
-	m.mu.Unlock()
-
-	// Send session/new
-	id := m.proc.NextID()
-	m.proc.TrackResponse(id, func(msg *protocol.Message) {
-		if msg.Error != nil {
-			s.mu.Lock()
-			s.State = StateCompleted
-			s.mu.Unlock()
-			s.events <- Event{Type: "error", Error: msg.Error.Message}
-			close(s.events)
-			m.proc.UnregisterSession(tempID)
-			m.mu.Lock()
-			delete(m.sessions, tempID)
-			m.mu.Unlock()
-			return
-		}
-
-		var result protocol.SessionNewResult
-		if err := json.Unmarshal(msg.Result, &result); err != nil {
-			s.events <- Event{Type: "error", Error: "bad session/new result"}
-			close(s.events)
-			return
-		}
-
-		s.mu.Lock()
-		s.ID = result.SessionID
-		s.State = StateActive
-		pending := s.pendingUpdates
-		s.pendingUpdates = nil
-		s.mu.Unlock()
-
-		// Swap routing from temp to real session id
-		m.proc.UnregisterSession(tempID)
-		m.proc.RegisterSession(s.ID, func(msg *protocol.Message) {
-			s.handleMessage(msg)
-		})
-		m.mu.Lock()
-		delete(m.sessions, tempID)
-		m.sessions[s.ID] = s
-		m.mu.Unlock()
-
-		if result.Models != nil {
-			m.proc.SetModels(result.Models)
-		}
-
-		s.events <- Event{
-			Type:      "session_ready",
-			SessionID: s.ID,
-			Data:      msg.Result,
-		}
-
-		// Replay buffered updates
-		for _, pending := range pending {
-			s.handleMessage(pending)
-		}
-	})
-
-	m.mu.Lock()
-	servers := m.mcpServers
-	m.mu.Unlock()
-
-	log.Printf("acp: sending session/new id=%d cwd=%s", id, cwd)
-	req := protocol.SessionNewRequest(id, cwd, servers)
-	reqData, _ := json.Marshal(req)
-	log.Printf("acp: session/new payload: %s", string(reqData))
-	if err := m.proc.Write(req); err != nil {
-		return nil, fmt.Errorf("send session/new: %w", err)
-	}
-
-	return s, nil
-}
-
-// GetSession returns a session by id.
-func (m *Manager) GetSession(id string) *Session {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.sessions[id]
-}
-
-// ListSessions calls session/list on the ACP process.
-func (m *Manager) ListSessions(cwd string) (json.RawMessage, error) {
-	if err := m.ensureProcess(); err != nil {
-		return nil, err
-	}
-	id := m.proc.NextID()
-	ch := make(chan *protocol.Message, 1)
-	m.proc.TrackResponse(id, func(msg *protocol.Message) { ch <- msg })
-	if err := m.proc.Write(protocol.SessionListRequest(id, cwd)); err != nil {
-		return nil, err
-	}
-	msg := <-ch
-	if msg.Error != nil {
-		return nil, fmt.Errorf("%s", msg.Error.Message)
-	}
-	return msg.Result, nil
-}
-
-// LoadSession loads a previous session by ID, returning a Session that streams replayed events.
-func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
-	if err := m.ensureProcess(); err != nil {
-		return nil, err
-	}
-
-	// Fetch models via a throwaway session/new if we don't have them yet
-	if m.proc.Models() == nil {
-		m.fetchModels(cwd)
-	}
-
-	s := &Session{
-		ID:           sessionID,
-		State:        StateActive,
-		proc:         m.proc,
+func newSession(proc *process.Process) *Session {
+	return &Session{
+		State:        StateCreating,
+		proc:         proc,
 		events:       make(chan Event, 256),
 		onDone:       make(map[int]func()),
 		pendingPerms: make(map[int]*protocol.RPCID),
 	}
-
-	m.proc.RegisterSession(sessionID, func(msg *protocol.Message) {
-		s.handleMessage(msg)
-	})
-	m.mu.Lock()
-	m.sessions[sessionID] = s
-	m.mu.Unlock()
-
-	id := m.proc.NextID()
-	m.proc.TrackResponse(id, func(msg *protocol.Message) {
-		if msg.Error != nil {
-			s.events <- Event{Type: "error", Error: msg.Error.Message}
-			return
-		}
-		// session/load response means replay is done
-		s.events <- Event{Type: "session_loaded", SessionID: sessionID}
-	})
-
-	m.mu.Lock()
-	servers := m.mcpServers
-	m.mu.Unlock()
-
-	if err := m.proc.Write(protocol.SessionLoadRequest(id, sessionID, cwd, servers)); err != nil {
-		return nil, err
-	}
-	return s, nil
 }
-
-// RemoveSession cleans up a session.
-func (m *Manager) RemoveSession(id string) {
-	m.mu.Lock()
-	delete(m.sessions, id)
-	m.mu.Unlock()
-	if m.proc != nil {
-		m.proc.UnregisterSession(id)
-	}
-}
-
-// fetchModels creates a throwaway session to populate models info.
-func (m *Manager) fetchModels(cwd string) {
-	done := make(chan struct{})
-	id := m.proc.NextID()
-
-	m.proc.TrackResponse(id, func(msg *protocol.Message) {
-		defer close(done)
-		if msg.Error != nil || msg.Result == nil {
-			return
-		}
-		var result struct {
-			Models *protocol.ModelsInfo `json:"models"`
-		}
-		if json.Unmarshal(msg.Result, &result) == nil && result.Models != nil {
-			m.proc.SetModels(result.Models)
-		}
-	})
-
-	m.mu.Lock()
-	servers := m.mcpServers
-	m.mu.Unlock()
-
-	m.proc.Write(protocol.SessionNewRequest(id, cwd, servers))
-
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		log.Printf("acp: fetchModels timeout")
-	}
-}
-
-// Models returns available models from the process.
-func (m *Manager) Models() *protocol.ModelsInfo {
-	if m.proc != nil {
-		return m.proc.Models()
-	}
-	return nil
-}
-
-// Terminate kills the process and all sessions.
-func (m *Manager) Terminate() {
-	m.mu.Lock()
-	for id, s := range m.sessions {
-		s.events <- Event{Type: "terminated"}
-		close(s.events)
-		delete(m.sessions, id)
-	}
-	proc := m.proc
-	m.proc = nil
-	m.mu.Unlock()
-	if proc != nil {
-		proc.Terminate()
-	}
-}
-
-// IsHealthy returns true if the process is running.
-func (m *Manager) IsHealthy() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.proc != nil
-}
-
-// Sessions returns a snapshot of active session IDs.
-func (m *Manager) Sessions() []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	ids := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		ids = append(ids, id)
-	}
-	return ids
-}
-
-// --- Session methods ---
 
 // Events returns the channel for streaming events to the client.
 func (s *Session) Events() <-chan Event { return s.events }
@@ -372,18 +42,14 @@ func (s *Session) Prompt(prompt json.RawMessage, onDone func()) error {
 // SetMode sends session/set_mode.
 func (s *Session) SetMode(modeID string) error {
 	id := s.proc.NextID()
-	s.proc.TrackResponse(id, func(msg *protocol.Message) {
-		// ack — nothing to do
-	})
+	s.proc.TrackResponse(id, func(msg *protocol.Message) {})
 	return s.proc.Write(protocol.SessionSetModeRequest(id, s.ID, modeID))
 }
 
 // SetModel sends session/set_model.
 func (s *Session) SetModel(modelID string) error {
 	id := s.proc.NextID()
-	s.proc.TrackResponse(id, func(msg *protocol.Message) {
-		// ack
-	})
+	s.proc.TrackResponse(id, func(msg *protocol.Message) {})
 	return s.proc.Write(protocol.SessionSetModelRequest(id, s.ID, modelID))
 }
 
@@ -401,26 +67,35 @@ func (s *Session) Cancel() {
 	}
 }
 
+// RespondPermission sends a permission response (called by Lua after user choice).
+func (s *Session) RespondPermission(rpcID int, optionID string) {
+	s.mu.Lock()
+	origID := s.pendingPerms[rpcID]
+	delete(s.pendingPerms, rpcID)
+	s.mu.Unlock()
+	if origID != nil {
+		s.proc.Write(protocol.PermissionResponse(origID, optionID))
+	}
+}
+
+// --- internal message handling ---
+
 func (s *Session) handleMessage(msg *protocol.Message) {
 	s.mu.Lock()
 	state := s.State
 	s.mu.Unlock()
 
-	// Buffer updates that arrive before session is active
 	if state == StateCreating {
 		s.mu.Lock()
 		s.pendingUpdates = append(s.pendingUpdates, msg)
 		s.mu.Unlock()
 		return
 	}
-
 	if state != StateActive {
 		return
 	}
 
-	method := msg.Method
-
-	switch method {
+	switch msg.Method {
 	case "session/update":
 		s.handleUpdate(msg)
 	case "session/request_permission":
@@ -429,10 +104,6 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 		s.handleFSRead(msg)
 	case "fs/write_text_file":
 		s.handleFSWrite(msg)
-	default:
-		if msg.IsResponse() {
-			// Untracked response — ignore
-		}
 	}
 }
 
@@ -444,7 +115,6 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 
 	var update protocol.SessionUpdate
 	if err := json.Unmarshal(params.Update, &update); err != nil {
-		// Forward raw update even if we can't parse it
 		s.events <- Event{Type: "update", SessionID: s.ID, Data: params.Update}
 		return
 	}
@@ -563,17 +233,6 @@ func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message) {
 	s.mu.Unlock()
 	if cb != nil {
 		cb()
-	}
-}
-
-// RespondPermission sends a permission response (called by Lua after user choice).
-func (s *Session) RespondPermission(rpcID int, optionID string) {
-	s.mu.Lock()
-	origID := s.pendingPerms[rpcID]
-	delete(s.pendingPerms, rpcID)
-	s.mu.Unlock()
-	if origID != nil {
-		s.proc.Write(protocol.PermissionResponse(origID, optionID))
 	}
 }
 
