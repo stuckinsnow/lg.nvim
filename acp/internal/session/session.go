@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // State represents the session lifecycle.
@@ -222,6 +223,11 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 		return nil, err
 	}
 
+	// Fetch models via a throwaway session/new if we don't have them yet
+	if m.proc.Models() == nil {
+		m.fetchModels(cwd)
+	}
+
 	s := &Session{
 		ID:           sessionID,
 		State:        StateActive,
@@ -265,6 +271,37 @@ func (m *Manager) RemoveSession(id string) {
 	m.mu.Unlock()
 	if m.proc != nil {
 		m.proc.UnregisterSession(id)
+	}
+}
+
+// fetchModels creates a throwaway session to populate models info.
+func (m *Manager) fetchModels(cwd string) {
+	done := make(chan struct{})
+	id := m.proc.NextID()
+
+	m.proc.TrackResponse(id, func(msg *protocol.Message) {
+		defer close(done)
+		if msg.Error != nil || msg.Result == nil {
+			return
+		}
+		var result struct {
+			Models *protocol.ModelsInfo `json:"models"`
+		}
+		if json.Unmarshal(msg.Result, &result) == nil && result.Models != nil {
+			m.proc.SetModels(result.Models)
+		}
+	})
+
+	m.mu.Lock()
+	servers := m.mcpServers
+	m.mu.Unlock()
+
+	m.proc.Write(protocol.SessionNewRequest(id, cwd, servers))
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		log.Printf("acp: fetchModels timeout")
 	}
 }
 
