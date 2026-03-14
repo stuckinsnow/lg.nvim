@@ -27,6 +27,28 @@ local providers = {
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
 }
 
+--- Map kiro mode IDs to opencode equivalents.
+--- Opencode only has "build" and "plan" as ACP modes.
+local opencode_modes = {
+	lg = "build",
+	["lg-chat"] = "build",
+	["lg-oneshot"] = "build",
+	["lg-info"] = "build",
+	reviewer = "plan",
+	suggester = "plan",
+	fullstack = "build",
+	kiro_default = "build",
+	kiro_planner = "plan",
+}
+
+--- Resolve a mode ID for the current provider.
+local function resolve_mode(mode_id)
+	if opts.provider == "opencode" then
+		return opencode_modes[mode_id] or "build"
+	end
+	return mode_id
+end
+
 local state_path = "/dev/shm/lg-state.json"
 local acp_sock = "/dev/shm/lg-acp.sock"
 
@@ -216,7 +238,7 @@ local function connect(on_ready)
 			end
 
 			-- Switch to lg agent mode
-			client.set_mode(main_session_id, "lg")
+			client.set_mode(main_session_id, resolve_mode("lg"))
 
 			status.stop("Session ready")
 
@@ -389,7 +411,7 @@ function M.send_chat(prompt, on_done)
 		if not _planner_active then
 			require("lg.ui.window").add_status("Switching to chat mode")
 		end
-		client.set_mode(sid, target_mode)
+		client.set_mode(sid, resolve_mode(target_mode))
 
 		local messages = protocol.build_prompt({}, {}, prompt)
 
@@ -400,7 +422,7 @@ function M.send_chat(prompt, on_done)
 			if not _planner_active then
 				require("lg.ui.window").add_status("Switching to paint mode")
 			end
-			client.set_mode(sid, return_mode)
+			client.set_mode(sid, resolve_mode(return_mode))
 			_busy = false
 			if on_done then
 				on_done()
@@ -728,7 +750,7 @@ local function run_subagent(config)
 
 			local function set_mode_then_prompt()
 				if config.mode_id then
-					client.set_mode(sub_sid, config.mode_id, function()
+					client.set_mode(sub_sid, resolve_mode(config.mode_id), function()
 						send_prompt()
 					end)
 				else
@@ -833,7 +855,7 @@ function M.set_planner(enabled, callback)
 			return
 		end
 		local mode_id = enabled and "kiro_planner" or "kiro_default"
-		client.set_mode(sid, mode_id)
+		client.set_mode(sid, resolve_mode(mode_id))
 		if callback then
 			callback(true)
 		end
@@ -856,7 +878,7 @@ function M.send_hint(prompt, regions, context_regions, on_done)
 			return
 		end
 
-		client.set_mode(sid, "reviewer")
+		client.set_mode(sid, resolve_mode("reviewer"))
 
 		local all_ctx = {}
 		for _, r in ipairs(regions) do
@@ -872,7 +894,7 @@ function M.send_hint(prompt, regions, context_regions, on_done)
 
 		_busy = true
 		M._on_done = function()
-			client.set_mode(sid, "lg")
+			client.set_mode(sid, resolve_mode("lg"))
 			_busy = false
 			if on_done then
 				on_done()
@@ -940,7 +962,7 @@ function M.send_suggest(prompt, regions, context_regions, on_done)
 			return
 		end
 
-		client.set_mode(sid, "suggester")
+		client.set_mode(sid, resolve_mode("suggester"))
 
 		local all_ctx = {}
 		for _, r in ipairs(regions) do
@@ -956,7 +978,7 @@ function M.send_suggest(prompt, regions, context_regions, on_done)
 
 		_busy = true
 		M._on_done = function()
-			client.set_mode(sid, "lg")
+			client.set_mode(sid, resolve_mode("lg"))
 			_busy = false
 			if on_done then
 				on_done()
@@ -1144,7 +1166,7 @@ function M._do_load_session(session_id)
 			if ev.session_id ~= session_id then return end
 			if unsub then unsub() end
 			M._restoring = false
-			client.set_mode(session_id, "lg")
+			client.set_mode(session_id, resolve_mode("lg"))
 			-- Fetch models so select_model works
 			client.get_models(function(resp)
 				if resp.models then
