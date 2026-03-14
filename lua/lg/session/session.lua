@@ -1103,6 +1103,20 @@ function M.restore_session()
 					M._do_load_session(sid)
 				end
 			end,
+			["ctrl-x"] = function(selected)
+				if not selected or #selected == 0 then return end
+				for _, item in ipairs(selected) do
+					local sid = item:match("^([^\t]+)")
+					if sid then
+						local path = vim.fn.expand("~/.kiro/sessions/cli/" .. sid .. ".json")
+						os.remove(path)
+						vim.notify("lg: deleted session " .. sid:sub(1, 8), vim.log.levels.INFO)
+					end
+				end
+				-- Reopen picker with remaining sessions
+				vim.fn.delete(preview_dir, "rf")
+				M.restore_session()
+			end,
 		},
 	})
 end
