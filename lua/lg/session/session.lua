@@ -114,6 +114,13 @@ local function ensure_acp(on_ready)
 			acp_proc = nil
 		end
 
+		-- Kill any stale lg-acp processes
+		local stale = vim.fn.systemlist("pgrep -f 'lg-acp.*--sock' 2>/dev/null")
+		for _, p in ipairs(stale) do
+			p = vim.trim(p)
+			if p ~= "" then vim.fn.system("kill -9 " .. p) end
+		end
+
 		-- Clean up stale socket
 		vim.fn.delete(acp_sock)
 
