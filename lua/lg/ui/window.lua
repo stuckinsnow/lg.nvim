@@ -78,9 +78,25 @@ end
 -- Renderers
 
 local function render_status()
-  local status = session.is_active() and "● active" or "○ idle"
-  if state.planner then status = status .. "  [PLAN]" end
-  return { "Session: " .. status }, { { 0, 0, -1, "LgStatus" } }
+  local ok_icon, fail_icon = "●", "○"
+
+  -- ACP: Go binary running + socket connected
+  local acp = session.is_connected() and ok_icon or fail_icon
+
+  -- MCP: unix socket server for paint_edit / get_painted_regions
+  local svr = require("lg.session.server")
+  local mcp = svr.get_sock_path() and ok_icon or fail_icon
+
+  -- Hint MCP: lg-hint.sock (lg-lsp listening for lg-hint-mcp)
+  local hint = vim.uv.fs_stat("/dev/shm/lg-hint.sock") and ok_icon or fail_icon
+
+  -- LSP: lg-hint client attached
+  local lsp = #vim.lsp.get_clients({ name = "lg-hint" }) > 0 and ok_icon or fail_icon
+
+  local plan = state.planner and ok_icon or fail_icon
+  local line = string.format("acp %s  mcp %s  hint-mcp %s  lsp %s  plan %s", acp, mcp, hint, lsp, plan)
+
+  return { line }, { { 0, 0, -1, "LgStatus" } }
 end
 
 local function render_regions()
