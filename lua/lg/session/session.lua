@@ -1071,52 +1071,8 @@ end
 
 --- List sessions via ACP session/list (works for any provider).
 --- @param on_done fun(sessions: table[])
---- Read opencode sessions from SQLite DB with preview text.
---- @param cwd string
---- @return table[] sessions { id, cwd, date, title, preview }
-local function read_opencode_sessions(cwd)
-	local db_path = vim.fn.expand("~/.local/share/opencode/opencode.db")
-	if vim.fn.filereadable(db_path) ~= 1 then return {} end
-
-	local query = string.format([[
-		SELECT json_group_array(json_object(
-			'id', s.id,
-			'title', s.title,
-			'date', datetime(s.time_updated / 1000, 'unixepoch', 'localtime'),
-			'preview', (SELECT group_concat(json_extract(p.data, '$.text'), char(10) || '---' || char(10))
-			            FROM (SELECT p2.data FROM part p2
-			                  WHERE p2.session_id = s.id
-			                  AND json_extract(p2.data, '$.type') = 'text'
-			                  ORDER BY p2.time_created LIMIT 2) p)
-		)) FROM (
-			SELECT * FROM session s
-			WHERE s.directory = '%s'
-			AND s.title NOT LIKE 'ACP Session %%'
-			AND s.title NOT LIKE 'New session - %%'
-			ORDER BY s.time_updated DESC
-			LIMIT 50
-		) s
-	]], cwd:gsub("'", "''"))
-
-	local result = vim.fn.system({ "sqlite3", db_path, query })
-	if vim.v.shell_error ~= 0 then return {} end
-
-	local ok, rows = pcall(vim.json.decode, result)
-	if not ok then return {} end
-
-	local sessions = {}
-	for _, r in ipairs(rows) do
-		table.insert(sessions, {
-			id = r.id,
-			cwd = cwd,
-			date = r.date or "",
-			title = r.title ~= "" and r.title or "(untitled)",
-			preview = r.preview or "",
-		})
-	end
-	return sessions
-end
-
+--- List sessions via the Go binary (handles provider differences internally).
+--- @param on_done fun(sessions: table[])
 local function list_sessions_acp(on_done)
 	ensure_acp(function(ok)
 		if not ok then
@@ -1134,15 +1090,22 @@ local function list_sessions_acp(on_done)
 				return
 			end
 			local sessions = {}
-			for _, s in ipairs(data.sessions or data or {}) do
+			-- Opencode: array of {id, title, date, preview}
+			-- Kiro ACP: {sessions: [{sessionId, title, updatedAt, cwd}]}
+			local list = data.sessions or data
+			if type(list) ~= "table" then
+				on_done({})
+				return
+			end
+			for _, s in ipairs(list) do
 				local title = s.title or ""
 				if not title:match("^ACP Session ") and not title:match("^New session %- ") then
 					table.insert(sessions, {
-						id = s.sessionId,
+						id = s.sessionId or s.id,
 						cwd = s.cwd or "",
-						date = (s.updatedAt or ""):sub(1, 16):gsub("T", " "),
-						title = title,
-						preview = "",
+						date = s.date or (s.updatedAt or ""):sub(1, 16):gsub("T", " "),
+						title = title ~= "" and title or "(untitled)",
+						preview = s.preview or "",
 					})
 				end
 			end
@@ -1225,7 +1188,9 @@ function M.restore_session()
 	if opts.provider == "kiro" then
 		show_picker(read_kiro_sessions(vim.fn.getcwd()))
 	else
-		show_picker(read_opencode_sessions(vim.fn.getcwd()))
+		list_sessions_acp(function(sessions)
+			vim.schedule(function() show_picker(sessions) end)
+		end)
 	end
 end
 

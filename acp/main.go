@@ -35,7 +35,7 @@ func main() {
 	}
 
 	mgr := session.NewManager(cmd, "lg")
-	srv := server.New(mgr, *sockPath)
+	srv := server.New(mgr, *sockPath, *provider)
 
 	// Clean shutdown
 	sig := make(chan os.Signal, 1)

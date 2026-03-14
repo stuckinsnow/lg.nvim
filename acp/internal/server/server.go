@@ -23,6 +23,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -52,14 +54,15 @@ type Server struct {
 	mgr      *session.Manager
 	listener net.Listener
 	sockPath string
+	provider string
 
 	mu         sync.Mutex
 	connCount  int
 	idleTimer  *time.Timer
 }
 
-func New(mgr *session.Manager, sockPath string) *Server {
-	return &Server{mgr: mgr, sockPath: sockPath}
+func New(mgr *session.Manager, sockPath, provider string) *Server {
+	return &Server{mgr: mgr, sockPath: sockPath, provider: provider}
 }
 
 func (s *Server) Start() error {
@@ -119,6 +122,36 @@ func (s *Server) Stop() {
 		s.listener.Close()
 	}
 	os.Remove(s.sockPath)
+}
+
+// listOpencodeSessions queries opencode's SQLite DB for sessions with preview text.
+func listOpencodeSessions(cwd string) (json.RawMessage, error) {
+	home, _ := os.UserHomeDir()
+	dbPath := filepath.Join(home, ".local", "share", "opencode", "opencode.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		return json.Marshal([]any{})
+	}
+
+	query := fmt.Sprintf(`SELECT json_group_array(json_object(
+		'id', s.id, 'title', s.title,
+		'date', datetime(s.time_updated / 1000, 'unixepoch', 'localtime'),
+		'preview', (SELECT group_concat(json_extract(p.data, '$.text'), char(10)||'---'||char(10))
+		            FROM (SELECT p2.data FROM part p2
+		                  WHERE p2.session_id = s.id
+		                  AND json_extract(p2.data, '$.type') = 'text'
+		                  ORDER BY p2.time_created LIMIT 2) p)
+	)) FROM (
+		SELECT * FROM session s WHERE s.directory = '%s'
+		AND s.title NOT LIKE 'ACP Session %%'
+		AND s.title NOT LIKE 'New session - %%'
+		ORDER BY s.time_updated DESC LIMIT 50
+	) s`, cwd)
+
+	out, err := exec.Command("sqlite3", dbPath, query).Output()
+	if err != nil {
+		return nil, fmt.Errorf("sqlite3: %w", err)
+	}
+	return json.RawMessage(out), nil
 }
 
 // conn holds the write mutex and a list of sessions whose events we're streaming.
@@ -270,12 +303,21 @@ func (s *Server) handleConn(nc net.Conn) {
 				cwd, _ = os.Getwd()
 			}
 			log.Printf("acp: list_sessions cwd=%s", cwd)
-			result, err := s.mgr.ListSessions(cwd)
-			if err != nil {
-				c.writeLine(Response{Error: err.Error()})
-				continue
+			if s.provider == "opencode" {
+				data, err := listOpencodeSessions(cwd)
+				if err != nil {
+					c.writeLine(Response{Error: err.Error()})
+					continue
+				}
+				c.writeLine(Response{OK: true, Data: data})
+			} else {
+				result, err := s.mgr.ListSessions(cwd)
+				if err != nil {
+					c.writeLine(Response{Error: err.Error()})
+					continue
+				}
+				c.writeLine(Response{OK: true, Data: result})
 			}
-			c.writeLine(Response{OK: true, Data: result})
 
 		case "load_session":
 			cwd := req.CWD
