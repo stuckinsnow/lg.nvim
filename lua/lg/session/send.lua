@@ -10,6 +10,16 @@ local spinners = require("lg.spinner.spinners")
 
 local M = {}
 
+local pending_lsp_context = nil
+
+function M.set_lsp_context(text)
+	pending_lsp_context = text
+end
+
+function M.clear_lsp_context()
+	pending_lsp_context = nil
+end
+
 --- Count diagnostics published by the lg-hint LSP
 local function count_ai_diagnostics()
 	local n = 0
@@ -323,6 +333,12 @@ function M.send(opts)
 					.. " types"
 				window.add_tool(summary)
 			end
+		end
+
+		-- Merge manually-added LSP context
+		if pending_lsp_context then
+			lsp_context = lsp_context and (lsp_context .. "\n\n" .. pending_lsp_context) or pending_lsp_context
+			pending_lsp_context = nil
 		end
 
 		local tsc_context = nil

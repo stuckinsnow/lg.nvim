@@ -290,17 +290,27 @@ function M.add_lsp_context()
 		return
 	end
 	local lsp = require("lg.tools.lsp")
+	local parts = {}
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			local info = lsp.gather(r.bufnr, r.start_line, r.end_line)
 			if info ~= "" then
-				window.add_result(
-					"LSP: " .. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.") .. "\n" .. info
-				)
+				local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(r.bufnr), ":~:.")
+				table.insert(parts, "LSP: " .. fname .. "\n" .. info)
 			end
 		end
 	end
+	if #parts > 0 then
+		local text = table.concat(parts, "\n\n")
+		require("lg.session.send").set_lsp_context(text)
+		window.add_result(text)
+	end
 	window.refresh()
+end
+
+function M.clear_lsp_context()
+	require("lg.session.send").clear_lsp_context()
+	vim.notify("lg: LSP context cleared", vim.log.levels.INFO)
 end
 
 -- ── Git ────────────────────────────────────────────────────────────
