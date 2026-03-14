@@ -15,25 +15,47 @@ Supports **kiro-cli** and **opencode** as providers.
 
 ```
 lua/lg/
-├── init.lua      -- Entry point, thin orchestrator
-├── paint.lua     -- Visual region painting with extmarks
-├── diff.lua      -- Buffer editing + gutter markers
-├── session.lua   -- ACP subprocess lifecycle
-├── protocol.lua  -- ACP/JSON-RPC message building
-├── server.lua    -- Unix socket server for MCP bridge
-└── window.lua    -- Optional side panel (regions + history)
+├── init.lua              -- Entry point, thin orchestrator
+├── completion.lua        -- Blink.cmp source for @ and # completions
+├── quick-edit.lua        -- Paint + prompt + isolated session in one step
+├── quick-chat.lua        -- Chat about selection (no edits)
+├── status.lua            -- Statusline integration
+├── session/
+│   ├── session.lua       -- ACP subprocess lifecycle
+│   ├── send.lua          -- Prompt building, prefix handling, dispatch
+│   ├── server.lua        -- Unix socket server for MCP bridge
+│   ├── client.lua        -- Socket client for IPC
+│   └── protocol.lua      -- ACP/JSON-RPC message building
+├── ui/
+│   ├── paint.lua         -- Visual region painting with extmarks
+│   ├── diff.lua          -- Buffer editing + gutter markers
+│   ├── window.lua        -- Side panel (regions, history, chat)
+│   ├── hunk.lua          -- Diff hunk accept/reject
+│   └── prompt.lua        -- Floating multi-line prompt input
+├── tools/
+│   ├── lsp.lua           -- LSP context gathering for painted regions
+│   ├── context.lua       -- Read-only context regions
+│   ├── smart-paint.lua   -- Treesitter-aware painting
+│   ├── paint-commits.lua -- Paint regions from git commits
+│   ├── search.lua        -- Codebase search UI
+│   ├── search-index.lua  -- Semantic search with nomic-embed-text
+│   └── tool.lua          -- Tool execution helpers
+└── spinner/              -- Animated progress indicators
+
+acp/
+└── main.go               -- Go binary: ACP session manager (socket server)
 
 mcp/
-└── main.go       -- MCP server (paint_edit + get_painted_regions tools)
+└── main.go               -- MCP server (paint_edit + get_painted_regions tools)
 
 git-mcp/
-└── main.go       -- Git MCP server (git_log, git_show, git_diff, git_blame)
+└── main.go               -- Git MCP server (git_log, git_show, git_diff, git_blame)
 
 hint-mcp/
-└── main.go       -- Hint MCP server (lg_hint tool for AI diagnostics)
+└── main.go               -- Hint MCP server (lg_hint tool for AI diagnostics)
 
 lsp/
-└── main.go       -- Hint LSP display server (receives hints, publishes diagnostics)
+└── main.go               -- Hint LSP display server (receives hints, publishes diagnostics)
 ```
 
 ## Installation
@@ -83,6 +105,7 @@ A `build.sh` script builds all Go binaries:
 ```
 
 This builds:
+- `acp/lg-acp` — ACP session manager (subprocess bridge)
 - `mcp/lg-mcp` — main MCP server
 - `git-mcp/lg-git-mcp` — git MCP server
 - `hint-mcp/lg-hint-mcp` — hint MCP server
@@ -177,11 +200,15 @@ Use these prefixes in your prompt to enable special modes:
 |---|---|
 | `@INFO` | AI highlights regions that need changes and explains what to do — no code written. Use `<leader>aA` to convert highlighted regions to real paint. |
 | `@HINT` | AI reviews code and publishes findings as editor diagnostics (squiggly underlines + hover messages). Read-only — no edits. Uses a dedicated reviewer agent mode. |
+| `@SUGGEST` | AI publishes code suggestions as diagnostics — hover to see recommended code. |
+| `@HELP` | AI highlights regions + publishes code suggestions for each. |
 | `@GIT` | Spawns a cheap subagent (Haiku/GPT-4.1) to analyze git history, then injects the result as context into the main session. |
 | `@SEARCH` | Tells the AI to use semantic codebase search (nomic-embed-text) before acting. Requires `LG_INDEX_URL`. |
 | `@DIAG` | Tells the AI to check LSP diagnostics before making edits. |
 | `@LSP` | Gathers LSP info (types, references) for painted regions and includes it as context. |
+| `@FILE_LSP` | Gathers LSP diagnostics for the entire current file. |
 | `@TSC` | Runs `tsc --noEmit` and includes type errors as context. |
+| `@SUB` | Runs the next prefix as a subagent (e.g. `@SUB HINT`) — doesn't block the main session. |
 
 Prefixes can be combined: `@DIAG @SEARCH fix the auth bug`
 
