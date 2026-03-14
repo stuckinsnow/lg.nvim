@@ -1016,7 +1016,7 @@ end
 
 -- ── Session restore ────────────────────────────────────────────────
 
---- Read kiro session files from disk and return sorted list.
+--- Read kiro session files from disk and return sorted list (kiro-only, has previews).
 --- @param cwd string filter by cwd
 --- @return table[] sessions { id, cwd, date, title, preview }
 local function read_kiro_sessions(cwd)
@@ -1069,78 +1069,164 @@ local function read_kiro_sessions(cwd)
 	return sessions
 end
 
-function M.restore_session()
-	local sessions = read_kiro_sessions(vim.fn.getcwd())
-	if #sessions == 0 then
-		vim.notify("lg: no previous sessions for this project", vim.log.levels.INFO)
-		return
-	end
+--- List sessions via ACP session/list (works for any provider).
+--- @param on_done fun(sessions: table[])
+--- Read opencode sessions from SQLite DB with preview text.
+--- @param cwd string
+--- @return table[] sessions { id, cwd, date, title, preview }
+local function read_opencode_sessions(cwd)
+	local db_path = vim.fn.expand("~/.local/share/opencode/opencode.db")
+	if vim.fn.filereadable(db_path) ~= 1 then return {} end
 
-	local entries = {}
-	local id_by_idx = {}
-	local preview_by_idx = {}
-	for i, s in ipairs(sessions) do
-		-- ANSI: \27[36m = cyan, \27[33m = yellow, \27[0m = reset
-		local entry = string.format("\x1b[36m%s\x1b[0m  \x1b[33m%s\x1b[0m", s.date, s.title)
-		entries[i] = entry
-		id_by_idx[i] = s.id
-		preview_by_idx[i] = s.preview
-	end
+	local query = string.format([[
+		SELECT json_group_array(json_object(
+			'id', s.id,
+			'title', s.title,
+			'date', datetime(s.time_updated / 1000, 'unixepoch', 'localtime'),
+			'preview', (SELECT group_concat(json_extract(p.data, '$.text'), char(10) || '---' || char(10))
+			            FROM (SELECT p2.data FROM part p2
+			                  WHERE p2.session_id = s.id
+			                  AND json_extract(p2.data, '$.type') = 'text'
+			                  ORDER BY p2.time_created LIMIT 2) p)
+		)) FROM (
+			SELECT * FROM session s
+			WHERE s.directory = '%s'
+			AND s.title NOT LIKE 'ACP Session %%'
+			AND s.title NOT LIKE 'New session - %%'
+			ORDER BY s.time_updated DESC
+			LIMIT 50
+		) s
+	]], cwd:gsub("'", "''"))
 
-	-- Write preview files for fzf
-	local preview_dir = "/dev/shm/lg-session-preview"
-	vim.fn.mkdir(preview_dir, "p")
-	for i, s in ipairs(sessions) do
-		local pf = io.open(preview_dir .. "/" .. s.id, "w")
-		if pf then
-			pf:write(s.preview or "(no preview)")
-			pf:close()
+	local result = vim.fn.system({ "sqlite3", db_path, query })
+	if vim.v.shell_error ~= 0 then return {} end
+
+	local ok, rows = pcall(vim.json.decode, result)
+	if not ok then return {} end
+
+	local sessions = {}
+	for _, r in ipairs(rows) do
+		table.insert(sessions, {
+			id = r.id,
+			cwd = cwd,
+			date = r.date or "",
+			title = r.title ~= "" and r.title or "(untitled)",
+			preview = r.preview or "",
+		})
+	end
+	return sessions
+end
+
+local function list_sessions_acp(on_done)
+	ensure_acp(function(ok)
+		if not ok then
+			on_done({})
+			return
 		end
-		-- Prefix entry with hidden session id for preview lookup
-		entries[i] = s.id .. "\t" .. entries[i]
-		id_by_idx[i] = s.id
-	end
+		client.list_sessions(vim.fn.getcwd(), function(resp)
+			if resp.error or not resp.data then
+				on_done({})
+				return
+			end
+			local ok2, data = pcall(vim.json.decode, type(resp.data) == "string" and resp.data or vim.json.encode(resp.data))
+			if not ok2 then
+				on_done({})
+				return
+			end
+			local sessions = {}
+			for _, s in ipairs(data.sessions or data or {}) do
+				local title = s.title or ""
+				if not title:match("^ACP Session ") and not title:match("^New session %- ") then
+					table.insert(sessions, {
+						id = s.sessionId,
+						cwd = s.cwd or "",
+						date = (s.updatedAt or ""):sub(1, 16):gsub("T", " "),
+						title = title,
+						preview = "",
+					})
+				end
+			end
+			table.sort(sessions, function(a, b) return a.date > b.date end)
+			on_done(sessions)
+		end)
+	end)
+end
 
-	require("fzf-lua").fzf_exec(entries, {
-		prompt = "  ",
-		fzf_opts = {
+function M.restore_session()
+	local function show_picker(sessions)
+		if #sessions == 0 then
+			vim.notify("lg: no previous sessions for this project", vim.log.levels.INFO)
+			return
+		end
+
+		local entries = {}
+		local has_preview = false
+		local preview_dir = "/dev/shm/lg-session-preview"
+		vim.fn.mkdir(preview_dir, "p")
+		for i, s in ipairs(sessions) do
+			if s.preview ~= "" then has_preview = true end
+			local pf = io.open(preview_dir .. "/" .. s.id, "w")
+			if pf then
+				pf:write(s.preview ~= "" and s.preview or s.title)
+				pf:close()
+			end
+			entries[i] = s.id .. "\t" .. string.format("\x1b[36m%s\x1b[0m  \x1b[33m%s\x1b[0m", s.date, s.title)
+		end
+
+		local fzf_opts = {
 			["--ansi"] = "",
 			["--delimiter"] = "\t",
 			["--with-nth"] = "2..",
-			["--preview"] = "bat --style=plain --color=always --wrap=auto -l md " .. preview_dir .. "/{1}",
-			["--preview-window"] = "right:50%:wrap",
-		},
-		winopts = {
-			title = " 󰋚 Restore Session ",
-			title_pos = "center",
-			height = 0.6,
-			width = 0.75,
-		},
-		actions = {
-			["default"] = function(selected)
-				vim.fn.delete(preview_dir, "rf")
-				if not selected or #selected == 0 then return end
-				local sid = selected[1]:match("^([^\t]+)")
-				if sid then
-					M._do_load_session(sid)
-				end
-			end,
-			["ctrl-x"] = function(selected)
-				if not selected or #selected == 0 then return end
-				for _, item in ipairs(selected) do
-					local sid = item:match("^([^\t]+)")
+		}
+		if has_preview then
+			fzf_opts["--preview"] = "bat --style=plain --color=always --wrap=auto -l md " .. preview_dir .. "/{1}"
+			fzf_opts["--preview-window"] = "right:50%:wrap"
+		else
+			fzf_opts["--preview-window"] = "hidden"
+		end
+
+		require("fzf-lua").fzf_exec(entries, {
+			prompt = "  ",
+			fzf_opts = fzf_opts,
+			winopts = {
+				title = " 󰋚 Restore Session ",
+				title_pos = "center",
+				height = 0.6,
+				width = has_preview and 0.75 or 0.6,
+			},
+			actions = {
+				["default"] = function(selected)
+					vim.fn.delete(preview_dir, "rf")
+					if not selected or #selected == 0 then return end
+					local sid = selected[1]:match("^([^\t]+)")
 					if sid then
-						local path = vim.fn.expand("~/.kiro/sessions/cli/" .. sid .. ".json")
-						os.remove(path)
-						vim.notify("lg: deleted session " .. sid:sub(1, 8), vim.log.levels.INFO)
+						M._do_load_session(sid)
 					end
-				end
-				-- Reopen picker with remaining sessions
-				vim.fn.delete(preview_dir, "rf")
-				M.restore_session()
-			end,
-		},
-	})
+				end,
+				["ctrl-x"] = function(selected)
+					if not selected or #selected == 0 then return end
+					for _, item in ipairs(selected) do
+						local sid = item:match("^([^\t]+)")
+						if sid then
+							if opts.provider == "kiro" then
+								local path = vim.fn.expand("~/.kiro/sessions/cli/" .. sid .. ".json")
+								os.remove(path)
+							end
+							vim.notify("lg: deleted session " .. sid:sub(1, 8), vim.log.levels.INFO)
+						end
+					end
+					vim.fn.delete(preview_dir, "rf")
+					M.restore_session()
+				end,
+			},
+		})
+	end
+
+	if opts.provider == "kiro" then
+		show_picker(read_kiro_sessions(vim.fn.getcwd()))
+	else
+		show_picker(read_opencode_sessions(vim.fn.getcwd()))
+	end
 end
 
 function M._do_load_session(session_id)
