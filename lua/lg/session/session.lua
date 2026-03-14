@@ -72,12 +72,6 @@ end
 
 local _connect_queue = nil
 
-local function lg_log(msg)
-	vim.schedule(function()
-		vim.notify("[lg-acp] " .. msg, vim.log.levels.DEBUG)
-	end)
-end
-
 --- Ensure lg-acp binary is running and we have a socket connection.
 --- @param on_ready fun(ok: boolean)
 local function ensure_acp(on_ready)
@@ -86,14 +80,11 @@ local function ensure_acp(on_ready)
 		return
 	end
 
-	lg_log("trying existing socket...")
 	client.connect(function(ok)
 		if ok then
-			lg_log("connected to existing socket")
 			on_ready(true)
 			return
 		end
-		lg_log("no existing socket, spawning...")
 
 		if acp_proc then
 			pcall(function() acp_proc:kill(9) end)
@@ -105,14 +96,12 @@ local function ensure_acp(on_ready)
 
 		local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h:h")
 		local bin = plugin_dir .. "/acp/lg-acp"
-		lg_log("spawning: " .. bin)
 
 		local logfile = "/dev/shm/lg-acp.log"
 		acp_proc = vim.system(
 			{ "sh", "-c", bin .. " --provider " .. opts.provider .. " --sock " .. acp_sock .. " 2>" .. logfile },
 			{ detach = true },
-			function(obj)
-				lg_log("process exited: code=" .. tostring(obj.code))
+			function()
 				acp_proc = nil
 			end
 		)
@@ -124,17 +113,14 @@ local function ensure_acp(on_ready)
 			if vim.uv.fs_stat(acp_sock) then
 				timer:stop()
 				timer:close()
-				lg_log("socket appeared after " .. (attempts * 50) .. "ms")
 				vim.schedule(function()
 					client.connect(function(conn_ok)
-						lg_log("connect result: " .. tostring(conn_ok))
 						on_ready(conn_ok)
 					end)
 				end)
 			elseif attempts > 60 then
 				timer:stop()
 				timer:close()
-				lg_log("timeout waiting for socket")
 				vim.schedule(function() on_ready(false) end)
 			end
 		end)
@@ -167,22 +153,18 @@ local function connect(on_ready)
 
 	ensure_acp(function(ok)
 		if not ok then
-			lg_log("ensure_acp failed")
 			status.stop("Connection failed")
 			flush(nil)
 			return
 		end
 
-		lg_log("ensure_acp ok, creating session...")
 		M._setup_event_handlers()
 
 		client.create_session(vim.fn.getcwd(), opts.mcp_servers, function(resp)
-			lg_log("create_session response: " .. vim.inspect(resp))
 			if resp.error then
 				-- Retry once: disconnect, respawn, reconnect
 				if not _connect_retried then
 					_connect_retried = true
-					lg_log("retrying after error...")
 					client.disconnect()
 					vim.fn.delete(acp_sock)
 					if acp_proc then
@@ -433,9 +415,6 @@ function M.clear()
 	client.terminate()
 	client.disconnect()
 	if acp_proc then
-		pcall(function() acp_proc:kill(15) end)
-		-- Give it a moment then force kill
-		vim.uv.sleep(200)
 		pcall(function() acp_proc:kill(9) end)
 		acp_proc = nil
 	end
@@ -1128,6 +1107,12 @@ function M._do_load_session(session_id)
 			if unsub then unsub() end
 			M._restoring = false
 			client.set_mode(session_id, "lg")
+			-- Fetch models so select_model works
+			client.get_models(function(resp)
+				if resp.models then
+					session_models = resp.models
+				end
+			end)
 			status.stop("Session restored")
 		end)
 
