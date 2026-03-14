@@ -253,12 +253,14 @@ function M._setup_event_handlers()
 	client.clear_handlers()
 
 	client.on("text", function(ev)
+		if ev.session_id ~= main_session_id then return end
 		if ev.text then
 			require("lg.ui.window").append_agent_text(ev.text)
 		end
 	end)
 
 	client.on("tool_call", function(ev)
+		if ev.session_id ~= main_session_id then return end
 		if M._restoring then return end
 		status.update("Tool: " .. (ev.text or "unknown"))
 		require("lg.ui.window").add_tool(ev.text or "unknown")
@@ -266,10 +268,12 @@ function M._setup_event_handlers()
 	end)
 
 	client.on("tool_error", function(ev)
+		if ev.session_id ~= main_session_id then return end
 		status.flash("Tool failed: " .. (ev.text or "unknown"))
 	end)
 
-	client.on("prompt_done", function()
+	client.on("prompt_done", function(ev)
+		if ev.session_id ~= main_session_id then return end
 		status.stop("Done")
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 		if M._on_done then
@@ -280,10 +284,12 @@ function M._setup_event_handlers()
 	end)
 
 	client.on("prompt_error", function(ev)
+		if ev.session_id ~= main_session_id then return end
 		status.stop("Error: " .. (ev.error or "unknown"))
 	end)
 
 	client.on("permission_request", function(ev)
+		if ev.session_id ~= main_session_id then return end
 		local data = ev.data
 		if type(data) == "string" then
 			local ok2, parsed = pcall(vim.json.decode, data)
