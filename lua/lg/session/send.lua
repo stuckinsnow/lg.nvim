@@ -66,6 +66,7 @@ function M.send(opts)
 			and not flags.has_git
 			and not flags.has_hint
 			and not flags.has_suggest
+			and not flags.has_help
 		then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
@@ -202,6 +203,49 @@ function M.send(opts)
 		end
 
 		local tool_hints = {}
+		if flags.has_help then
+			prompt = prompt:gsub("@SUB%s*", "")
+			prompt = prompt:gsub("@HELP%s*", "")
+			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@HELP " .. prompt)
+			status.start("Help" .. (flags.has_sub and " (subagent)" or "") .. "...")
+			local spin = spinners.start(regions)
+			local is_fn = (flags.has_sub or session.is_busy()) and session.send_help_subagent
+				or session.send_help
+			local retried = false
+			local ctx_regions = context.get_all()
+			local before = count_ai_diagnostics()
+			local function check_and_retry()
+				vim.defer_fn(function()
+					local n = count_ai_diagnostics() - before
+					if not retried and n <= 0 then
+						retried = true
+						status.flash("No suggestions published — retrying")
+						status.start("Retrying help…")
+						is_fn(
+							"Your previous attempt produced zero diagnostics. You MUST call both lg_paint_regions and lg_suggest. If a tool errored, fix the arguments and try again.\n\n"
+								.. prompt,
+							regions,
+							ctx_regions,
+							function()
+								vim.defer_fn(function()
+									spin:stop()
+									local n2 = count_ai_diagnostics() - before
+									if n2 <= 0 then
+										status.flash("Retry failed — no suggestions")
+									end
+									status.stop("Help done — " .. math.max(n2, 0) .. " suggestion(s)")
+								end, 500)
+							end
+						)
+					else
+						spin:stop()
+						status.stop("Help done — " .. n .. " suggestion(s)")
+					end
+				end, 500)
+			end
+			is_fn(prompt, regions, ctx_regions, check_and_retry)
+			return
+		end
 		if flags.has_auto_paint then
 			prompt = prompt:gsub("@INFO%s*", "")
 			local history = window.get_history()
@@ -348,6 +392,7 @@ function M.send(opts)
 			has_hint = text and text:match("@HINT") ~= nil,
 			has_suggest = text and text:match("@SUGGEST") ~= nil,
 			has_sub = text and text:match("@SUB") ~= nil,
+			has_help = text and text:match("@HELP") ~= nil,
 		})
 	else
 		require("lg.ui.prompt").open(do_send)

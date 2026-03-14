@@ -61,6 +61,7 @@ function M.open(cb, on_cancel)
 				has_hint = text:match("@HINT") ~= nil,
 				has_sub = text:match("@SUB") ~= nil,
 				has_suggest = text:match("@SUGGEST") ~= nil,
+				has_help = text:match("@HELP") ~= nil,
 			})
 		end
 	end

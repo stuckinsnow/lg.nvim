@@ -36,6 +36,7 @@ local opencode_modes = {
 	["lg-info"] = "build",
 	reviewer = "plan",
 	suggester = "plan",
+	helper = "plan",
 	fullstack = "build",
 	kiro_default = "build",
 	kiro_planner = "plan",
@@ -1006,6 +1007,66 @@ function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 		mode_id = "suggester",
 		prompt = messages,
 		label = "Suggesting (subagent)",
+		on_done = function(_, tool_error)
+			if on_done then
+				on_done(tool_error)
+			end
+		end,
+	})
+end
+
+-- ── Help (info paint + suggestions) ────────────────────────────────
+
+function M.send_help(prompt, regions, context_regions, on_done)
+	connect(function(sid)
+		if not sid then
+			return
+		end
+
+		client.set_mode(sid, resolve_mode("helper"))
+
+		local all_ctx = {}
+		for _, r in ipairs(regions) do
+			all_ctx[#all_ctx + 1] = r
+		end
+		for _, r in ipairs(context_regions or {}) do
+			all_ctx[#all_ctx + 1] = r
+		end
+		local has_scope = #regions > 0
+		local messages =
+			protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "help" } or nil)
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+		_busy = true
+		M._on_done = function()
+			client.set_mode(sid, resolve_mode("lg"))
+			_busy = false
+			if on_done then
+				on_done()
+			end
+			flush_send_queue()
+		end
+
+		client.prompt(sid, messages)
+	end)
+end
+
+function M.send_help_subagent(prompt, regions, context_regions, on_done)
+	local all_ctx = {}
+	for _, r in ipairs(regions) do
+		all_ctx[#all_ctx + 1] = r
+	end
+	for _, r in ipairs(context_regions or {}) do
+		all_ctx[#all_ctx + 1] = r
+	end
+	local has_scope = #regions > 0
+	local messages =
+		protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, has_scope and { scope = "help" } or nil)
+
+	run_subagent({
+		mode_id = "helper",
+		prompt = messages,
+		label = "Help (subagent)",
 		on_done = function(_, tool_error)
 			if on_done then
 				on_done(tool_error)
