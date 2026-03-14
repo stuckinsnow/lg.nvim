@@ -127,6 +127,16 @@ local function ensure_acp(on_ready)
 	end)
 end
 
+local function refresh_session_count()
+	if not client.is_connected() then
+		M._session_count = 0
+		return
+	end
+	client.send({ method = "status" }, function(resp)
+		M._session_count = resp.active or 0
+	end)
+end
+
 --- Ensure we have a main session. Queues concurrent callers.
 --- @param on_ready fun(session_id: string?)
 local function connect(on_ready)
@@ -190,6 +200,8 @@ local function connect(on_ready)
 			if resp.models then
 				session_models = resp.models
 			end
+
+			refresh_session_count()
 
 			-- Restore persisted model
 			local saved = load_state()
@@ -406,6 +418,7 @@ function M.clear()
 	_send_queue = {}
 	_busy = false
 	M._on_done = nil
+	M._session_count = 0
 	require("lg.session.server").clear_tokens()
 	if main_session_id then
 		client.destroy_session(main_session_id)
@@ -439,6 +452,17 @@ end
 --- @return boolean
 function M.is_active()
 	return main_session_id ~= nil and client.is_connected()
+end
+
+--- @return boolean
+function M.is_connected()
+	return acp_proc ~= nil and client.is_connected()
+end
+
+--- @return integer
+function M.session_count()
+	if not acp_proc or not client.is_connected() then return 0 end
+	return M._session_count or 0
 end
 
 --- @return boolean
@@ -1124,6 +1148,7 @@ function M._do_load_session(session_id)
 				return
 			end
 			main_session_id = resp.session_id
+			refresh_session_count()
 		end)
 	end)
 end

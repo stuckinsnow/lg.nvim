@@ -319,14 +319,62 @@ end
 
 function M.clear_menu()
 	local actions = {
-		{ icon = "󰏝", label = "Paint regions", fn = function() M.clear() end },
-		{ icon = "󰗅", label = "Context regions", fn = function() M.clear_context() end },
-		{ icon = "󰕍", label = "Last paint", fn = function() M.clear_last() end },
-		{ icon = "󰈮", label = "Edit markers", fn = function() M.clear_marks() end },
-		{ icon = "󰌪", label = "Info paint", fn = function() M.clear_info_paint() end },
-		{ icon = "󱃓", label = "AI hints", fn = function() M.clear_hints() end },
-		{ icon = "󰚃", label = "Session (full reset)", fn = function() M.clear_session() end },
-		{ icon = "󰗩", label = "Everything", fn = function() M.clear_session() end },
+		{
+			icon = "󰏝",
+			label = "Paint regions",
+			fn = function()
+				M.clear()
+			end,
+		},
+		{
+			icon = "󰗅",
+			label = "Context regions",
+			fn = function()
+				M.clear_context()
+			end,
+		},
+		{
+			icon = "󰕍",
+			label = "Last paint",
+			fn = function()
+				M.clear_last()
+			end,
+		},
+		{
+			icon = "󰈮",
+			label = "Edit markers",
+			fn = function()
+				M.clear_marks()
+			end,
+		},
+		{
+			icon = "󰌪",
+			label = "Info paint",
+			fn = function()
+				M.clear_info_paint()
+			end,
+		},
+		{
+			icon = "󱃓",
+			label = "AI hints",
+			fn = function()
+				M.clear_hints()
+			end,
+		},
+		{
+			icon = "󰚃",
+			label = "Session (full reset)",
+			fn = function()
+				M.clear_session()
+			end,
+		},
+		{
+			icon = "󰗩",
+			label = "Everything",
+			fn = function()
+				M.clear_session()
+			end,
+		},
 	}
 
 	local entries = {}
@@ -344,7 +392,9 @@ function M.clear_menu()
 		},
 		actions = {
 			["default"] = function(selected)
-				if not selected or #selected == 0 then return end
+				if not selected or #selected == 0 then
+					return
+				end
 				for i, e in ipairs(entries) do
 					if e == selected[1] then
 						actions[i].fn()
