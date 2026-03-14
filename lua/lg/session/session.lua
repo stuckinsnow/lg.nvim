@@ -1125,6 +1125,7 @@ function M.restore_session()
 		local entries = {}
 		local has_preview = false
 		local preview_dir = "/dev/shm/lg-session-preview"
+		vim.fn.delete(preview_dir, "rf")
 		vim.fn.mkdir(preview_dir, "p")
 		for i, s in ipairs(sessions) do
 			if s.preview ~= "" then has_preview = true end
@@ -1142,7 +1143,7 @@ function M.restore_session()
 			["--with-nth"] = "2..",
 		}
 		if has_preview then
-			fzf_opts["--preview"] = "bat --style=plain --color=always --wrap=auto -l md " .. preview_dir .. "/{1}"
+			fzf_opts["--preview"] = "CLICOLOR_FORCE=1 glow -s dark " .. preview_dir .. "/{1}"
 			fzf_opts["--preview-window"] = "right:50%:wrap"
 		else
 			fzf_opts["--preview-window"] = "hidden"
@@ -1182,13 +1183,9 @@ function M.restore_session()
 		})
 	end
 
-	if opts.provider == "kiro" then
-		show_picker(read_kiro_sessions(vim.fn.getcwd()))
-	else
-		list_sessions_acp(function(sessions)
-			vim.schedule(function() show_picker(sessions) end)
-		end)
-	end
+	list_sessions_acp(function(sessions)
+		vim.schedule(function() show_picker(sessions) end)
+	end)
 end
 
 function M._do_load_session(session_id)
