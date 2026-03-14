@@ -1171,10 +1171,7 @@ function M.restore_session()
 					for _, item in ipairs(selected) do
 						local sid = item:match("^([^\t]+)")
 						if sid then
-							if opts.provider == "kiro" then
-								local path = vim.fn.expand("~/.kiro/sessions/cli/" .. sid .. ".json")
-								os.remove(path)
-							end
+							client.delete_session(sid, function() end)
 							vim.notify("lg: deleted session " .. sid:sub(1, 8), vim.log.levels.INFO)
 						end
 					end

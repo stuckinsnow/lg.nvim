@@ -208,6 +208,10 @@ function M.list_sessions(cwd, callback)
 	M.send({ method = "list_sessions", cwd = cwd }, callback)
 end
 
+function M.delete_session(session_id, callback)
+	M.send({ method = "delete_session", session_id = session_id }, callback)
+end
+
 function M.load_session(session_id, cwd, callback)
 	M.send({ method = "load_session", session_id = session_id, cwd = cwd }, callback)
 end

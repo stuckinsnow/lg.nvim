@@ -154,6 +154,12 @@ func listOpencodeSessions(cwd string) (json.RawMessage, error) {
 	return json.RawMessage(out), nil
 }
 
+func deleteOpencodeSession(sessionID string) error {
+	home, _ := os.UserHomeDir()
+	dbPath := filepath.Join(home, ".local", "share", "opencode", "opencode.db")
+	return exec.Command("sqlite3", dbPath, fmt.Sprintf("DELETE FROM session WHERE id = '%s'", sessionID)).Run()
+}
+
 // conn holds the write mutex and a list of sessions whose events we're streaming.
 type conn struct {
 	net.Conn
@@ -318,6 +324,23 @@ func (s *Server) handleConn(nc net.Conn) {
 				}
 				c.writeLine(Response{OK: true, Data: result})
 			}
+
+		case "delete_session":
+			if req.SessionID == "" {
+				c.writeLine(Response{Error: "missing session_id"})
+				continue
+			}
+			log.Printf("acp: delete_session id=%s", req.SessionID)
+			if s.provider == "opencode" {
+				if err := deleteOpencodeSession(req.SessionID); err != nil {
+					c.writeLine(Response{Error: err.Error()})
+					continue
+				}
+			} else {
+				home, _ := os.UserHomeDir()
+				os.Remove(filepath.Join(home, ".kiro", "sessions", "cli", req.SessionID+".json"))
+			}
+			c.writeLine(Response{OK: true})
 
 		case "load_session":
 			cwd := req.CWD
