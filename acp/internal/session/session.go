@@ -104,6 +104,15 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 		s.handleFSRead(msg)
 	case "fs/write_text_file":
 		s.handleFSWrite(msg)
+	case "_kiro.dev/metadata":
+		var params struct {
+			SessionID              string  `json:"sessionId"`
+			ContextUsagePercentage float64 `json:"contextUsagePercentage"`
+		}
+		if json.Unmarshal(msg.Params, &params) == nil {
+			data, _ := json.Marshal(map[string]any{"context_pct": params.ContextUsagePercentage})
+			s.events <- Event{Type: "context_usage", SessionID: s.ID, Data: data}
+		}
 	}
 }
 

@@ -14,6 +14,7 @@ local state = {
   history = {},
   input_line = nil, -- line number where user input starts
   planner = false,
+  context_pct = nil,
 }
 
 local opts = {}
@@ -95,6 +96,10 @@ local function render_status()
 
   local plan = state.planner and ok_icon or fail_icon
   local line = string.format("acp %s  mcp %s  hint-mcp %s  lsp %s  plan %s", acp, mcp, hint, lsp, plan)
+
+  if state.context_pct then
+    line = line .. string.format("  󱙺 %.0f%%", state.context_pct)
+  end
 
   return { line }, { { 0, 0, -1, "LgStatus" } }
 end
@@ -249,6 +254,15 @@ end
 function M.add_status(text)
   table.insert(state.history, { type = "status", text = text })
   M.refresh()
+end
+
+function M.set_context_pct(pct)
+  state.context_pct = pct
+  M.refresh()
+end
+
+function M.get_context_pct()
+  return state.context_pct
 end
 
 function M.append_agent_text(chunk)

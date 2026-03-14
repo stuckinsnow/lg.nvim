@@ -336,6 +336,18 @@ function M._setup_event_handlers()
 		status.update("Approved: " .. (ev.text or ""))
 	end)
 
+	client.on("context_usage", function(ev)
+		if ev.session_id ~= main_session_id then return end
+		local data = ev.data
+		if type(data) == "string" then
+			local ok2, parsed = pcall(vim.json.decode, data)
+			if ok2 then data = parsed end
+		end
+		if data and data.context_pct then
+			require("lg.ui.window").set_context_pct(data.context_pct)
+		end
+	end)
+
 	client.on("fs_read", function(ev)
 		status.update("Reading: " .. vim.fn.fnamemodify(ev.text or "", ":t"))
 	end)
