@@ -10,6 +10,7 @@ local M = {}
 --- @field has_search boolean
 --- @field has_auto_paint boolean
 --- @field has_git boolean
+--- @field has_devlens boolean
 --- @field has_hint boolean
 --- @field has_sub boolean
 --- @field has_suggest boolean
@@ -58,6 +59,7 @@ function M.open(cb, on_cancel)
 				has_search = text:match("@SEARCH") ~= nil,
 				has_auto_paint = text:match("@INFO") ~= nil,
 				has_git = text:match("@GIT") ~= nil,
+				has_devlens = text:match("@DEVLENS") ~= nil,
 				has_hint = text:match("@HINT") ~= nil,
 				has_sub = text:match("@SUB") ~= nil,
 				has_suggest = text:match("@SUGGEST") ~= nil,

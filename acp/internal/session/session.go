@@ -169,7 +169,8 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 	// Dangerous operations need approval from Lua side
 	if strings.HasPrefix(title, "Creating ") ||
 		strings.HasPrefix(title, "Deleting ") ||
-		(strings.HasPrefix(title, "Running") && strings.Contains(title, "rm ")) {
+		(strings.HasPrefix(title, "Running") && strings.Contains(title, "rm ")) ||
+		strings.Contains(strings.ToLower(title), "devlens") {
 		s.mu.Lock()
 		s.nextPermKey++
 		key := s.nextPermKey

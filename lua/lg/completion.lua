@@ -7,6 +7,7 @@ local at_items = {
   { label = "@LSP", detail = "Gather type info and diagnostics from LSP for painted regions" },
   { label = "@FILE_LSP", detail = "Gather LSP info for the entire current file" },
   { label = "@GIT", detail = "Spawn a cheap model to analyze git history, inject as context" },
+  { label = "@DEVLENS", detail = "Inspect React components in the browser via DevLens, inject state as context" },
   { label = "@SEARCH", detail = "Semantic codebase search with nomic-embed-text before acting" },
   { label = "@DIAG", detail = "Check LSP diagnostics in open buffers before editing" },
   { label = "@INFO", detail = "AI highlights regions and explains changes — no code written" },

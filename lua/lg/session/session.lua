@@ -841,6 +841,30 @@ function M.send_git_subagent(prompt, on_done)
 	})
 end
 
+--- @param prompt string
+--- @param on_done fun(result: string)
+function M.send_devlens_subagent(prompt, on_done)
+	local cheap_models = {
+		kiro = "claude-haiku-4.5",
+		opencode = "github-copilot/gpt-4.1",
+	}
+	local model_id = cheap_models[opts.provider] or "claude-haiku-4.5"
+
+	run_subagent({
+		mode_id = "devlens",
+		prompt = { { type = "text", text = prompt } },
+		model_id = model_id,
+		label = "DevLens (" .. model_id .. ")",
+		on_done = function(text)
+			on_done(text)
+		end,
+		on_fail = function()
+			status.stop("DevLens agent failed")
+			on_done("")
+		end,
+	})
+end
+
 function M.send_quick_chat(prompt, on_done)
 	local model_id = "github-copilot/gpt-4.1"
 	ephemeral_override = { provider = "opencode", model = model_id }

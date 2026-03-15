@@ -74,6 +74,7 @@ function M.send(opts)
 			and not opts.from_chat
 			and not flags.has_auto_paint
 			and not flags.has_git
+			and not flags.has_devlens
 			and not flags.has_hint
 			and not flags.has_suggest
 			and not flags.has_help
@@ -82,6 +83,46 @@ function M.send(opts)
 			return
 		end
 		if not prompt or prompt == "" then
+			return
+		end
+
+		if flags.has_devlens then
+			local devlens_prompt = prompt:gsub("@DEVLENS%s*", "")
+			window.add_prompt(prompt)
+			status.start("DevLens inspection (Haiku)...")
+			session.send_devlens_subagent(
+				"You have access to a live browser page through the devlens Chrome extension. Use the devlens tools to inspect React components, understand component hierarchy, and read props/state. The user wants this context:\n\n"
+					.. devlens_prompt,
+				function(result)
+					vim.schedule(function()
+						if result and result ~= "" then
+							local full_prompt = "The following browser state was already gathered by a subagent — do NOT repeat or summarize it. Just act on the user's request using this context.\n\nBrowser state:\n"
+								.. result
+								.. "\n\nUser request:\n"
+								.. devlens_prompt
+							if opts.from_chat then
+								session.send_chat(full_prompt, function()
+									vim.schedule(function() spinners.stop() end)
+								end)
+							else
+								session.send(
+									full_prompt,
+									regions,
+									context.get_all(),
+									function()
+										vim.schedule(function()
+											spinners.stop()
+											window.refresh()
+										end)
+									end
+								)
+							end
+						else
+							status.stop("DevLens inspection empty")
+						end
+					end)
+				end
+			)
 			return
 		end
 
@@ -405,6 +446,7 @@ function M.send(opts)
 			has_lsp = text and text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
 			has_auto_paint = text and text:match("@INFO") ~= nil,
 			has_git = text and text:match("@GIT") ~= nil,
+			has_devlens = text and text:match("@DEVLENS") ~= nil,
 			has_hint = text and text:match("@HINT") ~= nil,
 			has_suggest = text and text:match("@SUGGEST") ~= nil,
 			has_sub = text and text:match("@SUB") ~= nil,
