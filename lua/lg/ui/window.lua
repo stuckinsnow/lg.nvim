@@ -78,7 +78,15 @@ end
 
 -- Renderers
 
+local devlens_up = false
+local function check_devlens()
+  vim.system({ "curl", "-s", "-m", "1", "http://127.0.0.1:7890/status" }, {}, function(obj)
+    devlens_up = obj.code == 0 and obj.stdout:find('"extension":true') ~= nil
+  end)
+end
+
 local function render_status()
+  check_devlens()
   local ok_icon, fail_icon = "●", "○"
 
   -- ACP: Go binary running + socket connected
@@ -94,8 +102,10 @@ local function render_status()
   -- LSP: lg-hint client attached
   local lsp = #vim.lsp.get_clients({ name = "lg-hint" }) > 0 and ok_icon or fail_icon
 
+  local devlens = devlens_up and ok_icon or fail_icon
+
   local plan = state.planner and ok_icon or fail_icon
-  local line = string.format("acp %s  mcp %s  hint-mcp %s  lsp %s  plan %s", acp, mcp, hint, lsp, plan)
+  local line = string.format("acp %s  mcp %s  hint-mcp %s  lsp %s  lens %s  plan %s", acp, mcp, hint, lsp, devlens, plan)
 
   if state.context_pct then
     line = line .. string.format("  󱙺 %.0f%%", state.context_pct)
