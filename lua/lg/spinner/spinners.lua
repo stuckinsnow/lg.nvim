@@ -106,6 +106,12 @@ function M.start(regions)
 	}
 end
 
-function M.stop() end
+function M.stop()
+	for _, h in ipairs(handles) do
+		clear_regions(h.regions, {})
+	end
+	handles = {}
+	stop_timer()
+end
 
 return M
