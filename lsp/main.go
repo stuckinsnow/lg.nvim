@@ -59,7 +59,7 @@ func main() {
 			// no-op
 
 		case "shutdown":
-			transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: nil})
+			transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: lsptype.NullResult})
 
 		case "exit":
 			os.Remove(sockPath)
@@ -107,7 +107,7 @@ func main() {
 				result, _ := json.Marshal(resp)
 				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(result)})
 			} else {
-				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: nil})
+				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: lsptype.NullResult})
 			}
 
 		case "textDocument/codeAction":
@@ -158,12 +158,12 @@ func main() {
 				}
 				hints.Mu.Unlock()
 			}
-			transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: nil})
+			transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: lsptype.NullResult})
 
 		default:
 			if msg.ID != nil {
 				// Unknown request — respond with method not found
-				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: nil})
+				transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: lsptype.NullResult})
 			}
 		}
 	}

@@ -2,6 +2,9 @@ package lsptype
 
 import "encoding/json"
 
+// NullResult is a sentinel value to emit "result": null in JSON.
+var NullResult = json.RawMessage("null")
+
 type Message struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      any             `json:"id,omitempty"`
