@@ -245,6 +245,18 @@ function M.restore_session()
 	session.restore_session()
 end
 
+function M.compact()
+	session.compact()
+end
+
+function M.execute_command(command)
+	session.execute_command(command)
+end
+
+function M.available_commands()
+	return session.available_commands()
+end
+
 -- ── UI ─────────────────────────────────────────────────────────────
 
 function M.toggle_window()

@@ -73,3 +73,8 @@ func FSReadResponse(id *RPCID, content string) Message {
 func FSWriteResponse(id *RPCID) Message {
 	return Message{JSONRPC: "2.0", ID: id, Result: json.RawMessage("null")}
 }
+
+func CommandExecuteRequest(id int, sessionID, command string) Message {
+	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "command": command})
+	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "_kiro.dev/commands/execute", Params: params}
+}

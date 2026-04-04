@@ -348,6 +348,33 @@ function M._setup_event_handlers()
 		end
 	end)
 
+	client.on("compaction", function(ev)
+		if ev.session_id ~= main_session_id then return end
+		status.update("Compacting context…")
+	end)
+
+	client.on("commands_available", function(ev)
+		if ev.session_id ~= main_session_id then return end
+		local data = ev.data
+		if type(data) == "string" then
+			local ok2, parsed = pcall(vim.json.decode, data)
+			if ok2 then data = parsed end
+		end
+		local cmds = data and data.commands or {}
+		local names = {}
+		for _, c in ipairs(cmds) do
+			names[#names + 1] = c.name or c
+		end
+		if #names > 0 then
+			M._available_commands = names
+		end
+	end)
+
+	client.on("clear_status", function(ev)
+		if ev.session_id ~= main_session_id then return end
+		status.update("Clearing session…")
+	end)
+
 	client.on("fs_read", function(ev)
 		status.update("Reading: " .. vim.fn.fnamemodify(ev.text or "", ":t"))
 	end)
@@ -609,6 +636,48 @@ function M.select_provider()
 			end)
 		end
 	)
+end
+
+function M.compact()
+	connect(function(sid)
+		if not sid then return end
+		status.start("Compacting…")
+		local win = require("lg.ui.window")
+		local spin = require("lg.spinner.spinners").start({})
+		M._on_done = function()
+			spin:stop()
+			_busy = false
+			client.set_mode(sid, resolve_mode("lg"))
+			status.stop("Compacted")
+			win.add_status("Context compacted")
+			flush_send_queue()
+		end
+		_busy = true
+		client.prompt(sid, {{ type = "text", text = "/compact" }})
+	end)
+end
+
+function M.execute_command(command)
+	connect(function(sid)
+		if not sid then return end
+		if command:sub(1, 1) ~= "/" then
+			command = "/" .. command
+		end
+		status.start(command .. "…")
+		local spin = require("lg.spinner.spinners").start({})
+		M._on_done = function()
+			spin:stop()
+			_busy = false
+			status.stop(command .. " done")
+			flush_send_queue()
+		end
+		_busy = true
+		client.prompt(sid, {{ type = "text", text = command }})
+	end)
+end
+
+function M.available_commands()
+	return M._available_commands or {}
 end
 
 function M.info()

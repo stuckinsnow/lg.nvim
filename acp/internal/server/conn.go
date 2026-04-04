@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"lg-acp/internal/protocol"
 	"lg-acp/internal/session"
 	"log"
 	"net"
@@ -205,6 +206,26 @@ func (c *conn) handle(req Request) {
 
 	case "status":
 		c.writeLine(Response{OK: true, Active: len(mgr.Sessions())})
+
+	case "execute_command":
+		sess := mgr.GetSession(req.SessionID)
+		if sess == nil {
+			c.writeLine(Response{Error: "unknown session"})
+			return
+		}
+		if req.Command == "" {
+			c.writeLine(Response{Error: "missing command"})
+			return
+		}
+		if err := sess.ExecuteCommand(req.Command, func(msg *protocol.Message) {
+			if msg.Error != nil {
+				c.writeLine(Response{Error: msg.Error.Message})
+			} else {
+				c.writeLine(Response{OK: true})
+			}
+		}); err != nil {
+			c.writeLine(Response{Error: err.Error()})
+		}
 
 	case "terminate":
 		mgr.Terminate()

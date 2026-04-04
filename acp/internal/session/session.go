@@ -53,6 +53,13 @@ func (s *Session) SetModel(modelID string) error {
 	return s.proc.Write(protocol.SessionSetModelRequest(id, s.ID, modelID))
 }
 
+// ExecuteCommand sends _kiro.dev/commands/execute.
+func (s *Session) ExecuteCommand(command string, onDone func(msg *protocol.Message)) error {
+	id := s.proc.NextID()
+	s.proc.TrackResponse(id, onDone)
+	return s.proc.Write(protocol.CommandExecuteRequest(id, s.ID, command))
+}
+
 // Cancel sends session/cancel.
 func (s *Session) Cancel() {
 	s.mu.Lock()
@@ -113,6 +120,12 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 			data, _ := json.Marshal(map[string]any{"context_pct": params.ContextUsagePercentage})
 			s.events <- Event{Type: "context_usage", SessionID: s.ID, Data: data}
 		}
+	case "_kiro.dev/compaction/status":
+		s.events <- Event{Type: "compaction", SessionID: s.ID, Data: msg.Params}
+	case "_kiro.dev/commands/available":
+		s.events <- Event{Type: "commands_available", SessionID: s.ID, Data: msg.Params}
+	case "_kiro.dev/clear/status":
+		s.events <- Event{Type: "clear_status", SessionID: s.ID, Data: msg.Params}
 	}
 }
 

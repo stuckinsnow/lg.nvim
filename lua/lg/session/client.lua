@@ -220,4 +220,8 @@ function M.terminate()
 	M.send({ method = "terminate" })
 end
 
+function M.execute_command(session_id, command, callback)
+	M.send({ method = "execute_command", session_id = session_id, command = command }, callback)
+end
+
 return M
