@@ -458,33 +458,42 @@ function M.send_chat(prompt, on_done)
 			return
 		end
 
-		local target_mode = _planner_active and "kiro_planner" or "lg-chat"
-		local return_mode = _planner_active and "kiro_planner" or "lg"
+		local function do_send()
+			local target_mode = _planner_active and "kiro_planner" or "lg-chat"
+			local return_mode = _planner_active and "kiro_planner" or "lg"
 
-		if not _planner_active then
-			require("lg.ui.window").add_status("Switching to chat mode")
-		end
-		client.set_mode(sid, resolve_mode(target_mode))
-
-		local messages = protocol.build_prompt({}, {}, prompt)
-
-		status.start("Thinking...")
-		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-
-		M._on_done = function()
 			if not _planner_active then
-				require("lg.ui.window").add_status("Switching to paint mode")
+				require("lg.ui.window").add_status("Switching to chat mode")
 			end
-			client.set_mode(sid, resolve_mode(return_mode))
-			_busy = false
-			if on_done then
-				on_done()
+			client.set_mode(sid, resolve_mode(target_mode))
+
+			local messages = protocol.build_prompt({}, {}, prompt)
+
+			status.start("Thinking...")
+			vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+			M._on_done = function()
+				if not _planner_active then
+					require("lg.ui.window").add_status("Switching to paint mode")
+				end
+				client.set_mode(sid, resolve_mode(return_mode))
+				_busy = false
+				if on_done then
+					on_done()
+				end
+				flush_send_queue()
 			end
-			flush_send_queue()
+
+			_busy = true
+			client.prompt(sid, messages)
 		end
 
-		_busy = true
-		client.prompt(sid, messages)
+		if _busy then
+			table.insert(_send_queue, do_send)
+			status.update("Queued (waiting for current request)...")
+		else
+			do_send()
+		end
 	end)
 end
 
