@@ -88,10 +88,8 @@ func main() {
 					if hoverRange == nil {
 						hoverRange = &d.Range
 					}
-					if i < len(details) && details[i] != "" {
+					if i < len(details) && details[i] != "" && details[i] != d.Message {
 						parts = append(parts, details[i])
-					} else {
-						parts = append(parts, d.Message)
 					}
 				}
 			}
