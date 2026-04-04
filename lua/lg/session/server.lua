@@ -191,7 +191,7 @@ function M.handle_message(data)
 		end
 		local hunk = require("lg.ui.hunk")
 		local result = nil
-		hunk.propose_write(path, old_text, new_text, function(accepted)
+		hunk.propose_write(path, old_text, new_text, function(accepted, reason)
 			if accepted then
 				-- Apply the edit to disk
 				local resolved = vim.fn.fnamemodify(path, ":p")
@@ -220,7 +220,11 @@ function M.handle_message(data)
 				end
 				result = vim.json.encode({ ok = true, status = "accepted" })
 			else
-				result = vim.json.encode({ ok = false, status = "rejected", error = "User rejected edit" })
+				local msg = "User rejected edit"
+				if reason and reason ~= "" then
+					msg = msg .. ": " .. reason
+				end
+				result = vim.json.encode({ ok = false, status = "rejected", error = msg })
 			end
 		end)
 		return nil, function() return result end

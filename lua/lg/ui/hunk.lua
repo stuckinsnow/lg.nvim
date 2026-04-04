@@ -88,9 +88,9 @@ local function jump(idx)
 	vim.cmd("normal! zz")
 end
 
-local function resolve(h, accepted)
+local function resolve(h, accepted, reason)
 	if h.on_resolve then
-		h.on_resolve(accepted)
+		h.on_resolve(accepted, reason)
 		h.on_resolve = nil
 		return
 	end
@@ -273,12 +273,14 @@ end
 function M.reject()
 	local idx = nearest()
 	if not idx then return end
-	hunks[idx].accepted = false
-	clear_extmarks(hunks[idx])
-	api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
-	resolve(hunks[idx], false)
-	local changes_ns = api.nvim_create_namespace("lg_auto_paint")
-	pcall(api.nvim_buf_clear_namespace, hunks[idx].bufnr, changes_ns, 0, -1)
+	vim.ui.input({ prompt = "Rejection reason: " }, function(reason)
+		hunks[idx].accepted = false
+		clear_extmarks(hunks[idx])
+		api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
+		resolve(hunks[idx], false, reason)
+		local changes_ns = api.nvim_create_namespace("lg_auto_paint")
+		pcall(api.nvim_buf_clear_namespace, hunks[idx].bufnr, changes_ns, 0, -1)
+	end)
 end
 
 function M.accept_all()
@@ -292,13 +294,15 @@ function M.accept_all()
 end
 
 function M.reject_all()
-	for _, h in ipairs(hunks) do
-		if h.accepted == nil then
-			h.accepted = false
-			clear_extmarks(h)
-			resolve(h, false)
+	vim.ui.input({ prompt = "Rejection reason (all hunks): " }, function(reason)
+		for _, h in ipairs(hunks) do
+			if h.accepted == nil then
+				h.accepted = false
+				clear_extmarks(h)
+				resolve(h, false, reason)
+			end
 		end
-	end
+	end)
 end
 
 function M.clear()
