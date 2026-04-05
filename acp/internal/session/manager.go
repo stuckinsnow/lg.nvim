@@ -6,6 +6,8 @@ import (
 	"lg-acp/internal/process"
 	"lg-acp/internal/protocol"
 	"log"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 )
@@ -193,6 +195,11 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 			return
 		}
 		s.events <- Event{Type: "session_loaded", SessionID: sessionID}
+		// Emit last known context usage from the session file
+		if pct := readKiroContextPct(sessionID); pct > 0 {
+			data, _ := json.Marshal(map[string]any{"context_pct": pct})
+			s.events <- Event{Type: "context_usage", SessionID: sessionID, Data: data}
+		}
 	})
 
 	m.mu.Lock()
@@ -286,4 +293,33 @@ func (m *Manager) Sessions() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// readKiroContextPct reads the last context_usage_percentage from a kiro session file.
+func readKiroContextPct(sessionID string) float64 {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".kiro", "sessions", "cli", sessionID+".json"))
+	if err != nil {
+		return 0
+	}
+	var f struct {
+		State struct {
+			Conv struct {
+				Turns []struct {
+					ContextPct float64 `json:"context_usage_percentage"`
+				} `json:"user_turn_metadatas"`
+			} `json:"conversation_metadata"`
+		} `json:"session_state"`
+	}
+	if json.Unmarshal(data, &f) != nil {
+		return 0
+	}
+	turns := f.State.Conv.Turns
+	if len(turns) == 0 {
+		return 0
+	}
+	return turns[len(turns)-1].ContextPct
 }
