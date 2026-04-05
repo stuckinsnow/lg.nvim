@@ -50,6 +50,7 @@ func (m *Manager) CreateSession(cwd string) (*Session, error) {
 	}
 
 	s := newSession(m.proc)
+	s.Guard = NewAccessGuard(cwd)
 	tempID := fmt.Sprintf("temp-%d", atomic.AddInt64(&m.nextTemp, 1))
 
 	// Register a temporary handler for routing during creation
@@ -172,6 +173,7 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 		ID:           sessionID,
 		State:        StateActive,
 		proc:         m.proc,
+		Guard:        NewAccessGuard(cwd),
 		events:       make(chan Event, 256),
 		onDone:       make(map[int]func()),
 		pendingPerms: make(map[int]*protocol.RPCID),

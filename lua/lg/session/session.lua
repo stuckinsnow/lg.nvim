@@ -826,7 +826,6 @@ local function run_subagent(config)
 				if ev.session_id ~= sub_sid then
 					return
 				end
-				-- Auto-approve for subagents
 				local data = ev.data
 				if type(data) == "string" then
 					local ok2, parsed = pcall(vim.json.decode, data)
@@ -835,15 +834,43 @@ local function run_subagent(config)
 					end
 				end
 				local options = data.options or {}
-				local oid
-				for _, opt in ipairs(options) do
-					if opt.kind == "allow_always" or opt.kind == "allow_once" then
-						oid = opt.optionId
-						break
+
+				if config.manual_permissions then
+					-- Route through Lua approval prompt
+					local title = data.title or "Permission request"
+					local rpc_id = data.rpc_id
+					local reject_id
+					for _, opt in ipairs(options) do
+						if opt.kind == "reject_once" or opt.kind == "reject_always" then
+							reject_id = opt.optionId
+							break
+						end
 					end
-				end
-				if oid then
-					client.respond_permission(sub_sid, data.rpc_id, oid)
+					local allow_id
+					for _, opt in ipairs(options) do
+						if opt.kind == "allow_always" or opt.kind == "allow_once" then
+							allow_id = opt.optionId
+							break
+						end
+					end
+					vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
+						local oid = choice == "Allow" and allow_id or reject_id or allow_id
+						if oid then
+							client.respond_permission(sub_sid, rpc_id, oid)
+						end
+					end)
+				else
+					-- Auto-approve for subagents
+					local oid
+					for _, opt in ipairs(options) do
+						if opt.kind == "allow_always" or opt.kind == "allow_once" then
+							oid = opt.optionId
+							break
+						end
+					end
+					if oid then
+						client.respond_permission(sub_sid, data.rpc_id, oid)
+					end
 				end
 			end)
 
@@ -892,6 +919,24 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 		end,
 		on_fail = function()
 			svr.unregister_session(sid)
+		end,
+	})
+end
+
+--- @param prompt string
+--- @param on_done fun(result: string)
+function M.send_shell_subagent(prompt, on_done)
+	run_subagent({
+		mode_id = "lg-shell",
+		prompt = { { type = "text", text = prompt } },
+		label = "Shell",
+		manual_permissions = true,
+		on_done = function(text)
+			on_done(text)
+		end,
+		on_fail = function()
+			status.stop("Shell agent failed")
+			on_done("")
 		end,
 	})
 end

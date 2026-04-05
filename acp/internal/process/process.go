@@ -168,7 +168,7 @@ func (p *Process) readLoop(r io.Reader) {
 		if len(line) == 0 {
 			continue
 		}
-		log.Printf("acp: recv: %s", string(line[:min(len(line), 200)]))
+		log.Printf("acp: recv: %s", string(line[:min(len(line), 500)]))
 		var msg protocol.Message
 		if err := json.Unmarshal(line, &msg); err != nil {
 			log.Printf("acp: bad json: %v", err)

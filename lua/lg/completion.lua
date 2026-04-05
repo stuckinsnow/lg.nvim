@@ -16,6 +16,7 @@ local at_items = {
   { label = "@SUGGEST", detail = "AI publishes code suggestions as diagnostics — hover to see recommended code" },
   { label = "@HELP", detail = "AI highlights regions + publishes code suggestions for each" },
   { label = "@SUB", detail = "Run next prefix as a subagent (e.g. @SUB HINT) — doesn't block main session" },
+  { label = "@SHELL", detail = "Spawn a shell subagent — runs commands with manual approval" },
 }
 
 local hash_items = {

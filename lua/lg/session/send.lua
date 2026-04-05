@@ -74,6 +74,7 @@ function M.send(opts)
 			and not opts.from_chat
 			and not flags.has_auto_paint
 			and not flags.has_git
+			and not flags.has_shell
 			and not flags.has_devlens
 			and not flags.has_hint
 			and not flags.has_suggest
@@ -123,6 +124,20 @@ function M.send(opts)
 					end)
 				end
 			)
+			return
+		end
+
+		if flags.has_shell then
+			local shell_prompt = prompt:gsub("@SHELL%s*", "")
+			window.add_prompt(prompt)
+			status.start("Shell...")
+			session.send_shell_subagent(shell_prompt, function(result)
+				vim.schedule(function()
+					spinners.stop()
+					status.stop("Shell done")
+					window.refresh()
+				end)
+			end)
 			return
 		end
 
@@ -449,6 +464,7 @@ function M.send(opts)
 			has_devlens = text and text:match("@DEVLENS") ~= nil,
 			has_hint = text and text:match("@HINT") ~= nil,
 			has_suggest = text and text:match("@SUGGEST") ~= nil,
+			has_shell = text and text:match("@SHELL") ~= nil,
 			has_sub = text and text:match("@SUB") ~= nil,
 			has_help = text and text:match("@HELP") ~= nil,
 		})

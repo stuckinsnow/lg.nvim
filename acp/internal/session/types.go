@@ -31,6 +31,7 @@ type Session struct {
 	ID    string
 	State State
 	proc  *process.Process
+	Guard *AccessGuard
 
 	mu             sync.Mutex
 	pendingUpdates []*protocol.Message

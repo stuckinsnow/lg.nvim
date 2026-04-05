@@ -179,11 +179,48 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 		title = params.ToolCall.Title
 	}
 
+	// Check access guard on file-related permissions
+	if s.Guard != nil {
+		p := ExtractPathFromTitle(title)
+		if p != "" {
+			log.Printf("acp: guard check title=%q path=%q", title, p)
+			if reason := s.Guard.CheckAccess(p); reason != "" {
+				log.Printf("acp: permission denied %s (%s)", title, reason)
+				optionID := findOption(params.Options, "reject_once", "reject_always")
+				if optionID == "" && len(params.Options) > 0 {
+					optionID = params.Options[len(params.Options)-1].OptionID
+				}
+				s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
+				s.events <- Event{Type: "permission_denied", SessionID: s.ID, Text: title + " — " + reason}
+				return
+			}
+		} else if isFileOperation(title) {
+			// Can't extract path from title — can't verify it's safe.
+			// Route through manual approval.
+			log.Printf("acp: unverifiable file op, requesting approval: %s", title)
+			s.mu.Lock()
+			s.nextPermKey++
+			key := s.nextPermKey
+			s.pendingPerms[key] = msg.ID
+			s.mu.Unlock()
+			data, _ := json.Marshal(map[string]any{
+				"title":   title,
+				"options": params.Options,
+				"rpc_id":  key,
+			})
+			s.events <- Event{Type: "permission_request", SessionID: s.ID, Data: data}
+			return
+		}
+	}
+
 	// Dangerous operations need approval from Lua side
-	if strings.HasPrefix(title, "Creating ") ||
+	needsApproval :=
+		strings.HasPrefix(title, "Creating ") ||
 		strings.HasPrefix(title, "Deleting ") ||
-		(strings.HasPrefix(title, "Running") && strings.Contains(title, "rm ")) ||
-		strings.Contains(strings.ToLower(title), "devlens") {
+		(strings.HasPrefix(title, "Running") && !strings.Contains(title, "@lg/")) ||
+		strings.Contains(strings.ToLower(title), "devlens")
+
+	if needsApproval {
 		s.mu.Lock()
 		s.nextPermKey++
 		key := s.nextPermKey
@@ -216,6 +253,15 @@ func (s *Session) handleFSRead(msg *protocol.Message) {
 		return
 	}
 
+	if s.Guard != nil {
+		if reason := s.Guard.CheckAccess(params.Path); reason != "" {
+			log.Printf("acp: fs_read denied %s (%s)", params.Path, reason)
+			s.events <- Event{Type: "fs_read_denied", SessionID: s.ID, Text: params.Path + " — " + reason}
+			s.proc.Write(protocol.FSReadResponse(msg.ID, ""))
+			return
+		}
+	}
+
 	content, err := os.ReadFile(params.Path)
 	if err != nil {
 		content = []byte{}
@@ -232,6 +278,15 @@ func (s *Session) handleFSWrite(msg *protocol.Message) {
 	var params protocol.FSWriteParams
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return
+	}
+
+	if s.Guard != nil {
+		if reason := s.Guard.CheckAccess(params.Path); reason != "" {
+			log.Printf("acp: fs_write denied %s (%s)", params.Path, reason)
+			s.events <- Event{Type: "fs_write_denied", SessionID: s.ID, Text: params.Path + " — " + reason}
+			s.proc.Write(protocol.FSWriteResponse(msg.ID))
+			return
+		}
 	}
 
 	if err := os.WriteFile(params.Path, []byte(params.Content), 0644); err != nil {
