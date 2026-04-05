@@ -189,15 +189,15 @@ function M.set_model(session_id, model_id, callback)
 end
 
 function M.cancel(session_id)
-	M.send({ method = "cancel", session_id = session_id })
+	M.send({ method = "cancel", session_id = session_id }, function() end)
 end
 
 function M.destroy_session(session_id)
-	M.send({ method = "destroy_session", session_id = session_id })
+	M.send({ method = "destroy_session", session_id = session_id }, function() end)
 end
 
 function M.respond_permission(session_id, rpc_id, option_id)
-	M.send({ method = "respond_permission", session_id = session_id, rpc_id = rpc_id, option_id = option_id })
+	M.send({ method = "respond_permission", session_id = session_id, rpc_id = rpc_id, option_id = option_id }, function() end)
 end
 
 function M.get_models(callback)
@@ -217,7 +217,7 @@ function M.load_session(session_id, cwd, callback)
 end
 
 function M.terminate()
-	M.send({ method = "terminate" })
+	M.send({ method = "terminate" }, function() end)
 end
 
 function M.execute_command(session_id, command, callback)

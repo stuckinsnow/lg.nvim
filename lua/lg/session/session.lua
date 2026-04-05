@@ -1422,49 +1422,63 @@ function M.restore_session()
 end
 
 function M._do_load_session(session_id)
-	if main_session_id then
-		client.destroy_session(main_session_id)
-		main_session_id = nil
-	end
-
-	status.start("Restoring session...")
-	M._restoring = true
-
-	ensure_acp(function(ok)
-		if not ok then
-			status.stop("Connection failed")
-			return
+	local function do_load()
+		if main_session_id then
+			client.destroy_session(main_session_id)
+			main_session_id = nil
 		end
+		require("lg.ui.window").clear_history()
 
-		M._setup_event_handlers()
+		status.start("Restoring session...")
+		M._restoring = true
 
-		-- Listen for session_loaded to know replay is done
-		local unsub
-		unsub = client.on("session_loaded", function(ev)
-			if ev.session_id ~= session_id then return end
-			if unsub then unsub() end
-			M._restoring = false
-			client.set_mode(session_id, resolve_mode("lg"))
-			-- Fetch models so select_model works
-			client.get_models(function(resp)
-				if resp.models then
-					session_models = resp.models
-				end
-			end)
-			status.stop("Session restored")
-		end)
-
-		client.load_session(session_id, vim.fn.getcwd(), function(resp)
-			if resp.error then
-				if unsub then unsub() end
-				M._restoring = false
-				status.stop("Restore failed: " .. resp.error)
+		ensure_acp(function(ok)
+			if not ok then
+				status.stop("Connection failed")
 				return
 			end
-			main_session_id = resp.session_id
-			refresh_session_count()
+
+			M._setup_event_handlers()
+
+			main_session_id = session_id
+
+			-- Listen for session_loaded to know replay is done
+			local unsub
+			unsub = client.on("session_loaded", function(ev)
+				if ev.session_id ~= session_id then return end
+				if unsub then unsub() end
+				M._restoring = false
+				client.set_mode(session_id, resolve_mode("lg"))
+				-- Fetch models so select_model works
+				client.get_models(function(resp)
+					if resp.models then
+						session_models = resp.models
+					end
+				end)
+				status.stop("Session restored")
+			end)
+
+			client.load_session(session_id, vim.fn.getcwd(), function(resp)
+				if resp.error then
+					if unsub then unsub() end
+					M._restoring = false
+					status.stop("Restore failed: " .. resp.error)
+					main_session_id = nil
+					return
+				end
+				main_session_id = resp.session_id
+				refresh_session_count()
+			end)
 		end)
-	end)
+	end
+
+	if main_session_id then
+		vim.ui.select({ "Yes", "No" }, { prompt = "Clear current session and restore?" }, function(choice)
+			if choice == "Yes" then do_load() end
+		end)
+	else
+		do_load()
+	end
 end
 
 return M
