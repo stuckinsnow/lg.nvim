@@ -186,7 +186,7 @@ function M.handle_message(data)
 		local path = msg.path
 		local old_text = msg.old_text
 		local new_text = msg.new_text
-		if not path or not old_text or not new_text then
+		if not path or path == "" or not old_text or not new_text then
 			return vim.json.encode({ error = "path, old_text, new_text required" })
 		end
 		local hunk = require("lg.ui.hunk")
@@ -198,7 +198,7 @@ function M.handle_message(data)
 				local f = io.open(resolved, "r")
 				local new_file = not f
 				if f then
-					local content = f:read("*a")
+					local content = f:read("*a") or ""
 					f:close()
 					local s, e = content:find(old_text, 1, true)
 					if s then
