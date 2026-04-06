@@ -13,30 +13,79 @@ local function get_picker_opts()
 		"HASH=$(echo {} | awk '{print $1}') && git show --color=always $HASH 2>/dev/null"
 end
 
-local function apply_to_hunks(commits, adder)
-	local range = #commits == 1 and (commits[1] .. "~1.." .. commits[1])
-		or (commits[#commits] .. ".." .. commits[1])
-	local diff = vim.fn.system("git diff " .. range .. " --unified=0")
-	local cwd = vim.fn.getcwd() .. "/"
-	local file, count = nil, 0
+--- Get files touched by the given commits
+local function get_changed_files(commits)
+	local files = {}
+	for _, hash in ipairs(commits) do
+		local out = vim.fn.system({ "git", "diff-tree", "--no-commit-id", "-r", "--name-only", hash })
+		for f in out:gmatch("[^\n]+") do
+			files[f] = true
+		end
+	end
+	return vim.tbl_keys(files)
+end
 
-	for line in diff:gmatch("[^\n]+") do
-		local f = line:match("^%+%+%+ b/(.+)")
-		if f then file = cwd .. f end
-		if file then
-			local s, c = line:match("^@@ .+ %+(%d+),?(%d*)")
-			if s then
-				s, c = tonumber(s), tonumber(c) or 1
-				if c > 0 and s > 0 then
-					local bufnr = vim.fn.bufnr(file)
-					if bufnr == -1 then
-						bufnr = vim.fn.bufadd(file)
-						vim.fn.bufload(bufnr)
-					end
-					local max = vim.api.nvim_buf_line_count(bufnr)
-					local end_line = math.min(s + c - 1, max)
-					s = math.min(s, max)
-					adder(bufnr, s, end_line)
+--- Use git blame to find lines in the current file attributed to any of the given commits
+local function blame_lines_for_commits(rel_path, commit_set)
+	local out = vim.fn.system({ "git", "blame", "--porcelain", "--", rel_path })
+	if vim.v.shell_error ~= 0 then return {} end
+
+	local lines = {}
+	for line in out:gmatch("[^\n]+") do
+		-- Porcelain blame: header lines start with a 40-char hash, orig_line, final_line [, num_lines]
+		local hash, lnum = line:match("^(%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x) %d+ (%d+)")
+		if hash and commit_set[hash] then
+			table.insert(lines, tonumber(lnum))
+		end
+	end
+
+	table.sort(lines)
+	return lines
+end
+
+--- Collapse consecutive line numbers into ranges
+local function collapse_ranges(sorted_lines)
+	if #sorted_lines == 0 then return {} end
+	local ranges = {}
+	local s, e = sorted_lines[1], sorted_lines[1]
+	for i = 2, #sorted_lines do
+		if sorted_lines[i] == e + 1 then
+			e = sorted_lines[i]
+		else
+			table.insert(ranges, { s, e })
+			s, e = sorted_lines[i], sorted_lines[i]
+		end
+	end
+	table.insert(ranges, { s, e })
+	return ranges
+end
+
+local function apply_to_hunks(commits, adder)
+	-- Build a set of full commit hashes (blame outputs full hashes)
+	local commit_set = {}
+	for _, short in ipairs(commits) do
+		local full = vim.fn.system({ "git", "rev-parse", short }):gsub("%s+", "")
+		if full ~= "" then commit_set[full] = true end
+	end
+
+	local changed_files = get_changed_files(commits)
+	local cwd = vim.fn.getcwd() .. "/"
+	local count = 0
+
+	for _, rel_path in ipairs(changed_files) do
+		local full_path = cwd .. rel_path
+		-- Only process files that still exist
+		if vim.fn.filereadable(full_path) == 1 then
+			local lines = blame_lines_for_commits(rel_path, commit_set)
+			local ranges = collapse_ranges(lines)
+			if #ranges > 0 then
+				local bufnr = vim.fn.bufnr(full_path)
+				if bufnr == -1 then
+					bufnr = vim.fn.bufadd(full_path)
+					vim.fn.bufload(bufnr)
+				end
+				for _, r in ipairs(ranges) do
+					adder(bufnr, r[1], r[2])
 					count = count + 1
 				end
 			end
