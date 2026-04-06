@@ -196,6 +196,7 @@ function M.handle_message(data)
 				-- Apply the edit to disk
 				local resolved = vim.fn.fnamemodify(path, ":p")
 				local f = io.open(resolved, "r")
+				local new_file = not f
 				if f then
 					local content = f:read("*a")
 					f:close()
@@ -208,13 +209,24 @@ function M.handle_message(data)
 							fw:close()
 						end
 					end
+				else
+					vim.fn.mkdir(vim.fn.fnamemodify(resolved, ":h"), "p")
+					local fw = io.open(resolved, "w")
+					if fw then
+						fw:write(new_text)
+						fw:close()
+					end
 				end
-				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-					if vim.api.nvim_buf_is_loaded(buf) then
-						local bname = vim.api.nvim_buf_get_name(buf)
-						if bname == resolved or bname == path then
-							vim.bo[buf].autoread = true
-							vim.cmd("checktime " .. buf)
+				if new_file then
+					vim.cmd("edit " .. vim.fn.fnameescape(resolved))
+				else
+					for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+						if vim.api.nvim_buf_is_loaded(buf) then
+							local bname = vim.api.nvim_buf_get_name(buf)
+							if bname == resolved or bname == path then
+								vim.bo[buf].autoread = true
+								vim.cmd("checktime " .. buf)
+							end
 						end
 					end
 				end
