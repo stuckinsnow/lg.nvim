@@ -14,6 +14,7 @@ local M = {}
 --- @field has_hint boolean
 --- @field has_sub boolean
 --- @field has_suggest boolean
+--- @field has_ask boolean
 
 --- Open a floating buffer for prompt input, call cb(text, flags) on submit
 --- @param cb fun(text: string, flags: PromptFlags)
@@ -64,6 +65,7 @@ function M.open(cb, on_cancel)
 				has_sub = text:match("@SUB") ~= nil,
 				has_suggest = text:match("@SUGGEST") ~= nil,
 				has_help = text:match("@HELP") ~= nil,
+				has_ask = text:match("@ASK") ~= nil,
 			})
 		end
 	end

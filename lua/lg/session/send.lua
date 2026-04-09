@@ -79,6 +79,7 @@ function M.send(opts)
 			and not flags.has_hint
 			and not flags.has_suggest
 			and not flags.has_help
+			and not flags.has_ask
 		then
 			vim.notify("lg: no painted regions", vim.log.levels.WARN)
 			return
@@ -178,6 +179,21 @@ function M.send(opts)
 					end)
 				end
 			)
+			return
+		end
+
+		if flags.has_ask then
+			prompt = prompt:gsub("@ASK%s*", "")
+			window.add_prompt("@ASK " .. prompt)
+			status.start("Asking...")
+			local spin = spinners.start(regions)
+			session.send_ask(prompt, regions, context.get_all(), function()
+				vim.schedule(function()
+					spin:stop()
+					status.stop("Done")
+					window.refresh()
+				end)
+			end)
 			return
 		end
 
@@ -467,6 +483,7 @@ function M.send(opts)
 			has_shell = text and text:match("@SHELL") ~= nil,
 			has_sub = text and text:match("@SUB") ~= nil,
 			has_help = text and text:match("@HELP") ~= nil,
+			has_ask = text and text:match("@ASK") ~= nil,
 		})
 	else
 		require("lg.ui.prompt").open(do_send)

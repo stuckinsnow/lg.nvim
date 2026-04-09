@@ -39,6 +39,7 @@ local opencode_modes = {
 	reviewer = "plan",
 	suggester = "plan",
 	helper = "plan",
+	asker = "plan",
 	fullstack = "build",
 	kiro_default = "build",
 	kiro_planner = "plan",
@@ -860,6 +861,10 @@ end
 
 function M.send_help(prompt, regions, context_regions, on_done)
 	M.send_mode({ mode_id = "helper", scope = "help" }, prompt, regions, context_regions, on_done)
+end
+
+function M.send_ask(prompt, regions, context_regions, on_done)
+	M.send_mode({ mode_id = "asker" }, prompt, regions, context_regions, on_done)
 end
 
 -- ── Subagent delegates ─────────────────────────────────────────────
