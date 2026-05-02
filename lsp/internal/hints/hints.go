@@ -9,6 +9,7 @@ import (
 
 	"lg-lsp/internal/lsptype"
 	"lg-lsp/internal/transport"
+	"lg-pkg/linematch"
 )
 
 // ── Hint socket server ─────────────────────────────────────────────
@@ -69,22 +70,27 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 		endCol := h.EndColumn - 1
 
 		matchOk := true
-		// If match is provided, find it on the line to get exact columns
+		// If match is provided, find nearest line containing it (handles line shifts)
 		if h.Match != "" && col < 0 {
 			lines := readFile(h.File)
-			if lines != nil && line < len(lines) {
-				idx := strings.Index(lines[line], h.Match)
-				if idx >= 0 {
-					col = idx
-					endCol = idx + len(h.Match)
-					endLine = line
+			if lines != nil {
+				foundLine, foundCol, foundEndCol, found := linematch.FindNearestLine(lines, line, h.Match)
+				if found {
+					line = foundLine
+					endLine = foundLine
+					col = foundCol
+					endCol = foundEndCol
 				} else {
 					matchOk = false
-					failures = append(failures, fmt.Sprintf("match %q not found on line %d of %s (line content: %q)", h.Match, h.Line, h.File, lines[line]))
+					lineContent := ""
+					if line < len(lines) {
+						lineContent = lines[line]
+					}
+					failures = append(failures, fmt.Sprintf("match %q not found in %s (hint line %d: %q)", h.Match, h.File, h.Line, lineContent))
 				}
 			} else {
 				matchOk = false
-				failures = append(failures, fmt.Sprintf("could not read line %d of %s", h.Line, h.File))
+				failures = append(failures, fmt.Sprintf("could not read %s", h.File))
 			}
 		}
 

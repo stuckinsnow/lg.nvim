@@ -118,11 +118,12 @@ func main() {
 				if len(regions) > 0 {
 					for _, raw := range resolved {
 						var h struct {
-							File string `json:"file"`
-							Line int    `json:"line"`
+							File  string `json:"file"`
+							Line  int    `json:"line"`
+							Match string `json:"match"`
 						}
 						json.Unmarshal(raw, &h)
-						if hint.HintInScope(h.File, h.Line, regions) {
+						if hint.HintInScope(h.File, h.Line, h.Match, regions) {
 							filtered = append(filtered, raw)
 						} else {
 							outOfScope = append(outOfScope, fmt.Sprintf("line %d of %s is outside painted regions", h.Line, h.File))

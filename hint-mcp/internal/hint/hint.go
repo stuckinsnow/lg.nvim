@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"lg-hint-mcp/internal/protocol"
 	"net"
 	"os"
+	"strings"
+
+	"lg-hint-mcp/internal/protocol"
+	"lg-pkg/linematch"
 )
 
 var (
@@ -46,7 +49,31 @@ func GetPaintedRegions() []protocol.PaintedRegion {
 	return regions
 }
 
-func HintInScope(file string, line int, regions []protocol.PaintedRegion) bool {
+// HintInScope checks if a hint is within painted regions.
+// If match is provided and the line doesn't fall in scope, it reads the file
+// and finds the nearest line containing match, then checks that instead.
+func HintInScope(file string, line int, match string, regions []protocol.PaintedRegion) bool {
+	// Direct line check first
+	if lineInRegions(file, line, regions) {
+		return true
+	}
+	// If match provided, find actual line and re-check
+	if match == "" {
+		return false
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(data), "\n")
+	foundLine, _, _, ok := linematch.FindNearestLine(lines, line-1, match)
+	if !ok {
+		return false
+	}
+	return lineInRegions(file, foundLine+1, regions)
+}
+
+func lineInRegions(file string, line int, regions []protocol.PaintedRegion) bool {
 	for _, r := range regions {
 		if r.File == file && line >= r.StartLine && line <= r.EndLine {
 			return true

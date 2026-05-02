@@ -6,4 +6,5 @@ use (
 	./hint-mcp
 	./lsp
 	./mcp
+	./pkg
 )
