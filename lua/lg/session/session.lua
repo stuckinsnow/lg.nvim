@@ -561,31 +561,40 @@ function M.send_mode(config, prompt, regions, context_regions, on_done)
 			return
 		end
 
-		client.set_mode(sid, resolve_mode(config.mode_id))
+		local function do_send()
+			client.set_mode(sid, resolve_mode(config.mode_id))
 
-		local all_ctx = {}
-		for _, r in ipairs(regions) do
-			all_ctx[#all_ctx + 1] = r
-		end
-		for _, r in ipairs(context_regions or {}) do
-			all_ctx[#all_ctx + 1] = r
-		end
-		local has_scope = #regions > 0
-		local extra = (config.scope and has_scope) and { scope = config.scope } or nil
-		local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, extra)
-		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
-
-		_busy = true
-		M._on_done = function()
-			client.set_mode(sid, resolve_mode("lg"))
-			_busy = false
-			if on_done then
-				on_done()
+			local all_ctx = {}
+			for _, r in ipairs(regions) do
+				all_ctx[#all_ctx + 1] = r
 			end
-			flush_send_queue()
+			for _, r in ipairs(context_regions or {}) do
+				all_ctx[#all_ctx + 1] = r
+			end
+			local has_scope = #regions > 0
+			local extra = (config.scope and has_scope) and { scope = config.scope } or nil
+			local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, extra)
+			vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+
+			_busy = true
+			M._on_done = function()
+				client.set_mode(sid, resolve_mode("lg"))
+				_busy = false
+				if on_done then
+					on_done()
+				end
+				flush_send_queue()
+			end
+
+			client.prompt(sid, messages)
 		end
 
-		client.prompt(sid, messages)
+		if _busy then
+			table.insert(_send_queue, do_send)
+			status.update("Queued (waiting for current request)...")
+		else
+			do_send()
+		end
 	end)
 end
 
