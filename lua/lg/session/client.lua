@@ -6,7 +6,7 @@
 local M = {}
 
 local sock_path = "/dev/shm/lg-acp.sock"
-local conn = nil --- @type uv_pipe_t?
+local conn = nil --- @type uv.uv_pipe_t?
 local connected = false
 local read_buf = ""
 local event_handlers = {} --- @type table<string, fun(ev: table)[]>
@@ -59,6 +59,7 @@ function M.connect(on_connect)
 			end)
 			-- Timeout: if no response in 1s, socket is dead
 			local t = vim.uv.new_timer()
+			if not t then return end
 			t:start(1000, 0, function()
 				t:close()
 				if not got_response then
@@ -103,7 +104,7 @@ function M.send(request, callback)
 		table.insert(response_queue, callback)
 	end
 	local data = vim.json.encode(request) .. "\n"
-	pcall(function() conn:write(data) end)
+	if conn then pcall(function() conn:write(data) end) end
 end
 
 --- @param data string

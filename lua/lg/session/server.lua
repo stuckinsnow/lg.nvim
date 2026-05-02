@@ -9,6 +9,29 @@ local M = {}
 local server = nil
 ---@type string?
 
+--- Apply edits to regions sorted bottom-up, shifting paint after each.
+--- @param regs table[] region list (must have bufnr, start_line, end_line)
+--- @param edits table[] edits with region_id and new_code
+local function apply_sorted_edits(regs, edits)
+	local sorted = {}
+	for _, e in ipairs(edits) do
+		local idx = (e.region_id or -1) + 1
+		local r = regs[idx]
+		if r and vim.api.nvim_buf_is_valid(r.bufnr) then
+			table.insert(sorted, { region = r, new_lines = vim.split(e.new_code:gsub("\n$", ""), "\n") })
+		end
+	end
+	table.sort(sorted, function(a, b)
+		return a.region.start_line > b.region.start_line
+	end)
+	for _, entry in ipairs(sorted) do
+		local r = entry.region
+		diff.apply(r.bufnr, r.start_line - 1, r.end_line, entry.new_lines)
+		local delta = #entry.new_lines - (r.end_line - r.start_line + 1)
+		paint.shift_after(r.bufnr, r.start_line, delta)
+	end
+end
+
 --- Stored info-paint regions for conversion
 local info_regions = {}
 local sock_path = nil
@@ -89,7 +112,7 @@ end
 
 --- Handle a complete message from MCP server
 --- @param data string JSON: { "method": "get_regions" } or { "method": "apply_edit", "region_id": 0, "new_code": "..." }
---- @return string JSON response
+--- @return string|nil response, (fun():string?)|nil poll_fn
 function M.handle_message(data)
 	local ok, msg = pcall(vim.json.decode, data)
 	if not ok then
@@ -149,50 +172,14 @@ function M.handle_message(data)
 		local edits = msg.edits or {}
 		if msg.session and sessions[msg.session] then
 			-- Session-scoped: edit that session's regions
-			local regs = sessions[msg.session]
-			local sorted = {}
-			for _, e in ipairs(edits) do
-				local idx = (e.region_id or -1) + 1
-				local r = regs[idx]
-				if r and vim.api.nvim_buf_is_valid(r.bufnr) then
-					table.insert(sorted, { region = r, new_lines = vim.split(e.new_code:gsub("\n$", ""), "\n") })
-				end
-			end
-			table.sort(sorted, function(a, b)
-				return a.region.start_line > b.region.start_line
-			end)
-			for _, entry in ipairs(sorted) do
-				local r = entry.region
-				local new_lines = entry.new_lines
-				diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
-				local delta = #new_lines - (r.end_line - r.start_line + 1)
-				paint.shift_after(r.bufnr, r.start_line, delta)
-			end
+			apply_sorted_edits(sessions[msg.session], edits)
 		elseif msg.edit_token and msg.edit_token ~= "" then
 			-- Token-scoped: edit only the snapshot regions
 			local regs = tokens[msg.edit_token]
 			if not regs then
 				return vim.json.encode({ error = "invalid edit_token" })
 			end
-			-- Sort bottom-up to avoid shift issues within the batch
-			local sorted = {}
-			for _, e in ipairs(edits) do
-				local idx = (e.region_id or -1) + 1
-				local r = regs[idx]
-				if r and vim.api.nvim_buf_is_valid(r.bufnr) then
-					table.insert(sorted, { region = r, new_lines = vim.split(e.new_code:gsub("\n$", ""), "\n") })
-				end
-			end
-			table.sort(sorted, function(a, b)
-				return a.region.start_line > b.region.start_line
-			end)
-			for _, entry in ipairs(sorted) do
-				local r = entry.region
-				local new_lines = entry.new_lines
-				diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
-				local delta = #new_lines - (r.end_line - r.start_line + 1)
-				paint.shift_after(r.bufnr, r.start_line, delta)
-			end
+			apply_sorted_edits(regs, edits)
 		else
 			-- Global paint (only if no tokens exist)
 			if next(tokens) then
@@ -244,11 +231,11 @@ function M.handle_message(data)
 				end
 				result = vim.json.encode({ ok = true, status = "accepted" })
 			else
-				local msg = "User rejected edit"
+				local err_msg = "User rejected edit"
 				if reason and reason ~= "" then
-					msg = msg .. ": " .. reason
+					err_msg = err_msg .. ": " .. reason
 				end
-				result = vim.json.encode({ ok = false, status = "rejected", error = msg })
+				result = vim.json.encode({ ok = false, status = "rejected", error = err_msg })
 			end
 		end)
 		return nil, function() return result end
@@ -389,18 +376,20 @@ function M.start()
 					elseif poll_fn then
 						-- Async: poll until result is ready
 						local timer = vim.uv.new_timer()
-						active_timer = timer
-						timer:start(50, 50, vim.schedule_wrap(function()
-							local result = poll_fn()
-							if result then
-								if not timer:is_closing() then
-									timer:stop()
-									timer:close()
+						if timer then
+							active_timer = timer
+							timer:start(50, 50, vim.schedule_wrap(function()
+								local result = poll_fn()
+								if result then
+									if not timer:is_closing() then
+										timer:stop()
+										timer:close()
+									end
+									active_timer = nil
+									pcall(function() if client then client:write(result .. "\n") end end)
 								end
-								active_timer = nil
-								pcall(function() if client then client:write(result .. "\n") end end)
-							end
-						end))
+							end))
+						end
 					end
 				end)
 			end
