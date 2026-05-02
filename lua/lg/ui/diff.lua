@@ -65,7 +65,7 @@ function M.apply_all(regions, edits)
 	for _, e in ipairs(edits) do
 		local r = regions[e.region_id + 1]
 		if r and vim.api.nvim_buf_is_valid(r.bufnr) then
-			table.insert(sorted, { region = r, new_lines = vim.split(e.new_code, "\n") })
+			table.insert(sorted, { region = r, new_lines = vim.split(e.new_code:gsub("\n$", ""), "\n") })
 		end
 	end
 	table.sort(sorted, function(a, b)

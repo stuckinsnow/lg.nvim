@@ -136,6 +136,11 @@ func main() {
 				if len(filtered) == 0 && len(outOfScope) > 0 {
 					var b strings.Builder
 					b.WriteString("All hints were outside painted regions — only suggest within painted lines.\n")
+					b.WriteString("\nCurrent painted regions:\n")
+					for _, r := range regions {
+						fmt.Fprintf(&b, "- %s lines %d–%d\n", r.File, r.StartLine, r.EndLine)
+					}
+					b.WriteString("\nRejected hints:\n")
 					for _, f := range outOfScope {
 						b.WriteString("- ")
 						b.WriteString(f)

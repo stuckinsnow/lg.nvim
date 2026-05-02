@@ -140,7 +140,7 @@ function M.handle_message(data)
 		if not vim.api.nvim_buf_is_valid(region.bufnr) then
 			return vim.json.encode({ error = "buffer invalid" })
 		end
-		local new_lines = vim.split(msg.new_code, "\n")
+		local new_lines = vim.split(msg.new_code:gsub("\n$", ""), "\n")
 		diff.apply(region.bufnr, region.start_line - 1, region.end_line, new_lines)
 		paint.shift_after(region.bufnr, region.start_line, #new_lines - (region.end_line - region.start_line + 1))
 		vim.cmd("redraw")
@@ -150,13 +150,23 @@ function M.handle_message(data)
 		if msg.session and sessions[msg.session] then
 			-- Session-scoped: edit that session's regions
 			local regs = sessions[msg.session]
+			local sorted = {}
 			for _, e in ipairs(edits) do
 				local idx = (e.region_id or -1) + 1
 				local r = regs[idx]
 				if r and vim.api.nvim_buf_is_valid(r.bufnr) then
-					local new_lines = vim.split(e.new_code, "\n")
-					diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
+					table.insert(sorted, { region = r, new_lines = vim.split(e.new_code:gsub("\n$", ""), "\n") })
 				end
+			end
+			table.sort(sorted, function(a, b)
+				return a.region.start_line > b.region.start_line
+			end)
+			for _, entry in ipairs(sorted) do
+				local r = entry.region
+				local new_lines = entry.new_lines
+				diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
+				local delta = #new_lines - (r.end_line - r.start_line + 1)
+				paint.shift_after(r.bufnr, r.start_line, delta)
 			end
 		elseif msg.edit_token and msg.edit_token ~= "" then
 			-- Token-scoped: edit only the snapshot regions
@@ -164,13 +174,24 @@ function M.handle_message(data)
 			if not regs then
 				return vim.json.encode({ error = "invalid edit_token" })
 			end
+			-- Sort bottom-up to avoid shift issues within the batch
+			local sorted = {}
 			for _, e in ipairs(edits) do
 				local idx = (e.region_id or -1) + 1
 				local r = regs[idx]
 				if r and vim.api.nvim_buf_is_valid(r.bufnr) then
-					local new_lines = vim.split(e.new_code, "\n")
-					diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
+					table.insert(sorted, { region = r, new_lines = vim.split(e.new_code:gsub("\n$", ""), "\n") })
 				end
+			end
+			table.sort(sorted, function(a, b)
+				return a.region.start_line > b.region.start_line
+			end)
+			for _, entry in ipairs(sorted) do
+				local r = entry.region
+				local new_lines = entry.new_lines
+				diff.apply(r.bufnr, r.start_line - 1, r.end_line, new_lines)
+				local delta = #new_lines - (r.end_line - r.start_line + 1)
+				paint.shift_after(r.bufnr, r.start_line, delta)
 			end
 		else
 			-- Global paint (only if no tokens exist)
