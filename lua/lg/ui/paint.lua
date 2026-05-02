@@ -154,6 +154,17 @@ function M.repaint(bufnr)
 	end
 end
 
+--- Remove a specific region from the table
+--- @param region table
+function M.remove(region)
+	for i, r in ipairs(regions) do
+		if r.bufnr == region.bufnr and r.start_line == region.start_line and r.end_line == region.end_line then
+			table.remove(regions, i)
+			return
+		end
+	end
+end
+
 function M.clear()
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then

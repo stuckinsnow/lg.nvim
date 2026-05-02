@@ -29,7 +29,16 @@ local function apply_sorted_edits(regs, edits)
 		diff.apply(r.bufnr, r.start_line - 1, r.end_line, entry.new_lines)
 		local delta = #entry.new_lines - (r.end_line - r.start_line + 1)
 		paint.shift_after(r.bufnr, r.start_line, delta)
+		paint.remove(r)
+		-- Remove from the passed-in regs table too
+		for i, reg in ipairs(regs) do
+			if reg == r then
+				table.remove(regs, i)
+				break
+			end
+		end
 	end
+	return #sorted
 end
 
 --- Stored info-paint regions for conversion
@@ -166,13 +175,17 @@ function M.handle_message(data)
 		local new_lines = vim.split(msg.new_code:gsub("\n$", ""), "\n")
 		diff.apply(region.bufnr, region.start_line - 1, region.end_line, new_lines)
 		paint.shift_after(region.bufnr, region.start_line, #new_lines - (region.end_line - region.start_line + 1))
+		paint.remove(region)
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true })
 	elseif msg.method == "apply_edits" then
 		local edits = msg.edits or {}
 		if msg.session and sessions[msg.session] then
 			-- Session-scoped: edit that session's regions
-			apply_sorted_edits(sessions[msg.session], edits)
+			local count = apply_sorted_edits(sessions[msg.session], edits)
+			if count == 0 then
+				return vim.json.encode({ error = "no painted regions to edit" })
+			end
 		elseif msg.edit_token and msg.edit_token ~= "" then
 			-- Token-scoped: edit only the snapshot regions
 			local regs = tokens[msg.edit_token]

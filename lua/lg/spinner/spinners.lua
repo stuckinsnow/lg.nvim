@@ -102,15 +102,6 @@ function M.start(regions)
 				end
 			end
 			clear_regions(snapshot, handles)
-			-- Restore paint sign colors if using sign spinner
-			if config.spinner_type == "sign" then
-				local paint = require("lg.ui.paint")
-				for _, r in ipairs(snapshot) do
-					if vim.api.nvim_buf_is_valid(r.bufnr) then
-						paint.repaint(r.bufnr)
-					end
-				end
-			end
 			stop_timer()
 		end,
 	}
