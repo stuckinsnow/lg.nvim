@@ -33,27 +33,39 @@ end
 --- @param end_row number 0-indexed exclusive
 --- @param new_lines string[]
 function M.apply(bufnr, start_row, end_row, new_lines)
+	local paint_ns = vim.api.nvim_create_namespace("lg.ui.paint")
+	local has_paint = #vim.api.nvim_buf_get_extmarks(bufnr, paint_ns, { start_row, 0 }, { end_row - 1, -1 }, { limit = 1 }) > 0
 	vim.api.nvim_buf_set_lines(bufnr, start_row, end_row, false, new_lines)
 	ensure_highlights()
 	attach_listener(bufnr)
 	local last = start_row + #new_lines - 1
-	for i = start_row, last do
-		local sign
-		if #new_lines == 1 then
-			sign = "│"
-		elseif i == start_row then
-			sign = "┌"
-		elseif i == last then
-			sign = "└"
-		else
-			sign = "│"
+	if has_paint then
+		require("lg.ui.paint").repaint(bufnr)
+		for i = start_row, last do
+			vim.api.nvim_buf_set_extmark(bufnr, ns, i, 0, {
+				line_hl_group = "LgLine",
+				priority = 100,
+			})
 		end
-		vim.api.nvim_buf_set_extmark(bufnr, ns, i, 0, {
-			sign_text = sign,
-			sign_hl_group = "LgSign",
-			line_hl_group = "LgLine",
-			priority = 100,
-		})
+	else
+		for i = start_row, last do
+			local sign
+			if #new_lines == 1 then
+				sign = "│"
+			elseif i == start_row then
+				sign = "┌"
+			elseif i == last then
+				sign = "└"
+			else
+				sign = "│"
+			end
+			vim.api.nvim_buf_set_extmark(bufnr, ns, i, 0, {
+				sign_text = sign,
+				sign_hl_group = "LgSign",
+				line_hl_group = "LgLine",
+				priority = 100,
+			})
+		end
 	end
 end
 

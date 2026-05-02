@@ -17,6 +17,7 @@ local function get_spinner_mod()
 	return t == "block" and require("lg.spinner.block-spinner")
 		or t == "center" and require("lg.spinner.spinner")
 		or t == "wave" and require("lg.spinner.wave-spinner")
+		or t == "sign" and require("lg.spinner.sign-spinner")
 		or require("lg.spinner.hint-spinner")
 end
 
@@ -101,6 +102,15 @@ function M.start(regions)
 				end
 			end
 			clear_regions(snapshot, handles)
+			-- Restore paint sign colors if using sign spinner
+			if config.spinner_type == "sign" then
+				local paint = require("lg.ui.paint")
+				for _, r in ipairs(snapshot) do
+					if vim.api.nvim_buf_is_valid(r.bufnr) then
+						paint.repaint(r.bufnr)
+					end
+				end
+			end
 			stop_timer()
 		end,
 	}
