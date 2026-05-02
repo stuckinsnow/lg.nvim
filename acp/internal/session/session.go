@@ -217,7 +217,7 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 	needsApproval :=
 		strings.HasPrefix(title, "Creating ") ||
 		strings.HasPrefix(title, "Deleting ") ||
-		(strings.HasPrefix(title, "Running") && !strings.Contains(title, "@lg/")) ||
+		(strings.HasPrefix(title, "Running") && !strings.Contains(title, "@lg/") && !strings.Contains(title, "@lg-hint/")) ||
 		strings.Contains(strings.ToLower(title), "devlens")
 
 	if needsApproval {

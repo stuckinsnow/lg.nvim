@@ -334,6 +334,12 @@ function M._setup_event_handlers()
 			end
 		end
 
+		if _auto_accept and allow_id then
+			client.respond_permission(ev.session_id, rpc_id, allow_id)
+			status.update("Auto-approved: " .. title)
+			return
+		end
+
 		vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
 			local oid = choice == "Allow" and allow_id or reject_id or allow_id
 			if oid and ev.session_id then
