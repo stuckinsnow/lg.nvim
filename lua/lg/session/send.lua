@@ -10,6 +10,16 @@ local spinners = require("lg.spinner.spinners")
 
 local M = {}
 
+local paint_ns = vim.api.nvim_create_namespace("lg.ui.paint")
+
+--- Clear paint extmarks and remove regions from the table
+local function clear_paint(regions)
+	for _, r in ipairs(regions) do
+		pcall(vim.api.nvim_buf_clear_namespace, r.bufnr, paint_ns, r.start_line - 1, r.end_line)
+		paint.remove(r)
+	end
+end
+
 --- When main session is busy, ask user whether to queue or use a subagent.
 --- @param main_fn fun() function to call for queue (main session)
 --- @param sub_fn fun() function to call for subagent
@@ -240,12 +250,14 @@ function M.send(opts)
 											status.flash("Retry failed — no hints")
 										end
 										status.stop("Review done — " .. math.max(n2, 0) .. " hint(s)")
+										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
 							status.stop("Review done — " .. n .. " hint(s)")
+							clear_paint(regions)
 						end
 					end, 500)
 				end
@@ -293,12 +305,14 @@ function M.send(opts)
 											status.flash("Retry failed — no suggestions")
 										end
 										status.stop("Suggestions done — " .. math.max(n2, 0) .. " suggestion(s)")
+										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
 							status.stop("Suggestions done — " .. n .. " suggestion(s)")
+							clear_paint(regions)
 						end
 					end, 500)
 				end
@@ -347,12 +361,14 @@ function M.send(opts)
 											status.flash("Retry failed — no suggestions")
 										end
 										status.stop("Help done — " .. math.max(n2, 0) .. " suggestion(s)")
+										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
 							status.stop("Help done — " .. n .. " suggestion(s)")
+							clear_paint(regions)
 						end
 					end, 500)
 				end
