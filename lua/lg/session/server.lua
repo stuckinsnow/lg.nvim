@@ -214,42 +214,33 @@ function M.handle_message(data)
 		local result = nil
 		hunk.propose_write(path, old_text, new_text, function(accepted, reason)
 			if accepted then
-				-- Apply the edit to disk
+				-- Apply the edit to the buffer (not disk — user saves when ready)
 				local resolved = vim.fn.fnamemodify(path, ":p")
-				local f = io.open(resolved, "r")
-				local new_file = not f
-				if f then
-					local content = f:read("*a") or ""
-					f:close()
+				local bufnr = vim.fn.bufnr(resolved)
+				if bufnr == -1 then
+					-- File not open — try opening it
+					vim.cmd("edit " .. vim.fn.fnameescape(resolved))
+					bufnr = vim.fn.bufnr(resolved)
+				end
+				if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) then
+					local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+					local content = table.concat(lines, "\n")
 					local s, e = content:find(old_text, 1, true)
 					if s then
 						local updated = content:sub(1, s - 1) .. new_text .. content:sub(e + 1)
-						local fw = io.open(resolved, "w")
-						if fw then
-							fw:write(updated)
-							fw:close()
-						end
+						local new_lines = vim.split(updated:gsub("\n$", ""), "\n")
+						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+						vim.bo[bufnr].modified = true
 					end
 				else
+					-- Fallback for new files: write to disk
 					vim.fn.mkdir(vim.fn.fnamemodify(resolved, ":h"), "p")
 					local fw = io.open(resolved, "w")
 					if fw then
 						fw:write(new_text)
 						fw:close()
 					end
-				end
-				if new_file then
 					vim.cmd("edit " .. vim.fn.fnameescape(resolved))
-				else
-					for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-						if vim.api.nvim_buf_is_loaded(buf) then
-							local bname = vim.api.nvim_buf_get_name(buf)
-							if bname == resolved or bname == path then
-								vim.bo[buf].autoread = true
-								vim.cmd("checktime " .. buf)
-							end
-						end
-					end
 				end
 				result = vim.json.encode({ ok = true, status = "accepted" })
 			else
