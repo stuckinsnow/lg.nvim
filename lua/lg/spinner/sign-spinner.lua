@@ -4,7 +4,7 @@ local M = {}
 
 local paint_ns = vim.api.nvim_create_namespace("lg.ui.paint")
 
-local hls = { "LgWave1", "LgWave2", "LgWave3", "LgWave4", "LgWave5", "LgWave4", "LgWave3", "LgWave2" }
+local hls = { "LgPulse1", "LgPulse2", "LgPulse3", "LgPulse4", "LgPulse5", "LgPulse6", "LgPulse7", "LgPulse8" }
 
 function M.render_region(bufnr, _, start_line, end_line, tick)
 	local hi = hls[(tick % #hls) + 1]
