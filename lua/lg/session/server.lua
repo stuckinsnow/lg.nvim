@@ -119,6 +119,37 @@ function M.encode_diagnostics(bufnr, min_severity)
 	return vim.json.encode(out)
 end
 
+--- Read buffer content (or fall back to disk)
+--- @param path string absolute path
+--- @param start_line? number 1-based
+--- @param end_line? number 1-based inclusive
+--- @return string JSON response
+function M.do_read_buffer(path, start_line, end_line)
+	local bufnr = vim.fn.bufnr(path)
+	local lines
+	if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+		local total = vim.api.nvim_buf_line_count(bufnr)
+		start_line = start_line and math.max(1, start_line) or 1
+		end_line = end_line and math.min(end_line, total) or total
+		lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
+		return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
+	else
+		local f = io.open(path, "r")
+		if not f then
+			return vim.json.encode({ error = "file not found: " .. path })
+		end
+		local content = f:read("*a")
+		f:close()
+		local all_lines = vim.split(content:gsub("\n$", ""), "\n")
+		local total = #all_lines
+		start_line = start_line and math.max(1, start_line) or 1
+		end_line = end_line and math.min(end_line, total) or total
+		lines = {}
+		for i = start_line, end_line do lines[#lines + 1] = all_lines[i] end
+		return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
+	end
+end
+
 --- Handle a complete message from MCP server
 --- @param data string JSON: { "method": "get_regions" } or { "method": "apply_edit", "region_id": 0, "new_code": "..." }
 --- @return string|nil response, (fun():string?)|nil poll_fn
@@ -257,31 +288,27 @@ function M.handle_message(data)
 		if not path or path == "" then
 			return vim.json.encode({ error = "path required" })
 		end
+		path = vim.fn.expand(path)
 		path = vim.fn.fnamemodify(path, ":p")
-		local bufnr = vim.fn.bufnr(path)
-		local lines
-		if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-			local total = vim.api.nvim_buf_line_count(bufnr)
-			local start_line = msg.start_line and math.max(1, msg.start_line) or 1
-			local end_line = msg.end_line and math.min(msg.end_line, total) or total
-			lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
-			return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
-		else
-			-- Fall back to disk
-			local f = io.open(path, "r")
-			if not f then
-				return vim.json.encode({ error = "file not found: " .. path })
-			end
-			local content = f:read("*a")
-			f:close()
-			local all_lines = vim.split(content:gsub("\n$", ""), "\n")
-			local total = #all_lines
-			local start_line = msg.start_line and math.max(1, msg.start_line) or 1
-			local end_line = msg.end_line and math.min(msg.end_line, total) or total
-			lines = {}
-			for i = start_line, end_line do lines[#lines + 1] = all_lines[i] end
-			return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
+		-- Block env/secret files
+		local basename = vim.fn.fnamemodify(path, ":t")
+		if basename:match("^%.env") or basename:match("%.pem$") or basename:match("%.key$") then
+			return vim.json.encode({ error = "access denied: " .. basename })
 		end
+		-- Check if outside project root
+		local root = vim.fn.getcwd() .. "/"
+		if not path:find(root, 1, true) then
+			local result = nil
+			vim.ui.select({ "Allow", "Deny" }, { prompt = "Read outside project: " .. path }, function(_, idx)
+				if idx == 1 then
+					result = M.do_read_buffer(path, msg.start_line, msg.end_line)
+				else
+					result = vim.json.encode({ error = "access denied by user" })
+				end
+			end)
+			return nil, function() return result end
+		end
+		return M.do_read_buffer(path, msg.start_line, msg.end_line)
 	elseif msg.method == "paint_regions" then
 		local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
 		local regions = msg.regions or {}

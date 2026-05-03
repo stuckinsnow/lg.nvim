@@ -229,3 +229,130 @@ func TestReadBufferFileNotFound(t *testing.T) {
 		t.Errorf("expected error result, got: %s", data)
 	}
 }
+
+func TestReadBufferEnvBlocked(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		// Lua blocks .env files and returns access denied
+		p := req["path"].(string)
+		if strings.Contains(p, ".env") {
+			return map[string]any{"error": "access denied: .env"}
+		}
+		return map[string]any{"error": "should not reach here"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/home/user/project/.env"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "isError") || !strings.Contains(string(data), "access denied") {
+		t.Errorf("expected access denied for .env, got: %s", data)
+	}
+}
+
+func TestReadBufferPemBlocked(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		p := req["path"].(string)
+		if strings.Contains(p, ".pem") {
+			return map[string]any{"error": "access denied: server.pem"}
+		}
+		return map[string]any{"error": "should not reach here"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/home/user/certs/server.pem"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "isError") || !strings.Contains(string(data), "access denied") {
+		t.Errorf("expected access denied for .pem, got: %s", data)
+	}
+}
+
+func TestReadBufferOutsideRootDenied(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		// Simulates user denying permission via vim.ui.select
+		return map[string]any{"error": "access denied by user"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/etc/passwd"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "isError") || !strings.Contains(string(data), "access denied by user") {
+		t.Errorf("expected user denial, got: %s", data)
+	}
+}
+
+func TestReadBufferOutsideRootAllowed(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		// Simulates user allowing permission, then reading succeeds
+		return map[string]any{
+			"content":     "external file content",
+			"start_line":  1,
+			"end_line":    1,
+			"total_lines": 1,
+		}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/other/repo/main.go"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "external file content") {
+		t.Errorf("expected allowed content, got: %s", data)
+	}
+}
+
+func TestReadBufferTildeExpansion(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		// Verify the path arrives with ~ (Lua will expand it)
+		p := req["path"].(string)
+		if p != "~/.config/nvim/init.lua" {
+			return map[string]any{"error": "unexpected path: " + p}
+		}
+		// Simulates: Lua expands ~, user allows, reads file
+		return map[string]any{
+			"content":     "-- nvim config",
+			"start_line":  1,
+			"end_line":    1,
+			"total_lines": 1,
+		}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "~/.config/nvim/init.lua"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "nvim config") {
+		t.Errorf("expected nvim config content, got: %s", data)
+	}
+}
