@@ -36,19 +36,9 @@ function M.add(bufnr, start_line, end_line)
 		end_line = max
 	end
 
-	for row = start_line - 1, end_line - 1 do
-		local total = end_line - start_line + 1
-		local sign
-		if total == 1 then
-			sign = "│"
-		elseif row == start_line - 1 then
-			sign = "┌"
-		elseif row == end_line - 1 then
-			sign = "└"
-		else
-			sign = "│"
-		end
+	local signs = require("lg.ui.signs")
 
+	for row = start_line - 1, end_line - 1 do
 		pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
 			end_line = row + 1,
 			hl_group = "LgPaintLine",
@@ -56,7 +46,7 @@ function M.add(bufnr, start_line, end_line)
 			priority = 110,
 		})
 		pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-			sign_text = sign,
+			sign_text = signs.bracket(row, start_line, end_line),
 			sign_hl_group = "LgPaintSign",
 			priority = 110,
 		})
@@ -121,23 +111,13 @@ end
 function M.repaint(bufnr)
 	ensure_highlights()
 	vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+	local signs = require("lg.ui.signs")
 	for _, r in ipairs(regions) do
 		if r.bufnr == bufnr then
 			local max = vim.api.nvim_buf_line_count(bufnr)
 			local s = math.min(r.start_line, max)
 			local e = math.min(r.end_line, max)
 			for row = s - 1, e - 1 do
-				local total = e - s + 1
-				local sign
-				if total == 1 then
-					sign = "│"
-				elseif row == s - 1 then
-					sign = "┌"
-				elseif row == e - 1 then
-					sign = "└"
-				else
-					sign = "│"
-				end
 				pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
 					end_line = row + 1,
 					hl_group = "LgPaintLine",
@@ -145,7 +125,7 @@ function M.repaint(bufnr)
 					priority = 110,
 				})
 				pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-					sign_text = sign,
+					sign_text = signs.bracket(row, s, e),
 					sign_hl_group = "LgPaintSign",
 					priority = 110,
 				})

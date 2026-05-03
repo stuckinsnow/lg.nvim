@@ -391,6 +391,18 @@ function M.clear_menu()
 			end,
 		},
 		{
+			icon = "󰈈",
+			label = "Follow highlights",
+			fn = function()
+				local ns = vim.api.nvim_create_namespace("lg_follow_read")
+				for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+					if vim.api.nvim_buf_is_valid(buf) then
+						vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+					end
+				end
+			end,
+		},
+		{
 			icon = "󰗩",
 			label = "Everything",
 			fn = function()
@@ -426,6 +438,13 @@ function M.clear_menu()
 			end,
 		},
 	})
+end
+
+function M.toggle_follow()
+	local server = require("lg.session.server")
+	local enabled = not server.get_follow_reads()
+	server.set_follow_reads(enabled)
+	vim.notify("Follow reads: " .. (enabled and "ON" or "OFF"), vim.log.levels.INFO)
 end
 
 return M

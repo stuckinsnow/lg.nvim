@@ -119,6 +119,25 @@ function M.encode_diagnostics(bufnr, min_severity)
 	return vim.json.encode(out)
 end
 
+--- Follow mode: jump to file when AI reads it
+local follow_reads = false
+
+function M.set_follow_reads(enabled)
+	follow_reads = enabled
+	if not enabled then
+		local ns = vim.api.nvim_create_namespace("lg_follow_read")
+		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_valid(buf) then
+				vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+			end
+		end
+	end
+end
+
+function M.get_follow_reads()
+	return follow_reads
+end
+
 --- Read buffer content (or fall back to disk)
 --- @param path string absolute path
 --- @param start_line? number 1-based
@@ -126,13 +145,12 @@ end
 --- @return string JSON response
 function M.do_read_buffer(path, start_line, end_line)
 	local bufnr = vim.fn.bufnr(path)
-	local lines
+	local lines, total
 	if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-		local total = vim.api.nvim_buf_line_count(bufnr)
+		total = vim.api.nvim_buf_line_count(bufnr)
 		start_line = start_line and math.max(1, start_line) or 1
 		end_line = end_line and math.min(end_line, total) or total
 		lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
-		return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
 	else
 		local f = io.open(path, "r")
 		if not f then
@@ -141,13 +159,52 @@ function M.do_read_buffer(path, start_line, end_line)
 		local content = f:read("*a")
 		f:close()
 		local all_lines = vim.split(content:gsub("\n$", ""), "\n")
-		local total = #all_lines
+		total = #all_lines
 		start_line = start_line and math.max(1, start_line) or 1
 		end_line = end_line and math.min(end_line, total) or total
 		lines = {}
 		for i = start_line, end_line do lines[#lines + 1] = all_lines[i] end
-		return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
 	end
+	if follow_reads then
+		local ns = vim.api.nvim_create_namespace("lg_follow_read")
+		-- Clear previous follow highlights
+		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_valid(buf) then
+				vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+			end
+		end
+		local target_win
+		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+			local b = vim.api.nvim_win_get_buf(win)
+			if vim.bo[b].buftype == "" then target_win = win; break end
+		end
+		if target_win then
+			local b = vim.fn.bufnr(path)
+			if b == -1 then
+				vim.api.nvim_win_call(target_win, function()
+					vim.cmd("edit " .. vim.fn.fnameescape(path))
+				end)
+				b = vim.fn.bufnr(path)
+			end
+			if b ~= -1 then
+				vim.api.nvim_win_set_buf(target_win, b)
+				pcall(vim.api.nvim_win_set_cursor, target_win, { start_line, 0 })
+				vim.api.nvim_win_call(target_win, function() vim.cmd("normal! zz") end)
+				for row = start_line - 1, end_line - 1 do
+					local signs = require("lg.ui.signs")
+					vim.api.nvim_buf_set_extmark(b, ns, row, 0, {
+						sign_text = signs.bracket(row, start_line, end_line),
+						sign_hl_group = "LgFollowSign", priority = 90,
+					})
+					vim.api.nvim_buf_set_extmark(b, ns, row, 0, {
+						end_line = row + 1, hl_group = "LgFollowLine", hl_eol = true, priority = 90,
+					})
+				end
+			end
+		end
+		vim.cmd("redraw")
+	end
+	return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
 end
 
 --- Handle a complete message from MCP server
@@ -343,17 +400,13 @@ function M.handle_message(data)
 				if bufnr ~= -1 then
 					local total_lines = vim.api.nvim_buf_line_count(bufnr)
 					e_line = math.min(e_line, total_lines)
+					local signs = require("lg.ui.signs")
 					for row = s_line - 1, e_line - 1 do
-						local total = e_line - s_line + 1
-						local sign = "│"
-						if total == 1 then sign = "│"
-						elseif row == s_line - 1 then sign = "┌"
-						elseif row == e_line - 1 then sign = "└" end
 						vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
 							end_line = row + 1, hl_group = "LgAutoPaintLine", hl_eol = true, priority = 110,
 						})
 						vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
-							sign_text = sign, sign_hl_group = "LgAutoPaintSign", priority = 110,
+							sign_text = signs.bracket(row, s_line, e_line), sign_hl_group = "LgAutoPaintSign", priority = 110,
 						})
 					end
 					count = count + 1
@@ -521,17 +574,13 @@ function M.add_info_region(bufnr, s_line, e_line)
 	local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
 	local total_lines = vim.api.nvim_buf_line_count(bufnr)
 	e_line = math.min(e_line, total_lines)
+	local signs = require("lg.ui.signs")
 	for row = s_line - 1, e_line - 1 do
-		local total = e_line - s_line + 1
-		local sign = "│"
-		if total == 1 then sign = "│"
-		elseif row == s_line - 1 then sign = "┌"
-		elseif row == e_line - 1 then sign = "└" end
 		vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
 			end_line = row + 1, hl_group = "LgAutoPaintLine", hl_eol = true, priority = 110,
 		})
 		vim.api.nvim_buf_set_extmark(bufnr, ns_auto, row, 0, {
-			sign_text = sign, sign_hl_group = "LgAutoPaintSign", priority = 110,
+			sign_text = signs.bracket(row, s_line, e_line), sign_hl_group = "LgAutoPaintSign", priority = 110,
 		})
 	end
 	table.insert(info_regions, { bufnr = bufnr, start_line = s_line, end_line = e_line })

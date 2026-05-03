@@ -39,20 +39,11 @@ function M.apply(bufnr, start_row, end_row, new_lines)
 	vim.api.nvim_buf_set_lines(bufnr, start_row, end_row, false, new_lines)
 	ensure_highlights()
 	attach_listener(bufnr)
+	local signs = require("lg.ui.signs")
 	local last = start_row + #new_lines - 1
 	for i = start_row, last do
-		local sign
-		if #new_lines == 1 then
-			sign = "│"
-		elseif i == start_row then
-			sign = "┌"
-		elseif i == last then
-			sign = "└"
-		else
-			sign = "│"
-		end
 		vim.api.nvim_buf_set_extmark(bufnr, ns, i, 0, {
-			sign_text = sign,
+			sign_text = signs.bracket(i, start_row + 1, last + 1),
 			sign_hl_group = "LgSign",
 			line_hl_group = "LgLine",
 			priority = 100,
