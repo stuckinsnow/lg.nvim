@@ -252,6 +252,36 @@ function M.handle_message(data)
 			end
 		end)
 		return nil, function() return result end
+	elseif msg.method == "read_buffer" then
+		local path = msg.path
+		if not path or path == "" then
+			return vim.json.encode({ error = "path required" })
+		end
+		path = vim.fn.fnamemodify(path, ":p")
+		local bufnr = vim.fn.bufnr(path)
+		local lines
+		if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+			local total = vim.api.nvim_buf_line_count(bufnr)
+			local start_line = msg.start_line and math.max(1, msg.start_line) or 1
+			local end_line = msg.end_line and math.min(msg.end_line, total) or total
+			lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
+			return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
+		else
+			-- Fall back to disk
+			local f = io.open(path, "r")
+			if not f then
+				return vim.json.encode({ error = "file not found: " .. path })
+			end
+			local content = f:read("*a")
+			f:close()
+			local all_lines = vim.split(content:gsub("\n$", ""), "\n")
+			local total = #all_lines
+			local start_line = msg.start_line and math.max(1, msg.start_line) or 1
+			local end_line = msg.end_line and math.min(msg.end_line, total) or total
+			lines = {}
+			for i = start_line, end_line do lines[#lines + 1] = all_lines[i] end
+			return vim.json.encode({ content = table.concat(lines, "\n"), start_line = start_line, end_line = end_line, total_lines = total })
+		end
 	elseif msg.method == "paint_regions" then
 		local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
 		local regions = msg.regions or {}

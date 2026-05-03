@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"lg-mcp/internal/nvim"
+	"net"
+	"os"
 	"strings"
 	"testing"
 )
@@ -87,4 +91,141 @@ func TestSearchFormatting(t *testing.T) {
 	}
 
 	t.Logf("Formatted output:\n%s", got)
+}
+
+func startFakeNeovim(t *testing.T, handler func(req map[string]any) any) string {
+	t.Helper()
+	sock := "/tmp/lg-test-" + fmt.Sprintf("%d", os.Getpid()) + ".sock"
+	os.Remove(sock)
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close(); os.Remove(sock) })
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 4096)
+				n, _ := c.Read(buf)
+				var req map[string]any
+				json.Unmarshal(buf[:n], &req)
+				resp := handler(req)
+				data, _ := json.Marshal(resp)
+				c.Write(append(data, '\n'))
+			}(conn)
+		}
+	}()
+	return sock
+}
+
+func TestReadBuffer(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		if req["method"] == "read_buffer" {
+			return map[string]any{
+				"content":     "line one\nline two\nline three",
+				"start_line":  1,
+				"end_line":    3,
+				"total_lines": 3,
+			}
+		}
+		return map[string]any{"error": "unknown"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/tmp/test.go"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "line one\\nline two\\nline three") {
+		t.Errorf("unexpected result: %s", data)
+	}
+}
+
+func TestReadBufferWithRange(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		if req["method"] == "read_buffer" {
+			start := int(req["start_line"].(float64))
+			end := int(req["end_line"].(float64))
+			if start != 2 || end != 3 {
+				return map[string]any{"error": fmt.Sprintf("unexpected range %d-%d", start, end)}
+			}
+			return map[string]any{
+				"content":     "line two\nline three",
+				"start_line":  2,
+				"end_line":    3,
+				"total_lines": 5,
+			}
+		}
+		return map[string]any{"error": "unknown"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/tmp/test.go", "start_line": 2, "end_line": 3},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "line two\\nline three") {
+		t.Errorf("unexpected result: %s", data)
+	}
+}
+
+func TestReadBufferNotLoaded(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		// Simulates fallback: Lua reads from disk and returns content
+		return map[string]any{
+			"content":     "disk content",
+			"start_line":  1,
+			"end_line":    1,
+			"total_lines": 1,
+		}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/tmp/test.go"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "disk content") {
+		t.Errorf("expected disk fallback content, got: %s", data)
+	}
+}
+
+func TestReadBufferFileNotFound(t *testing.T) {
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		return map[string]any{"error": "file not found: /tmp/nope.go"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name":      "read_buffer",
+		"arguments": map[string]any{"path": "/tmp/nope.go"},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "isError") || !strings.Contains(string(data), "file not found") {
+		t.Errorf("expected error result, got: %s", data)
+	}
 }

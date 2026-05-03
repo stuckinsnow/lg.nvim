@@ -149,6 +149,54 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []protocol.TextContent{{Type: "text", Text: "Edit " + result.Status + ": " + args.Path}},
 		}, nil
 
+	case "read_buffer":
+		var args struct {
+			Path      string `json:"path"`
+			StartLine *int   `json:"start_line,omitempty"`
+			EndLine   *int   `json:"end_line,omitempty"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		req := map[string]any{"method": "read_buffer", "path": args.Path}
+		if args.StartLine != nil {
+			req["start_line"] = *args.StartLine
+		}
+		if args.EndLine != nil {
+			req["end_line"] = *args.EndLine
+		}
+		resp, err := nvim.SendToNeovim(req)
+		if err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "read failed: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		var result struct {
+			Content   string `json:"content"`
+			Error     string `json:"error"`
+			StartLine int    `json:"start_line"`
+			EndLine   int    `json:"end_line"`
+			Total     int    `json:"total_lines"`
+		}
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: string(resp)}},
+			}, nil
+		}
+		if result.Error != "" {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: result.Error}},
+				IsError: true,
+			}, nil
+		}
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: result.Content}},
+		}, nil
+
 	case "lg_paint_regions":
 		var args struct {
 			Regions []struct {
@@ -257,6 +305,20 @@ func handleToolsList() any {
 						"new_text": map[string]string{"type": "string", "description": "Replacement text"},
 					},
 					Required:             []string{"path", "old_text", "new_text"},
+					AdditionalProperties: &f,
+				},
+			},
+			{
+				Name:        "read_buffer",
+				Description: "Read file content. Returns buffer content (includes unsaved changes) if the file is open in the editor, otherwise reads from disk.",
+				InputSchema: protocol.ToolSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"path":       map[string]string{"type": "string", "description": "Absolute file path"},
+						"start_line": map[string]any{"type": "integer", "description": "Start line (1-based, optional)"},
+						"end_line":   map[string]any{"type": "integer", "description": "End line (1-based inclusive, optional)"},
+					},
+					Required:             []string{"path"},
 					AdditionalProperties: &f,
 				},
 			},
