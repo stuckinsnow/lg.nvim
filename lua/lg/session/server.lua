@@ -293,7 +293,32 @@ function M.handle_message(data)
 			return vim.json.encode({ error = "path, old_text, new_text required" })
 		end
 		local hunk = require("lg.ui.hunk")
+		local resolved_early = vim.fn.fnamemodify(path, ":p")
+		local is_new_file = not vim.uv.fs_stat(resolved_early)
 		local result = nil
+
+		if is_new_file then
+			-- New file: open buffer with content, prompt accept/reject
+			vim.fn.mkdir(vim.fn.fnamemodify(resolved_early, ":h"), "p")
+			vim.cmd("edit " .. vim.fn.fnameescape(resolved_early))
+			local bufnr = vim.api.nvim_get_current_buf()
+			local new_lines = vim.split(new_text:gsub("\n$", ""), "\n")
+			vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+			vim.schedule(function()
+				vim.ui.select({ "Accept", "Reject" }, { prompt = "Create: " .. vim.fn.fnamemodify(resolved_early, ":~:.") }, function(_, idx)
+					if idx == 1 then
+						vim.api.nvim_buf_call(bufnr, function() vim.cmd("write!") end)
+						result = vim.json.encode({ ok = true, status = "accepted" })
+					else
+						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+						vim.cmd("bdelete! " .. bufnr)
+						result = vim.json.encode({ ok = false, status = "rejected", error = "User rejected new file" })
+					end
+				end)
+			end)
+			return nil, function() return result end
+		end
+
 		hunk.propose_write(path, old_text, new_text, function(accepted, reason)
 			if accepted then
 				-- Apply the edit to the buffer (not disk — user saves when ready)
