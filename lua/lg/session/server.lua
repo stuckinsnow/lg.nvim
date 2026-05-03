@@ -167,12 +167,6 @@ function M.do_read_buffer(path, start_line, end_line)
 	end
 	if follow_reads then
 		local ns = vim.api.nvim_create_namespace("lg_follow_read")
-		-- Clear previous follow highlights
-		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-			if vim.api.nvim_buf_is_valid(buf) then
-				vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-			end
-		end
 		local target_win
 		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 			local b = vim.api.nvim_win_get_buf(win)
