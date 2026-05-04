@@ -598,6 +598,21 @@ function M.send_mode(config, prompt, regions, context_regions, on_done)
 	end)
 end
 
+function M.reset()
+	_connect_queue = nil
+	_send_queue = {}
+	_busy = false
+	M._on_done = nil
+	M._session_count = 0
+	require("lg.session.server").clear_tokens()
+	if main_session_id and client.is_connected() then
+		client.destroy_session(main_session_id)
+	end
+	main_session_id = nil
+	session_models = nil
+	-- Process + connection stay alive; next send triggers create_session
+end
+
 function M.clear()
 	_connect_queue = nil
 	_send_queue = {}
@@ -765,6 +780,16 @@ function M.compact()
 		end
 		_busy = true
 		client.prompt(sid, { { type = "text", text = "/compact" } })
+	end)
+end
+
+function M.run_command(command, on_done)
+	if not main_session_id or not client.is_connected() then
+		if on_done then on_done() end
+		return
+	end
+	client.execute_command(main_session_id, command, function()
+		if on_done then vim.schedule(on_done) end
 	end)
 end
 

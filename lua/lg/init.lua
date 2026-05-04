@@ -210,13 +210,15 @@ end
 
 function M.clear_session()
 	spinners.stop()
-	status.stop("Session cleared")
 	paint.clear()
 	context.clear()
 	diff.clear()
 	session.kill_planner()
-	session.clear()
+	require("lg.session.send").reset_region_count()
+	require("lg.session.send").clear_lsp_context()
 	window.clear_history()
+	session.reset()
+	status.stop("Session cleared")
 	vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 end
 
