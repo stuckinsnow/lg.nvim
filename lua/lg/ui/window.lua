@@ -176,6 +176,13 @@ local function render_context()
       table.insert(hls, { #lines - 1, 0, -1, "LgSeparator" })
     end
   end
+  local dlens = require("lg.tools.context").get_devlens()
+  for _, d in ipairs(dlens) do
+    local label = "  🔍 DevLens: " .. table.concat(d.tokens, ", ")
+    if d.component then label = label .. " (" .. d.component .. ")" end
+    table.insert(lines, label)
+    table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
+  end
   return lines, hls
 end
 local function render_chat()

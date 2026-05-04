@@ -80,6 +80,15 @@ end
 
 function M.get_files() return files end
 
+--- @type { tokens: string[], component: string? }[]
+local devlens = {}
+
+function M.add_devlens(tokens, component_name)
+  table.insert(devlens, { tokens = tokens, component = component_name })
+end
+
+function M.get_devlens() return devlens end
+
 function M.clear()
   for _, r in ipairs(regions) do
     if vim.api.nvim_buf_is_valid(r.bufnr) then
@@ -89,6 +98,7 @@ function M.clear()
   regions = {}
   files = {}
   searches = {}
+  devlens = {}
 end
 
 function M.clear_last()

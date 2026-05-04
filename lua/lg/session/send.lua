@@ -118,39 +118,60 @@ function M.send(opts)
 		end
 
 		if flags.has_devlens then
-			local devlens_prompt = prompt:gsub("@DEVLENS%s*", "")
+			local devlens_prompt = prompt:gsub("@DEVLENS%s*", ""):gsub("%[Current file:[^\n]*%]\n?", "")
 			window.add_prompt(prompt)
-			status.start("DevLens inspection (Haiku)...")
-			session.send_devlens_subagent(
-				"You have access to a live browser page through the devlens Chrome extension. Use the devlens tools to inspect React components, understand component hierarchy, and read props/state. The user wants this context:\n\n"
-					.. devlens_prompt,
-				function(result)
-					vim.schedule(function()
-						if result and result ~= "" then
-							local full_prompt = "The following browser state was already gathered by a subagent — do NOT repeat or summarize it. Just act on the user's request using this context.\n\nBrowser state:\n"
-								.. result
-								.. "\n\nUser request:\n"
-								.. devlens_prompt
-							if opts.from_chat then
-								session.send_chat(full_prompt, function()
-									vim.schedule(function()
-										spinners.stop()
+			vim.ui.input({ prompt = "DevLens tokens (comma-separated): " }, function(input)
+				if not input or input == "" then return end
+				status.start("DevLens fetching...")
+				local tokens = {}
+				for tok in input:gmatch("%S+") do
+					tokens[#tokens + 1] = vim.trim(tok):gsub(",", "")
+				end
+				local base = "http://localhost:7890/inspect?source=mcp"
+				local results = {}
+				local pending = #tokens
+				if pending == 0 then
+					status.stop("DevLens: no tokens")
+					return
+				end
+				for _, tok in ipairs(tokens) do
+					vim.system({ "curl", "-s", base .. "&token=" .. tok }, {}, function(obj)
+						if obj.code == 0 and obj.stdout and obj.stdout ~= "" then
+							results[#results + 1] = obj.stdout
+						end
+						pending = pending - 1
+						if pending == 0 then
+							vim.schedule(function()
+								local combined = table.concat(results, "\n\n")
+								if combined == "" then
+									status.stop("DevLens: no data")
+									return
+								end
+								window.add_result("DevLens context: " .. table.concat(tokens, ", "))
+								local comp_name = combined:match('"component"%s*:%s*"([^"]+)"')
+									or combined:match('"name"%s*:%s*"([^"]+)"')
+								context.add_devlens(tokens, comp_name)
+								local full_prompt = "Browser component state (from DevLens):\n"
+									.. combined
+									.. "\n\nUser request:\n"
+									.. devlens_prompt
+								if opts.from_chat then
+									session.send_chat(full_prompt, function()
+										vim.schedule(function() spinners.stop() end)
 									end)
-								end)
-							else
-								session.send(full_prompt, regions, context.get_all(), function()
-									vim.schedule(function()
-										spinners.stop()
-										window.refresh()
+								else
+									session.send(full_prompt, regions, context.get_all(), function()
+										vim.schedule(function()
+											spinners.stop()
+											window.refresh()
+										end)
 									end)
-								end)
-							end
-						else
-							status.stop("DevLens inspection empty")
+								end
+							end)
 						end
 					end)
 				end
-			)
+			end)
 			return
 		end
 
