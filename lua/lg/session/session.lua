@@ -641,16 +641,8 @@ function M.kill()
 		return
 	end
 	client.cancel(main_session_id)
-	main_session_id = nil
-	session_models = nil
 	_busy = false
-	client.disconnect()
-	if acp_proc then
-		pcall(function()
-			acp_proc:kill(9)
-		end)
-		acp_proc = nil
-	end
+	M._on_done = nil
 end
 
 function M.is_active()
