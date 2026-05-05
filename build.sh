@@ -18,4 +18,7 @@ cd lsp && go build -o lg-lsp . && cd ..
 echo "Building lg-acp..."
 cd acp && go build -o lg-acp . && cd ..
 
+echo "Building lg-tap..."
+cd tap && go build -o lg-tap . && cd ..
+
 echo "Done."

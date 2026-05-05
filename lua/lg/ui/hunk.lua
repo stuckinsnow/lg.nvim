@@ -157,21 +157,31 @@ function M.propose_write(path, old_content, new_content, on_resolve)
 	hunks[#hunks].on_resolve = on_resolve
 end
 
-function M.propose_edit(path, old_text, new_text)
+function M.propose_edit(path, old_text, new_text, opts)
+	opts = opts or {}
 	if type(old_text) ~= "string" or type(new_text) ~= "string" then return false end
 	hl()
 	local resolved = vim.fn.fnamemodify(path, ":p")
 
-	-- Ensure we're in a normal window
-	local win = api.nvim_get_current_win()
-	if vim.bo[api.nvim_win_get_buf(win)].buftype ~= "" then
-		local found = false
+	-- Find a normal window (don't switch to it if no_focus)
+	local target_win
+	local cur_win = api.nvim_get_current_win()
+	if vim.bo[api.nvim_win_get_buf(cur_win)].buftype == "" then
+		target_win = cur_win
+	else
 		for _, w in ipairs(api.nvim_list_wins()) do
 			if vim.bo[api.nvim_win_get_buf(w)].buftype == "" then
-				api.nvim_set_current_win(w); found = true; break
+				target_win = w; break
 			end
 		end
-		if not found then vim.cmd("vnew") end
+		if not target_win then
+			vim.cmd("vnew")
+			target_win = api.nvim_get_current_win()
+		end
+	end
+
+	if not opts.no_focus then
+		api.nvim_set_current_win(target_win)
 	end
 
 	-- Find or open buffer
@@ -184,14 +194,16 @@ function M.propose_edit(path, old_text, new_text)
 	end
 	if bufnr then
 		local bwin = vim.fn.bufwinid(bufnr)
-		if bwin ~= -1 then
-			api.nvim_set_current_win(bwin)
-		else
-			vim.cmd("buffer " .. bufnr)
+		if bwin == -1 then
+			api.nvim_win_call(target_win, function()
+				vim.cmd("buffer " .. bufnr)
+			end)
 		end
 	else
-		vim.cmd("edit " .. vim.fn.fnameescape(resolved))
-		bufnr = api.nvim_get_current_buf()
+		api.nvim_win_call(target_win, function()
+			vim.cmd("edit " .. vim.fn.fnameescape(resolved))
+		end)
+		bufnr = api.nvim_win_get_buf(target_win)
 	end
 
 	-- Find old_text in buffer
@@ -229,11 +241,18 @@ function M.propose_edit(path, old_text, new_text)
 	}
 	hunks[#hunks + 1] = h
 	render(h)
-	jump(#hunks)
 
-	local n = 0
-	for _, hk in ipairs(hunks) do if hk.accepted == nil then n = n + 1 end end
-	vim.notify(string.format("lg: %d hunk(s) — ]h/[h navigate, <leader>aha accept, <leader>ahr reject", n), vim.log.levels.INFO)
+	if opts.no_focus then
+		-- Scroll to the change without stealing focus
+		local bwin = vim.fn.bufwinid(bufnr)
+		if bwin ~= -1 then
+			api.nvim_win_set_cursor(bwin, { math.min(h.row + 1, api.nvim_buf_line_count(bufnr)), 0 })
+			api.nvim_win_call(bwin, function() vim.cmd("normal! zz") end)
+		end
+	else
+		jump(#hunks)
+	end
+
 	-- Clear watcher marks on this buffer so they don't overlap
 	pcall(api.nvim_buf_clear_namespace, bufnr, api.nvim_create_namespace("lg_auto_paint"), 0, -1)
 	return true
@@ -303,6 +322,25 @@ function M.reject_all()
 			end
 		end
 	end)
+end
+
+function M.reject_all_silent()
+	for _, h in ipairs(hunks) do
+		if h.accepted == nil then
+			h.accepted = false
+			clear_extmarks(h)
+			api.nvim_buf_clear_namespace(h.bufnr, dns, 0, -1)
+		end
+	end
+	hunks = {}
+end
+
+function M.pending()
+	local out = {}
+	for i, h in ipairs(hunks) do
+		if h.accepted == nil then out[#out + 1] = i end
+	end
+	return out
 end
 
 function M.clear()
