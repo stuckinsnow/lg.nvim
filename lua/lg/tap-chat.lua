@@ -166,8 +166,8 @@ function M.open()
 	vim.wo[state.win].foldcolumn = "1"
 	vim.api.nvim_win_set_width(state.win, 60)
 
-	-- Escape leaves terminal mode so you can switch windows
-	vim.keymap.set("t", "<Esc>", [[<C-\><C-n>]], { buffer = state.buf, desc = "Exit terminal mode" })
+	-- Double-escape exits terminal mode; single escape goes to TUI
+	vim.keymap.set("t", "<Esc><Esc>", [[<C-\><C-n>]], { buffer = state.buf, desc = "Exit terminal mode" })
 	vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { buffer = state.buf, desc = "Window commands" })
 	vim.keymap.set("n", "<leader>aq", function()
 		M.close()
