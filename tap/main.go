@@ -42,9 +42,23 @@ func main() {
 		log.Fatalf("lg-tap: failed to start agent: %v", err)
 	}
 
-	// Forward our stdin to agent's stdin
+	// Forward our stdin to agent's stdin (with logging)
 	go func() {
-		io.Copy(stdin, os.Stdin)
+		os.MkdirAll("/tmp/acp-tap", 0755)
+		sf, _ := os.OpenFile("/tmp/acp-tap/stdin.jsonl", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		defer func() { if sf != nil { sf.Close() } }()
+
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			stdin.Write(line)
+			stdin.Write([]byte("\n"))
+			if sf != nil {
+				sf.Write(line)
+				sf.Write([]byte("\n"))
+			}
+		}
 		stdin.Close()
 	}()
 

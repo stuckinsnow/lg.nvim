@@ -221,7 +221,7 @@ func (c *conn) handle(req Request) {
 			if msg.Error != nil {
 				c.writeLine(Response{Error: msg.Error.Message})
 			} else {
-				c.writeLine(Response{OK: true})
+				c.writeLine(Response{OK: true, Data: msg.Result})
 			}
 		}); err != nil {
 			c.writeLine(Response{Error: err.Error()})

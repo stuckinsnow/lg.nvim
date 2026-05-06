@@ -75,6 +75,10 @@ func FSWriteResponse(id *RPCID) Message {
 }
 
 func CommandExecuteRequest(id int, sessionID, command string) Message {
-	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "command": command})
+	cmd := command
+	if len(cmd) > 0 && cmd[0] == '/' {
+		cmd = cmd[1:]
+	}
+	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "command": map[string]any{"command": cmd, "args": map[string]any{}}})
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "_kiro.dev/commands/execute", Params: params}
 }

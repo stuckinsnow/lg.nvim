@@ -785,7 +785,7 @@ function M.run_command(command, on_done)
 	end)
 end
 
-function M.execute_command(command)
+function M.execute_command(command, callback)
 	connect(function(sid)
 		if not sid then
 			return
@@ -793,16 +793,24 @@ function M.execute_command(command)
 		if command:sub(1, 1) ~= "/" then
 			command = "/" .. command
 		end
-		status.start(command .. "…")
-		local spin = require("lg.spinner.spinners").start({})
-		M._on_done = function()
-			spin:stop()
-			_busy = false
-			status.stop(command .. " done")
-			flush_send_queue()
-		end
-		_busy = true
-		client.prompt(sid, { { type = "text", text = command } })
+		client.execute_command(sid, command, function(resp)
+			vim.schedule(function()
+				if callback then
+					callback(resp)
+				elseif resp.ok and resp.data then
+					local data = resp.data
+					if type(data) == "string" then
+						local ok, parsed = pcall(vim.json.decode, data)
+						if ok then data = parsed end
+					end
+					if data.message then
+						vim.notify(data.message, vim.log.levels.INFO)
+					end
+				elseif resp.error then
+					vim.notify(resp.error, vim.log.levels.ERROR)
+				end
+			end)
+		end)
 	end)
 end
 

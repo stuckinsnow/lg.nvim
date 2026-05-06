@@ -542,4 +542,8 @@ function M.toggle_follow()
 	vim.notify("Follow reads: " .. (enabled and "ON" or "OFF"), vim.log.levels.INFO)
 end
 
+function M.usage()
+	require("lg.usage").show()
+end
+
 return M
