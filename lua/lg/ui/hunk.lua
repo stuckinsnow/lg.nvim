@@ -39,11 +39,10 @@ local function render(h)
 
 	-- Show new lines as virtual text after old lines
 	if #h.new_lines > 0 then
-		local width = api.nvim_win_get_width(0)
+		local pad_str = string.rep(" ", vim.o.columns)
 		local virt = {}
 		for i, line in ipairs(h.new_lines) do
-			local pad = width - #line
-			local padded = pad > 0 and (line .. string.rep(" ", pad)) or line
+			local padded = line .. pad_str
 			-- Inline yellow on changed portion
 			if h.old_lines[i] and h.old_lines[i] ~= line then
 				local pre, suf = diff_spans(h.old_lines[i], line)
