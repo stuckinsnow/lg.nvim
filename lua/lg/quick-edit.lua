@@ -5,18 +5,27 @@ local spinners = require("lg.spinner.spinners")
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("lg_quick_paint")
+local paint_ns = vim.api.nvim_create_namespace("lg.ui.paint")
 
 local function highlight(bufnr, start_line, end_line)
+	local signs = require("lg.ui.signs")
 	for row = start_line - 1, end_line - 1 do
-		vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
-			end_line = row + 1, hl_group = "LgPaintLine", hl_eol = true, priority = 120,
+		vim.api.nvim_buf_set_extmark(bufnr, paint_ns, row, 0, {
+			end_line = row + 1, hl_group = "LgPaintLine", hl_eol = true, priority = 110,
+		})
+		vim.api.nvim_buf_set_extmark(bufnr, paint_ns, row, 0, {
+			sign_text = signs.bracket(row, start_line, end_line),
+			sign_hl_group = "LgPaintSign",
+			priority = 110,
 		})
 	end
 end
 
-local function clear_highlight(bufnr)
-	vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+local function clear_highlight(bufnr, start_line, end_line)
+	local marks = vim.api.nvim_buf_get_extmarks(bufnr, paint_ns, { start_line - 1, 0 }, { end_line - 1, -1 }, {})
+	for _, mark in ipairs(marks) do
+		vim.api.nvim_buf_del_extmark(bufnr, paint_ns, mark[1])
+	end
 end
 
 function M.quick_edit()
@@ -38,7 +47,7 @@ function M.quick_edit()
 
 	require("lg.ui.prompt").open(function(prompt, flags)
 		if not prompt or prompt == "" then
-			clear_highlight(buf)
+			clear_highlight(buf, start_line, end_line)
 			return
 		end
 
@@ -51,11 +60,11 @@ function M.quick_edit()
 		session.send_oneshot(prompt, { region }, {}, function()
 			vim.schedule(function()
 				spin:stop()
-				clear_highlight(buf)
+				clear_highlight(buf, start_line, end_line)
 			end)
 		end)
 	end, function()
-		clear_highlight(buf)
+		clear_highlight(buf, start_line, end_line)
 	end)
 end
 
