@@ -115,10 +115,36 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 		var params struct {
 			SessionID              string  `json:"sessionId"`
 			ContextUsagePercentage float64 `json:"contextUsagePercentage"`
+			MeteringUsage          []struct {
+				Value       float64 `json:"value"`
+				Unit        string  `json:"unit"`
+				UnitPlural  string  `json:"unitPlural"`
+			} `json:"meteringUsage"`
+			TurnDurationMs int64 `json:"turnDurationMs"`
 		}
 		if json.Unmarshal(msg.Params, &params) == nil {
 			data, _ := json.Marshal(map[string]any{"context_pct": params.ContextUsagePercentage})
 			s.events <- Event{Type: "context_usage", SessionID: s.ID, Data: data}
+
+			if len(params.MeteringUsage) > 0 || params.TurnDurationMs > 0 {
+				var total float64
+				unit := "credits"
+				for _, m := range params.MeteringUsage {
+					total += m.Value
+					if m.UnitPlural != "" {
+						unit = m.UnitPlural
+					} else if m.Unit != "" {
+						unit = m.Unit
+					}
+				}
+				mdata, _ := json.Marshal(map[string]any{
+					"total":            total,
+					"unit":             unit,
+					"turn_duration_ms": params.TurnDurationMs,
+					"entries":          len(params.MeteringUsage),
+				})
+				s.events <- Event{Type: "metering", SessionID: s.ID, Data: mdata}
+			}
 		}
 	case "_kiro.dev/compaction/status":
 		s.events <- Event{Type: "compaction", SessionID: s.ID, Data: msg.Params}

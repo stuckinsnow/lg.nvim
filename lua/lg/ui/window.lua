@@ -15,6 +15,9 @@ local state = {
   input_line = nil, -- line number where user input starts
   planner = false,
   context_pct = nil,
+  metering_total = 0,
+  metering_unit = "credits",
+  last_turn_ms = nil,
 }
 
 local opts = {}
@@ -109,6 +112,10 @@ local function render_status()
 
   if state.context_pct then
     line = line .. string.format("  󱙺 %.0f%%", state.context_pct)
+  end
+
+  if state.metering_total > 0 then
+    line = line .. string.format("   %.3f %s", state.metering_total, state.metering_unit)
   end
 
   return { line }, { { 0, 0, -1, "LgStatus" } }
@@ -280,6 +287,32 @@ end
 
 function M.get_context_pct()
   return state.context_pct
+end
+
+function M.add_metering(data)
+  local val = tonumber(data.total) or 0
+  local unit = data.unit or "credits"
+  local ms = tonumber(data.turn_duration_ms) or 0
+  state.metering_total = state.metering_total + val
+  state.metering_unit = unit
+  state.last_turn_ms = ms
+  -- Format: "0.077 credits · 8.1s · total 0.234"
+  local parts = {}
+  if val > 0 then
+    table.insert(parts, string.format("%.3f %s", val, unit))
+  end
+  if ms > 0 then
+    table.insert(parts, string.format("%.1fs", ms / 1000))
+  end
+  table.insert(parts, string.format("total %.3f", state.metering_total))
+  table.insert(state.history, { type = "status", text = " " .. table.concat(parts, " · ") })
+  M.refresh()
+end
+
+function M.reset_metering()
+  state.metering_total = 0
+  state.last_turn_ms = nil
+  M.refresh()
 end
 
 function M.append_agent_text(chunk)
@@ -492,6 +525,8 @@ end
 
 function M.clear_history()
   state.history = {}
+  state.metering_total = 0
+  state.last_turn_ms = nil
   M.refresh()
 end
 

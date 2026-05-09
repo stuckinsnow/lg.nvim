@@ -371,6 +371,21 @@ function M._setup_event_handlers()
 		end
 	end)
 
+	client.on("metering", function(ev)
+		if ev.session_id ~= main_session_id then
+			return
+		end
+		local data = ev.data
+		if type(data) == "string" then
+			local ok2, parsed = pcall(vim.json.decode, data)
+			if ok2 then
+				data = parsed
+			end
+		end
+		if not data then return end
+		require("lg.ui.window").add_metering(data)
+	end)
+
 	client.on("compaction", function(ev)
 		if ev.session_id ~= main_session_id then
 			return
@@ -801,16 +816,23 @@ function M.compact()
 		status.start("Compacting…")
 		local win = require("lg.ui.window")
 		local spin = require("lg.spinner.spinners").start({})
-		M._on_done = function()
-			spin:stop()
-			_busy = false
-			client.set_mode(sid, resolve_mode("lg"))
-			status.stop("Compacted")
-			win.add_status("Context compacted")
-			flush_send_queue()
-		end
 		_busy = true
-		client.prompt(sid, { { type = "text", text = "/compact" } })
+		client.execute_command(sid, "compact", function(resp)
+			vim.schedule(function()
+				spin:stop()
+				_busy = false
+				client.set_mode(sid, resolve_mode("lg"))
+				if resp and resp.ok then
+					status.stop("Compacted")
+					win.add_status("Context compacted")
+				else
+					local err = (resp and resp.error) or "compact failed"
+					status.stop("Compact failed")
+					win.add_status("Compact failed: " .. err)
+				end
+				flush_send_queue()
+			end)
+		end)
 	end)
 end
 
