@@ -13,13 +13,31 @@ import (
 )
 
 // NewManager creates a session manager for the given ACP command.
+// provider is one of "kiro", "opencode", "cursor" (or derived from cmd[0]).
 func NewManager(cmd []string, clientName string) *Manager {
 	return &Manager{
 		cmd:        cmd,
 		clientName: clientName,
+		provider:   providerFromCmd(cmd),
 		sessions:   make(map[string]*Session),
 		mcpServers: make(map[string]any),
 	}
+}
+
+// providerFromCmd derives the provider name from the command args.
+func providerFromCmd(cmd []string) string {
+	if len(cmd) == 0 {
+		return ""
+	}
+	switch cmd[0] {
+	case "kiro-cli":
+		return "kiro"
+	case "opencode":
+		return "opencode"
+	case "cursor-agent", "agent":
+		return "cursor"
+	}
+	return ""
 }
 
 // SetMCPServers configures MCP servers for new sessions.
@@ -53,6 +71,7 @@ func (m *Manager) CreateSession(cwd string) (*Session, error) {
 
 	s := newSession(m.proc)
 	s.Guard = NewAccessGuard(cwd)
+	s.Provider = m.provider
 	tempID := fmt.Sprintf("temp-%d", atomic.AddInt64(&m.nextTemp, 1))
 
 	// Register a temporary handler for routing during creation
@@ -176,6 +195,7 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 		State:        StateActive,
 		proc:         m.proc,
 		Guard:        NewAccessGuard(cwd),
+		Provider:     m.provider,
 		events:       make(chan Event, 256),
 		onDone:       make(map[int]func()),
 		pendingPerms: make(map[int]*protocol.RPCID),

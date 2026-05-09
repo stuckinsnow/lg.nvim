@@ -33,6 +33,13 @@ type Session struct {
 	proc  *process.Process
 	Guard *AccessGuard
 
+	// Provider is "kiro", "opencode", "cursor", etc. Set at creation.
+	Provider string
+	// LogicalMode is the lg-level mode name (e.g. "reviewer", "lg-chat").
+	// Cursor/opencode only have a few native modes (agent/plan/ask or build/plan),
+	// so the logical mode is preserved separately for client-side tool scoping.
+	LogicalMode string
+
 	mu             sync.Mutex
 	pendingUpdates []*protocol.Message
 	events         chan Event
@@ -51,5 +58,6 @@ type Manager struct {
 
 	cmd        []string
 	clientName string
+	provider   string
 	mcpServers map[string]any
 }

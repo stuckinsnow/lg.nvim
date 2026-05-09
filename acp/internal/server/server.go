@@ -13,17 +13,18 @@ import (
 )
 
 type Request struct {
-	Method     string          `json:"method"`
-	CWD        string          `json:"cwd,omitempty"`
-	SessionID  string          `json:"session_id,omitempty"`
-	Prompt     json.RawMessage `json:"prompt,omitempty"`
-	ModeID     string          `json:"mode_id,omitempty"`
-	ModelID    string          `json:"model_id,omitempty"`
-	OptionID   string          `json:"option_id,omitempty"`
-	RPCID      int             `json:"rpc_id,omitempty"`
-	MCPServers json.RawMessage `json:"mcp_servers,omitempty"`
-	Command    string          `json:"command,omitempty"`
-	Args       json.RawMessage `json:"args,omitempty"`
+	Method      string          `json:"method"`
+	CWD         string          `json:"cwd,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
+	Prompt      json.RawMessage `json:"prompt,omitempty"`
+	ModeID      string          `json:"mode_id,omitempty"`
+	LogicalMode string          `json:"logical_mode,omitempty"`
+	ModelID     string          `json:"model_id,omitempty"`
+	OptionID    string          `json:"option_id,omitempty"`
+	RPCID       int             `json:"rpc_id,omitempty"`
+	MCPServers  json.RawMessage `json:"mcp_servers,omitempty"`
+	Command     string          `json:"command,omitempty"`
+	Args        json.RawMessage `json:"args,omitempty"`
 }
 
 type Response struct {

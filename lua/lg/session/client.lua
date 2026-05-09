@@ -207,8 +207,17 @@ function M.prompt(session_id, prompt, callback)
 	M.send({ method = "prompt", session_id = session_id, prompt = prompt }, callback)
 end
 
-function M.set_mode(session_id, mode_id, callback)
-	M.send({ method = "set_mode", session_id = session_id, mode_id = mode_id }, callback)
+function M.set_mode(session_id, mode_id, logical_mode, callback)
+	-- Back-compat: set_mode(sid, mode_id, callback) — callback as 3rd arg
+	if type(logical_mode) == "function" and callback == nil then
+		callback = logical_mode
+		logical_mode = nil
+	end
+	local req = { method = "set_mode", session_id = session_id, mode_id = mode_id }
+	if logical_mode and logical_mode ~= "" then
+		req.logical_mode = logical_mode
+	end
+	M.send(req, callback)
 end
 
 function M.set_model(session_id, model_id, callback)

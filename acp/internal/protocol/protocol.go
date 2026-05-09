@@ -7,7 +7,10 @@ import "encoding/json"
 func InitializeRequest(id int, clientName string) Message {
 	params, _ := json.Marshal(map[string]any{
 		"protocolVersion":    1,
-		"clientCapabilities": map[string]any{"fs": map[string]any{"readTextFile": true, "writeTextFile": false}},
+		// writeTextFile:true routes the agent's file writes through lg's
+		// handleFSWrite so we can enforce mode-based write policies (e.g.
+		// block direct writes in reviewer/lg modes, forcing paint_edit).
+		"clientCapabilities": map[string]any{"fs": map[string]any{"readTextFile": true, "writeTextFile": true}},
 		"clientInfo":         map[string]any{"name": clientName, "version": "2.0.0"},
 	})
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "initialize", Params: params}
@@ -72,6 +75,11 @@ func FSReadResponse(id *RPCID, content string) Message {
 
 func FSWriteResponse(id *RPCID) Message {
 	return Message{JSONRPC: "2.0", ID: id, Result: json.RawMessage("null")}
+}
+
+// ErrorResponse builds a JSON-RPC error response (used to reject fs/write etc.).
+func ErrorResponse(id *RPCID, code int, message string) Message {
+	return Message{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: code, Message: message}}
 }
 
 func CommandExecuteRequest(id int, sessionID, command string, args map[string]any) Message {

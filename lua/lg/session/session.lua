@@ -29,6 +29,7 @@ local opts = {}
 local providers = {
 	kiro = { cmd = { "kiro-cli", "acp" }, name = "Kiro" },
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
+	cursor = { cmd = { "cursor-agent", "acp" }, name = "Cursor" },
 }
 
 local opencode_modes = {
@@ -46,9 +47,28 @@ local opencode_modes = {
 	kiro_planner = "plan",
 }
 
+-- Cursor has only three modes: agent (full), plan (read-only), ask (Q&A).
+local cursor_modes = {
+	lg = "agent",
+	["lg-chat"] = "agent",
+	["lg-plan"] = "plan",
+	["lg-oneshot"] = "agent",
+	["lg-info"] = "agent",
+	reviewer = "plan",
+	suggester = "plan",
+	helper = "plan",
+	asker = "ask",
+	fullstack = "agent",
+	kiro_default = "agent",
+	kiro_planner = "plan",
+}
+
 local function resolve_mode(mode_id)
 	if opts.provider == "opencode" then
 		return opencode_modes[mode_id] or "build"
+	end
+	if opts.provider == "cursor" then
+		return cursor_modes[mode_id] or "agent"
 	end
 	return mode_id
 end
@@ -250,7 +270,7 @@ local function connect(on_ready)
 				end
 			end
 
-			client.set_mode(main_session_id, resolve_mode("lg"))
+			client.set_mode(main_session_id, resolve_mode("lg"), "lg")
 			status.stop("Session ready")
 			flush(main_session_id)
 		end)
@@ -575,7 +595,7 @@ function M.send_chat(prompt, on_done)
 			if not _planner_active then
 				require("lg.ui.window").add_status("Switching to chat mode")
 			end
-			client.set_mode(sid, resolve_mode(target_mode))
+			client.set_mode(sid, resolve_mode(target_mode), target_mode)
 
 			local messages = protocol.build_prompt({}, {}, prompt)
 
@@ -586,7 +606,7 @@ function M.send_chat(prompt, on_done)
 				if not _planner_active then
 					require("lg.ui.window").add_status("Switching to paint mode")
 				end
-				client.set_mode(sid, resolve_mode(return_mode))
+				client.set_mode(sid, resolve_mode(return_mode), return_mode)
 				_busy = false
 				if on_done then
 					on_done()
@@ -616,7 +636,7 @@ function M.send_mode(config, prompt, regions, context_regions, on_done)
 		end
 
 		local function do_send()
-			client.set_mode(sid, resolve_mode(config.mode_id))
+			client.set_mode(sid, resolve_mode(config.mode_id), config.mode_id)
 
 			local all_ctx = {}
 			for _, r in ipairs(regions) do
@@ -632,7 +652,7 @@ function M.send_mode(config, prompt, regions, context_regions, on_done)
 
 			_busy = true
 			M._on_done = function()
-				client.set_mode(sid, resolve_mode("lg"))
+				client.set_mode(sid, resolve_mode("lg"), "lg")
 				_busy = false
 				if on_done then
 					on_done()
@@ -856,7 +876,7 @@ function M.compact()
 			vim.schedule(function()
 				spin:stop()
 				_busy = false
-				client.set_mode(sid, resolve_mode("lg"))
+				client.set_mode(sid, resolve_mode("lg"), "lg")
 				if resp and resp.ok then
 					status.stop("Compacted")
 					win.add_status("Context compacted")

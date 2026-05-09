@@ -163,7 +163,7 @@ function M.load(session_id)
 				if ev.session_id ~= session_id then return end
 				if unsub then unsub() end
 				M._restoring = false
-				client.set_mode(session_id, M._resolve_mode("lg"))
+				client.set_mode(session_id, M._resolve_mode("lg"), "lg")
 				client.get_models(function(resp)
 					if resp.models then M._set_models(resp.models) end
 				end)

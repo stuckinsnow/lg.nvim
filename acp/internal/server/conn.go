@@ -112,7 +112,7 @@ func (c *conn) handle(req Request) {
 			c.writeLine(Response{Error: "unknown session"})
 			return
 		}
-		if err := sess.SetMode(req.ModeID); err != nil {
+		if err := sess.SetMode(req.ModeID, req.LogicalMode); err != nil {
 			c.writeLine(Response{Error: err.Error()})
 			return
 		}

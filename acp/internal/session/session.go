@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"lg-acp/internal/bridge"
 	"lg-acp/internal/process"
 	"lg-acp/internal/protocol"
 	"log"
@@ -39,8 +40,14 @@ func (s *Session) Prompt(prompt json.RawMessage, onDone func()) error {
 	return s.proc.Write(protocol.SessionPromptRequest(id, s.ID, prompt))
 }
 
-// SetMode sends session/set_mode.
-func (s *Session) SetMode(modeID string) error {
+// SetMode sends session/set_mode. logicalMode is the lg-level mode name
+// (e.g. "reviewer", "lg-chat") which is used for client-side tool scoping
+// on providers that don't have per-agent constraints (cursor, opencode).
+// Pass an empty logicalMode to disable the filter.
+func (s *Session) SetMode(modeID, logicalMode string) error {
+	s.mu.Lock()
+	s.LogicalMode = logicalMode
+	s.mu.Unlock()
 	id := s.proc.NextID()
 	s.proc.TrackResponse(id, func(msg *protocol.Message) {})
 	return s.proc.Write(protocol.SessionSetModeRequest(id, s.ID, modeID))
@@ -215,6 +222,34 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 		title = params.ToolCall.Title
 	}
 
+	// Per-mode client-side tool scoping (for providers without per-agent
+	// tool allowlists like cursor). This runs before the access guard so
+	// that cheap allow/deny decisions don't bounce to the Lua side.
+	s.mu.Lock()
+	logicalMode := s.LogicalMode
+	provider := s.Provider
+	s.mu.Unlock()
+	switch ModeFilter(provider, logicalMode, title) {
+	case DecisionAllow:
+		optionID := findOption(params.Options, "allow_once", "allow_always")
+		if optionID == "" && len(params.Options) > 0 {
+			optionID = params.Options[0].OptionID
+		}
+		log.Printf("acp: mode-filter allow (%s): %s", logicalMode, title)
+		s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
+		s.events <- Event{Type: "permission_auto", SessionID: s.ID, Text: title}
+		return
+	case DecisionDeny:
+		optionID := findOption(params.Options, "reject_once", "reject_always")
+		if optionID == "" && len(params.Options) > 0 {
+			optionID = params.Options[len(params.Options)-1].OptionID
+		}
+		log.Printf("acp: mode-filter deny (%s): %s", logicalMode, title)
+		s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
+		s.events <- Event{Type: "permission_denied", SessionID: s.ID, Text: title + " — not allowed in mode " + logicalMode}
+		return
+	}
+
 	// Check access guard on file-related permissions
 	if s.Guard != nil {
 		p := ExtractPathFromTitle(title)
@@ -297,6 +332,15 @@ func (s *Session) handleFSRead(msg *protocol.Message) {
 		}
 	}
 
+	// Prefer buffer content over disk so the agent sees unsaved edits
+	// applied via paint_edit. lg's read_buffer method already falls back
+	// to disk when the file isn't in any buffer.
+	if content, ok, err := bridge.ReadBuffer(params.Path); err == nil && ok {
+		s.events <- Event{Type: "fs_read", SessionID: s.ID, Text: params.Path}
+		s.proc.Write(protocol.FSReadResponse(msg.ID, content))
+		return
+	}
+
 	content, err := os.ReadFile(params.Path)
 	if err != nil {
 		content = []byte{}
@@ -312,6 +356,22 @@ func (s *Session) handleFSWrite(msg *protocol.Message) {
 	}
 	var params protocol.FSWriteParams
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		return
+	}
+
+	// Mode-based gate: some lg modes (reviewer, suggester, lg-info, etc.) are
+	// supposed to be read-only, and lg/lg-chat/lg-oneshot should edit only
+	// via paint_edit. For providers without per-agent tool allowlists
+	// (cursor), we enforce this at the fs/write_text_file boundary.
+	s.mu.Lock()
+	provider := s.Provider
+	logicalMode := s.LogicalMode
+	s.mu.Unlock()
+	if ShouldBlockDirectWrite(provider, logicalMode) {
+		reason := "direct file writes not allowed in mode '" + logicalMode + "' — use the paint_edit MCP tool"
+		log.Printf("acp: fs_write blocked (mode=%s): %s", logicalMode, params.Path)
+		s.events <- Event{Type: "fs_write_denied", SessionID: s.ID, Text: params.Path + " — " + reason}
+		s.proc.Write(protocol.ErrorResponse(msg.ID, -32000, reason))
 		return
 	}
 

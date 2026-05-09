@@ -131,7 +131,7 @@ function M.run(config)
 
 			local function set_mode_then_prompt()
 				if config.mode_id then
-					client.set_mode(sub_sid, M._resolve_mode(config.mode_id), function()
+					client.set_mode(sub_sid, M._resolve_mode(config.mode_id), config.mode_id, function()
 						send_prompt()
 					end)
 				else
@@ -188,7 +188,11 @@ function M.send_shell(prompt, on_done)
 end
 
 function M.send_git(prompt, on_done)
-	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/gpt-4.1" }
+	local cheap = {
+		kiro = "claude-haiku-4.5",
+		opencode = "github-copilot/gpt-4.1",
+		cursor = "claude-haiku-4-5[thinking=true]",
+	}
 	local model_id = cheap[M._opts().provider] or "claude-haiku-4.5"
 
 	M.run({
@@ -204,7 +208,11 @@ function M.send_git(prompt, on_done)
 end
 
 function M.send_devlens(prompt, on_done)
-	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/gpt-4.1" }
+	local cheap = {
+		kiro = "claude-haiku-4.5",
+		opencode = "github-copilot/gpt-4.1",
+		cursor = "claude-haiku-4-5[thinking=true]",
+	}
 	local model_id = cheap[M._opts().provider] or "claude-haiku-4.5"
 
 	M.run({

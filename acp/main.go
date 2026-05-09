@@ -22,10 +22,11 @@ import (
 var providers = map[string][]string{
 	"kiro":     {"kiro-cli", "acp"},
 	"opencode": {"opencode", "acp"},
+	"cursor":   {"cursor-agent", "acp"},
 }
 
 func main() {
-	provider := flag.String("provider", "kiro", "ACP provider (kiro or opencode)")
+	provider := flag.String("provider", "kiro", "ACP provider (kiro, opencode, or cursor)")
 	sockPath := flag.String("sock", "/dev/shm/lg-acp.sock", "Unix socket path")
 	flag.Parse()
 
