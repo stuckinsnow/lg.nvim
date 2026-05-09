@@ -91,3 +91,12 @@ func CommandExecuteRequest(id int, sessionID, command string, args map[string]an
 	})
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "_kiro.dev/commands/execute", Params: params}
 }
+
+// GenericRequest builds an arbitrary JSON-RPC request with the given method and params.
+func GenericRequest(id int, method string, params map[string]any) Message {
+	if params == nil {
+		params = map[string]any{}
+	}
+	p, _ := json.Marshal(params)
+	return Message{JSONRPC: "2.0", ID: NewID(id), Method: method, Params: p}
+}

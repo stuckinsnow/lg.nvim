@@ -234,6 +234,35 @@ func (c *conn) handle(req Request) {
 			c.writeLine(Response{Error: err.Error()})
 		}
 
+	case "rpc_call":
+		// Generic JSON-RPC passthrough. Uses req.Command as the method name
+		// and req.Args as params. Reply on same conn.
+		sess := mgr.GetSession(req.SessionID)
+		if sess == nil {
+			c.writeLine(Response{Error: "unknown session"})
+			return
+		}
+		if req.Command == "" {
+			c.writeLine(Response{Error: "missing method"})
+			return
+		}
+		var params map[string]any
+		if len(req.Args) > 0 {
+			if err := json.Unmarshal(req.Args, &params); err != nil {
+				c.writeLine(Response{Error: "bad params: " + err.Error()})
+				return
+			}
+		}
+		if err := sess.RPCCall(req.Command, params, func(msg *protocol.Message) {
+			if msg.Error != nil {
+				c.writeLine(Response{Error: msg.Error.Message})
+			} else {
+				c.writeLine(Response{OK: true, Data: msg.Result})
+			}
+		}); err != nil {
+			c.writeLine(Response{Error: err.Error()})
+		}
+
 	case "terminate":
 		mgr.Terminate()
 		c.writeLine(Response{OK: true})

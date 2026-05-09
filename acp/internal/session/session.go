@@ -60,6 +60,14 @@ func (s *Session) ExecuteCommand(command string, args map[string]any, onDone fun
 	return s.proc.Write(protocol.CommandExecuteRequest(id, s.ID, command, args))
 }
 
+// RPCCall sends an arbitrary JSON-RPC request and tracks the response.
+// Used for non-standard methods like _kiro.dev/commands/model/options.
+func (s *Session) RPCCall(method string, params map[string]any, onDone func(msg *protocol.Message)) error {
+	id := s.proc.NextID()
+	s.proc.TrackResponse(id, onDone)
+	return s.proc.Write(protocol.GenericRequest(id, method, params))
+}
+
 // Cancel sends session/cancel.
 func (s *Session) Cancel() {
 	s.mu.Lock()
@@ -116,9 +124,9 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 			SessionID              string  `json:"sessionId"`
 			ContextUsagePercentage float64 `json:"contextUsagePercentage"`
 			MeteringUsage          []struct {
-				Value       float64 `json:"value"`
-				Unit        string  `json:"unit"`
-				UnitPlural  string  `json:"unitPlural"`
+				Value      float64 `json:"value"`
+				Unit       string  `json:"unit"`
+				UnitPlural string  `json:"unitPlural"`
 			} `json:"meteringUsage"`
 			TurnDurationMs int64 `json:"turnDurationMs"`
 		}

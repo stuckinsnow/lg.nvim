@@ -536,7 +536,6 @@ function M.clear_menu()
 end
 
 function M.toggle_follow()
-	local server = require("lg.session.server")
 	local enabled = not server.get_follow_reads()
 	server.set_follow_reads(enabled)
 	vim.notify("Follow reads: " .. (enabled and "ON" or "OFF"), vim.log.levels.INFO)

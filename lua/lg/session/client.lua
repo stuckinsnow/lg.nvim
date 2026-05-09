@@ -22,7 +22,9 @@ function M.connect(on_connect)
 		return
 	end
 	if conn then
-		pcall(function() conn:close() end)
+		pcall(function()
+			conn:close()
+		end)
 		conn = nil
 	end
 	local pipe = vim.uv.new_pipe(false)
@@ -33,17 +35,23 @@ function M.connect(on_connect)
 	pipe:connect(sock_path, function(err)
 		if err then
 			pipe:close()
-			vim.schedule(function() on_connect(false) end)
+			vim.schedule(function()
+				on_connect(false)
+			end)
 			return
 		end
 		conn = pipe
 		connected = true
 		pipe:read_start(function(read_err, data)
 			if read_err or not data then
-				vim.schedule(function() M.disconnect() end)
+				vim.schedule(function()
+					M.disconnect()
+				end)
 				return
 			end
-			vim.schedule(function() M._on_data(data) end)
+			vim.schedule(function()
+				M._on_data(data)
+			end)
 		end)
 		-- Verify connection is alive with a ping
 		vim.schedule(function()
@@ -59,7 +67,9 @@ function M.connect(on_connect)
 			end)
 			-- Timeout: if no response in 1s, socket is dead
 			local t = vim.uv.new_timer()
-			if not t then return end
+			if not t then
+				return
+			end
 			t:start(1000, 0, function()
 				t:close()
 				if not got_response then
@@ -97,14 +107,20 @@ end
 --- @param callback? fun(resp: table)
 function M.send(request, callback)
 	if not connected then
-		if callback then callback({ error = "not connected" }) end
+		if callback then
+			callback({ error = "not connected" })
+		end
 		return
 	end
 	if callback then
 		table.insert(response_queue, callback)
 	end
 	local data = vim.json.encode(request) .. "\n"
-	if conn then pcall(function() conn:write(data) end) end
+	if conn then
+		pcall(function()
+			conn:write(data)
+		end)
+	end
 end
 
 --- @param data string
@@ -112,12 +128,16 @@ function M._on_data(data)
 	read_buf = read_buf .. data
 	while true do
 		local nl = read_buf:find("\n")
-		if not nl then break end
+		if not nl then
+			break
+		end
 		local line = read_buf:sub(1, nl - 1)
 		read_buf = read_buf:sub(nl + 1)
 		if line ~= "" then
 			local ok, msg = pcall(vim.json.decode, line)
-			if ok then M._dispatch(msg) end
+			if ok then
+				M._dispatch(msg)
+			end
 		end
 	end
 end
@@ -127,16 +147,22 @@ function M._dispatch(msg)
 	-- Synchronous response (has "ok" or "error" at top level, no "type")
 	if msg.ok ~= nil or (msg.error and not msg.type) then
 		local cb = table.remove(response_queue, 1)
-		if cb then cb(msg) end
+		if cb then
+			cb(msg)
+		end
 		return
 	end
 	-- Streamed event
 	local t = msg.type
 	if t and event_handlers[t] then
-		for _, handler in ipairs(event_handlers[t]) do handler(msg) end
+		for _, handler in ipairs(event_handlers[t]) do
+			handler(msg)
+		end
 	end
 	if event_handlers["*"] then
-		for _, handler in ipairs(event_handlers["*"]) do handler(msg) end
+		for _, handler in ipairs(event_handlers["*"]) do
+			handler(msg)
+		end
 	end
 end
 
@@ -198,7 +224,10 @@ function M.destroy_session(session_id)
 end
 
 function M.respond_permission(session_id, rpc_id, option_id)
-	M.send({ method = "respond_permission", session_id = session_id, rpc_id = rpc_id, option_id = option_id }, function() end)
+	M.send(
+		{ method = "respond_permission", session_id = session_id, rpc_id = rpc_id, option_id = option_id },
+		function() end
+	)
 end
 
 function M.get_models(callback)
@@ -230,6 +259,19 @@ function M.execute_command(session_id, command, args, callback)
 	local req = { method = "execute_command", session_id = session_id, command = command }
 	if args ~= nil then
 		req.args = args
+	end
+	M.send(req, callback)
+end
+
+--- Generic JSON-RPC passthrough.
+--- @param session_id string
+--- @param method string  JSON-RPC method name (e.g. "_kiro.dev/commands/model/options")
+--- @param params table|nil
+--- @param callback fun(resp: table)
+function M.rpc_call(session_id, method, params, callback)
+	local req = { method = "rpc_call", session_id = session_id, command = method }
+	if params ~= nil then
+		req.args = params
 	end
 	M.send(req, callback)
 end

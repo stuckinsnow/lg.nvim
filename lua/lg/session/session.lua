@@ -725,29 +725,64 @@ function M.select_model()
 			return
 		end
 
-		local names = {}
-		for _, m in ipairs(session_models.availableModels or {}) do
-			local label = m.modelId
-			if m.modelId == session_models.currentModelId then
-				label = label .. " (current)"
-			end
-			table.insert(names, label)
-		end
-
-		vim.ui.select(
-			names,
-			{ prompt = "lg model (current: " .. (session_models.currentModelId or "?") .. "):" },
-			function(choice)
-				if not choice then
-					return
+		-- Fetch fresh options (includes credit multiplier in `group`).
+		-- Fall back to session_models if the RPC fails.
+		client.rpc_call(sid, "_kiro.dev/commands/options", { sessionId = sid, command = "model", partial = "" }, function(resp)
+			vim.schedule(function()
+				local options = nil
+				if resp and resp.ok and resp.data then
+					local data = resp.data
+					if type(data) == "string" then
+						local ok, parsed = pcall(vim.json.decode, data)
+						if ok then data = parsed end
+					end
+					if type(data) == "table" and data.options then
+						options = data.options
+					end
 				end
-				local model_id = choice:gsub(" %(current%)$", "")
-				client.set_model(sid, model_id)
-				session_models.currentModelId = model_id
-				save_state({ provider = opts.provider, model = model_id })
-				vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
-			end
-		)
+
+				-- Build entries
+				local labels = {}
+				local by_label = {}
+				local current = session_models.currentModelId
+
+				if options then
+					for _, o in ipairs(options) do
+						local id = o.value or o.label
+						local mult = o.group or ""
+						local label = id
+						if mult ~= "" then
+							label = string.format("%-22s  %s", id, mult)
+						end
+						if id == current then
+							label = label .. "  (current)"
+						end
+						table.insert(labels, label)
+						by_label[label] = id
+					end
+				else
+					-- Fallback: no multipliers
+					for _, m in ipairs(session_models.availableModels or {}) do
+						local label = m.modelId
+						if m.modelId == current then
+							label = label .. "  (current)"
+						end
+						table.insert(labels, label)
+						by_label[label] = m.modelId
+					end
+				end
+
+				vim.ui.select(labels, { prompt = "lg model (current: " .. (current or "?") .. "):" }, function(choice)
+					if not choice then return end
+					local model_id = by_label[choice]
+					if not model_id then return end
+					client.set_model(sid, model_id)
+					session_models.currentModelId = model_id
+					save_state({ provider = opts.provider, model = model_id })
+					vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+				end)
+			end)
+		end)
 	end)
 end
 
