@@ -217,7 +217,14 @@ func (c *conn) handle(req Request) {
 			c.writeLine(Response{Error: "missing command"})
 			return
 		}
-		if err := sess.ExecuteCommand(req.Command, func(msg *protocol.Message) {
+		var args map[string]any
+		if len(req.Args) > 0 {
+			if err := json.Unmarshal(req.Args, &args); err != nil {
+				c.writeLine(Response{Error: "bad args: " + err.Error()})
+				return
+			}
+		}
+		if err := sess.ExecuteCommand(req.Command, args, func(msg *protocol.Message) {
 			if msg.Error != nil {
 				c.writeLine(Response{Error: msg.Error.Message})
 			} else {

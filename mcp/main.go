@@ -197,6 +197,32 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []protocol.TextContent{{Type: "text", Text: result.Content}},
 		}, nil
 
+	case "handoff_to_chat":
+		var args struct {
+			Plan string `json:"plan"`
+		}
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		if strings.TrimSpace(args.Plan) == "" {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "plan is required"}},
+				IsError: true,
+			}, nil
+		}
+		if _, err := nvim.SendToNeovim(map[string]any{"method": "handoff_to_chat", "plan": args.Plan}); err != nil {
+			return protocol.ToolResult{
+				Content: []protocol.TextContent{{Type: "text", Text: "handoff failed: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: "Handoff queued. Respond briefly that you are handing off to the execution agent, then end your turn — lg will switch to lg-chat and execute the plan."}},
+		}, nil
+
 	case "lg_paint_regions":
 		var args struct {
 			Regions []struct {
@@ -319,6 +345,18 @@ func handleToolsList() any {
 						"end_line":   map[string]any{"type": "integer", "description": "End line (1-based inclusive, optional)"},
 					},
 					Required:             []string{"path"},
+					AdditionalProperties: &f,
+				},
+			},
+			{
+				Name:        "handoff_to_chat",
+				Description: "Hand off an approved plan to the execution agent (lg-chat). Call this ONLY after the user has confirmed the plan. Pass the plan text so the execution agent has full context. After calling this, respond briefly and end your turn — lg will auto-switch to lg-chat and run the plan.",
+				InputSchema: protocol.ToolSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"plan": map[string]string{"type": "string", "description": "The full confirmed plan in plain text. Include file paths, old_text/new_text sketches, and any caveats."},
+					},
+					Required:             []string{"plan"},
 					AdditionalProperties: &f,
 				},
 			},

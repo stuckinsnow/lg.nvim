@@ -54,10 +54,10 @@ func (s *Session) SetModel(modelID string) error {
 }
 
 // ExecuteCommand sends _kiro.dev/commands/execute.
-func (s *Session) ExecuteCommand(command string, onDone func(msg *protocol.Message)) error {
+func (s *Session) ExecuteCommand(command string, args map[string]any, onDone func(msg *protocol.Message)) error {
 	id := s.proc.NextID()
 	s.proc.TrackResponse(id, onDone)
-	return s.proc.Write(protocol.CommandExecuteRequest(id, s.ID, command))
+	return s.proc.Write(protocol.CommandExecuteRequest(id, s.ID, command, args))
 }
 
 // Cancel sends session/cancel.
@@ -126,6 +126,8 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 		s.events <- Event{Type: "commands_available", SessionID: s.ID, Data: msg.Params}
 	case "_kiro.dev/clear/status":
 		s.events <- Event{Type: "clear_status", SessionID: s.ID, Data: msg.Params}
+	case "_kiro.dev/agent/switched":
+		s.events <- Event{Type: "agent_switched", SessionID: s.ID, Data: msg.Params}
 	}
 }
 

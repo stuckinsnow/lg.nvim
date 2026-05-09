@@ -74,11 +74,20 @@ func FSWriteResponse(id *RPCID) Message {
 	return Message{JSONRPC: "2.0", ID: id, Result: json.RawMessage("null")}
 }
 
-func CommandExecuteRequest(id int, sessionID, command string) Message {
+func CommandExecuteRequest(id int, sessionID, command string, args map[string]any) Message {
 	cmd := command
 	if len(cmd) > 0 && cmd[0] == '/' {
 		cmd = cmd[1:]
 	}
-	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "command": map[string]any{"command": cmd, "args": map[string]any{}}})
+	if args == nil {
+		args = map[string]any{}
+	}
+	params, _ := json.Marshal(map[string]any{
+		"sessionId": sessionID,
+		"command": map[string]any{
+			"command": cmd,
+			"args":    args,
+		},
+	})
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "_kiro.dev/commands/execute", Params: params}
 }

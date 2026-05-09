@@ -221,8 +221,17 @@ function M.terminate()
 	M.send({ method = "terminate" }, function() end)
 end
 
-function M.execute_command(session_id, command, callback)
-	M.send({ method = "execute_command", session_id = session_id, command = command }, callback)
+function M.execute_command(session_id, command, args, callback)
+	if type(args) == "function" and callback == nil then
+		-- back-compat: execute_command(sid, cmd, callback)
+		callback = args
+		args = nil
+	end
+	local req = { method = "execute_command", session_id = session_id, command = command }
+	if args ~= nil then
+		req.args = args
+	end
+	M.send(req, callback)
 end
 
 return M

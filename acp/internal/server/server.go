@@ -23,6 +23,7 @@ type Request struct {
 	RPCID      int             `json:"rpc_id,omitempty"`
 	MCPServers json.RawMessage `json:"mcp_servers,omitempty"`
 	Command    string          `json:"command,omitempty"`
+	Args       json.RawMessage `json:"args,omitempty"`
 }
 
 type Response struct {

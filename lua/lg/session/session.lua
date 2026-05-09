@@ -34,6 +34,7 @@ local providers = {
 local opencode_modes = {
 	lg = "build",
 	["lg-chat"] = "build",
+	["lg-plan"] = "plan",
 	["lg-oneshot"] = "build",
 	["lg-info"] = "build",
 	reviewer = "plan",
@@ -300,6 +301,13 @@ function M._setup_event_handlers()
 			M._on_done = nil
 			cb()
 		end
+		-- If the planner queued a handoff during this turn, switch to
+		-- lg-chat now (agent is idle) and re-send the plan for execution.
+		if M._pending_handoff then
+			local plan = M._pending_handoff
+			M._pending_handoff = nil
+			M._run_handoff(plan)
+		end
 	end)
 
 	client.on("prompt_error", function(ev)
@@ -418,6 +426,37 @@ function M._setup_event_handlers()
 			end
 		end)
 	end)
+
+	client.on("agent_switched", function(ev)
+		if ev.session_id ~= main_session_id then
+			return
+		end
+		local data = ev.data
+		if type(data) == "string" then
+			local ok2, parsed = pcall(vim.json.decode, data)
+			if ok2 then
+				data = parsed
+			end
+		end
+		if type(data) ~= "table" then
+			return
+		end
+		local new_agent = data.agentName
+		local prev = data.previousAgentName
+		_planner_active = (new_agent == "lg-plan")
+		local win = require("lg.ui.window")
+		if _planner_active then
+			win.add_status("▶ plan mode (" .. (prev or "?") .. " → lg-plan)")
+		elseif new_agent == "lg-chat" and prev == "lg-plan" then
+			-- handoff landing (message already printed by _run_handoff)
+		else
+			win.add_status("agent: " .. (new_agent or "?"))
+		end
+		vim.api.nvim_exec_autocmds("User", {
+			pattern = "LgAgentSwitched",
+			data = { agent = new_agent, previous = prev },
+		})
+	end)
 end
 
 -- ── Setup ──────────────────────────────────────────────────────────
@@ -515,8 +554,8 @@ function M.send_chat(prompt, on_done)
 		end
 
 		local function do_send()
-			local target_mode = _planner_active and "kiro_planner" or "lg-chat"
-			local return_mode = _planner_active and "kiro_planner" or "lg"
+			local target_mode = _planner_active and "lg-plan" or "lg-chat"
+			local return_mode = _planner_active and "lg-plan" or "lg"
 
 			if not _planner_active then
 				require("lg.ui.window").add_status("Switching to chat mode")
@@ -860,6 +899,38 @@ end
 
 -- ── Planner ────────────────────────────────────────────────────────
 
+-- Called from lua/lg/session/server.lua when the lg-plan agent invokes the
+-- handoff_to_chat MCP tool. Stashes the plan so prompt_done can act on it.
+function M.queue_handoff(plan)
+	M._pending_handoff = plan
+end
+
+-- Switch agent to lg-chat and re-send the plan as a new prompt so execution
+-- runs on lg-chat (which uses lg_write_file = buffer-only diff review).
+function M._run_handoff(plan)
+	if not main_session_id or not client.is_connected() then
+		return
+	end
+	_planner_active = false
+	local win = require("lg.ui.window")
+	win.add_status("◀ plan confirmed — handing off to lg-chat")
+	client.execute_command(main_session_id, "agent", { agentName = "lg-chat" }, function(resp)
+		if not (resp and resp.ok) then
+			win.add_status("handoff failed: " .. (resp and resp.error or "unknown"))
+			return
+		end
+		local prompt = "Execute this plan now using lg_write_file. Read the file first if you need to verify old_text matches, but do not re-plan or re-ask for confirmation — the user already approved.\n\n--- PLAN ---\n" .. plan
+		status.start("Executing plan...")
+		M._on_done = function()
+			_busy = false
+			status.stop("Plan executed")
+			flush_send_queue()
+		end
+		_busy = true
+		client.prompt(main_session_id, { { type = "text", text = prompt } })
+	end)
+end
+
 function M.set_planner(enabled, callback)
 	_planner_active = enabled
 	connect(function(sid)
@@ -869,9 +940,20 @@ function M.set_planner(enabled, callback)
 			end
 			return
 		end
-		client.set_mode(sid, resolve_mode(enabled and "kiro_planner" or "kiro_default"))
-		if callback then
-			callback(true)
+		if opts.provider == "kiro" then
+			-- Switch agent via kiro's own command so we get the full
+			-- agent/switched + commands/available refresh.
+			client.execute_command(sid, "agent", { agentName = enabled and "lg-plan" or "lg-chat" }, function(resp)
+				if callback then
+					callback(resp and resp.ok == true)
+				end
+			end)
+		else
+			-- Opencode has no kiro extension; fall back to set_mode
+			client.set_mode(sid, resolve_mode(enabled and "kiro_planner" or "kiro_default"))
+			if callback then
+				callback(true)
+			end
 		end
 	end)
 end

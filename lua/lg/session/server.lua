@@ -359,6 +359,14 @@ function M.handle_message(data)
 			end
 		end)
 		return nil, function() return result end
+	elseif msg.method == "handoff_to_chat" then
+		local plan = msg.plan or ""
+		if plan == "" then
+			return vim.json.encode({ error = "plan required" })
+		end
+		-- Record the pending handoff; session.lua picks it up on prompt_done.
+		require("lg.session.session").queue_handoff(plan)
+		return vim.json.encode({ ok = true })
 	elseif msg.method == "read_buffer" then
 		local path = msg.path
 		if not path or path == "" then
