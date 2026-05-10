@@ -775,11 +775,70 @@ function M.select_model()
 				vim.ui.select(labels, { prompt = "lg model (current: " .. (current or "?") .. "):" }, function(choice)
 					if not choice then return end
 					local model_id = by_label[choice]
-					if not model_id then return end
-					client.set_model(sid, model_id)
-					session_models.currentModelId = model_id
-					save_state({ provider = opts.provider, model = model_id })
-					vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+					if not model_id or model_id == current then return end
+
+					local function apply_switch(strategy)
+						if strategy == "clear" then
+							M.reset()
+							save_state({ provider = opts.provider, model = model_id })
+							vim.notify("lg: model → " .. model_id .. " (session cleared)", vim.log.levels.INFO)
+						elseif strategy == "handoff" then
+							-- Ask old model to write a handoff prompt, then reset and send it
+							status.start("Writing handoff…")
+							local handoff_prompt = "Write a concise handoff summary for a new AI model that is taking over this conversation. Include: what the user is working on, what has been done so far, and what the user wants next. Output ONLY the handoff text, no preamble."
+							local handoff_text = ""
+							local unsub = client.on("text", function(ev)
+								if ev.session_id == sid then
+									handoff_text = handoff_text .. (ev.text or "")
+								end
+							end)
+							M._on_done = function()
+								_busy = false
+								unsub()
+								vim.schedule(function()
+									status.stop("Handoff ready")
+									M.reset()
+									save_state({ provider = opts.provider, model = model_id })
+									-- Connect creates fresh session with new model
+									connect(function(new_sid)
+										if not new_sid then return end
+										client.set_model(new_sid, model_id)
+										session_models.currentModelId = model_id
+										local messages = protocol.build_prompt({}, {}, "Context from previous session (different model):\n\n" .. handoff_text .. "\n\nAcknowledge briefly and wait for my next instruction.")
+										status.start("Sending handoff…")
+										M._on_done = function()
+											_busy = false
+											status.stop("Model → " .. model_id)
+											require("lg.ui.window").add_status("Model switched → " .. model_id .. " (with handoff)")
+										end
+										_busy = true
+										client.prompt(new_sid, messages)
+									end)
+								end)
+							end
+							_busy = true
+							client.prompt(sid, { { type = "text", text = handoff_prompt } })
+						end
+					end
+
+					-- If no active session history, just switch directly
+					if not main_session_id then
+						save_state({ provider = opts.provider, model = model_id })
+						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+						return
+					end
+
+					vim.ui.select(
+						{ "Clear & reset", "Handoff to new model" },
+						{ prompt = "Switch to " .. model_id .. ":" },
+						function(_, idx)
+							if idx == 1 then
+								apply_switch("clear")
+							elseif idx == 2 then
+								apply_switch("handoff")
+							end
+						end
+					)
 				end)
 			end)
 		end)
