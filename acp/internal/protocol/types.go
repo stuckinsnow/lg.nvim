@@ -95,6 +95,16 @@ type PermissionParams struct {
 	SessionID string             `json:"sessionId"`
 	ToolCall  *PermissionTool    `json:"toolCall,omitempty"`
 	Options   []PermissionOption `json:"options"`
+	Meta      *PermissionMeta    `json:"_meta,omitempty"`
+}
+
+type PermissionMeta struct {
+	TrustOptions []TrustOption `json:"trustOptions,omitempty"`
+}
+
+type TrustOption struct {
+	Label   string `json:"label"`
+	Display string `json:"display"`
 }
 
 type PermissionTool struct {

@@ -40,6 +40,8 @@ type Session struct {
 	onDone         map[int]func()
 	pendingPerms   map[int]*protocol.RPCID
 	nextPermKey    int
+	approvedDirs   map[string]bool // dirs approved for read access this session
+	pendingPermDir map[int]string  // rpc_id → dir path for read-only approvals
 }
 
 // Manager owns the shared process and all sessions.

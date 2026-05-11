@@ -11,11 +11,13 @@ import (
 
 func newSession(proc *process.Process) *Session {
 	return &Session{
-		State:        StateCreating,
-		proc:         proc,
-		events:       make(chan Event, 256),
-		onDone:       make(map[int]func()),
-		pendingPerms: make(map[int]*protocol.RPCID),
+		State:          StateCreating,
+		proc:           proc,
+		events:         make(chan Event, 256),
+		onDone:         make(map[int]func()),
+		pendingPerms:   make(map[int]*protocol.RPCID),
+		approvedDirs:   make(map[string]bool),
+		pendingPermDir: make(map[int]string),
 	}
 }
 
@@ -87,9 +89,18 @@ func (s *Session) RespondPermission(rpcID int, optionID string) {
 	s.mu.Lock()
 	origID := s.pendingPerms[rpcID]
 	delete(s.pendingPerms, rpcID)
+	dir := s.pendingPermDir[rpcID]
+	delete(s.pendingPermDir, rpcID)
 	s.mu.Unlock()
 	if origID != nil {
 		s.proc.Write(protocol.PermissionResponse(origID, optionID))
+		// If user approved a read-only outside-cwd op, remember the dir
+		if dir != "" && (optionID == "allow_once" || optionID == "allow_always") {
+			s.mu.Lock()
+			s.approvedDirs[dir] = true
+			s.mu.Unlock()
+			log.Printf("acp: approved dir for session: %s", dir)
+		}
 	}
 }
 
@@ -218,9 +229,53 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 	// Check access guard on file-related permissions
 	if s.Guard != nil {
 		p := ExtractPathFromTitle(title)
+		if p == "" && isFileOperation(title) {
+			// Title gave a relative path — try _meta.trustOptions for the real one
+			p = ExtractPathFromMeta(params.Meta)
+		}
 		if p != "" {
 			log.Printf("acp: guard check title=%q path=%q", title, p)
 			if reason := s.Guard.CheckAccess(p); reason != "" {
+				// Outside CWD — but if it's read-only, check approved dirs
+				if isReadOnlyFileOp(title) && reason == "blocked: outside project directory" {
+					s.mu.Lock()
+					approved := s.approvedDirs[p]
+					if !approved {
+						// Check if any parent dir was approved
+						for dir := range s.approvedDirs {
+							if strings.HasPrefix(p, dir+"/") || p == dir {
+								approved = true
+								break
+							}
+						}
+					}
+					s.mu.Unlock()
+					if approved {
+						optionID := findOption(params.Options, "allow_always", "allow_once")
+						if optionID == "" && len(params.Options) > 0 {
+							optionID = params.Options[0].OptionID
+						}
+						s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
+						s.events <- Event{Type: "permission_auto", SessionID: s.ID, Text: title}
+						return
+					}
+					// First time seeing this dir — ask user, remember path for approval
+					log.Printf("acp: outside-cwd read op, requesting approval: %s (path=%s)", title, p)
+					s.mu.Lock()
+					s.nextPermKey++
+					key := s.nextPermKey
+					s.pendingPerms[key] = msg.ID
+					s.pendingPermDir[key] = p
+					s.mu.Unlock()
+					data, _ := json.Marshal(map[string]any{
+						"title":   title,
+						"options": params.Options,
+						"rpc_id":  key,
+						"_dir":    p,
+					})
+					s.events <- Event{Type: "permission_request", SessionID: s.ID, Data: data}
+					return
+				}
 				log.Printf("acp: permission denied %s (%s)", title, reason)
 				optionID := findOption(params.Options, "reject_once", "reject_always")
 				if optionID == "" && len(params.Options) > 0 {
@@ -231,8 +286,7 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 				return
 			}
 		} else if isFileOperation(title) {
-			// Can't extract path from title — can't verify it's safe.
-			// Route through manual approval.
+			// Can't extract path from title or _meta — route through manual approval.
 			log.Printf("acp: unverifiable file op, requesting approval: %s", title)
 			s.mu.Lock()
 			s.nextPermKey++

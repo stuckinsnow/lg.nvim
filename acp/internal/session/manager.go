@@ -173,12 +173,14 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 
 	s := &Session{
 		ID:           sessionID,
-		State:        StateActive,
-		proc:         m.proc,
-		Guard:        NewAccessGuard(cwd),
-		events:       make(chan Event, 256),
-		onDone:       make(map[int]func()),
-		pendingPerms: make(map[int]*protocol.RPCID),
+		State:          StateActive,
+		proc:           m.proc,
+		Guard:          NewAccessGuard(cwd),
+		events:         make(chan Event, 256),
+		onDone:         make(map[int]func()),
+		pendingPerms:   make(map[int]*protocol.RPCID),
+		approvedDirs:   make(map[string]bool),
+		pendingPermDir: make(map[int]string),
 	}
 
 	m.proc.RegisterSession(sessionID, func(msg *protocol.Message) {
