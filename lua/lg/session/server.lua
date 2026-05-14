@@ -167,11 +167,7 @@ function M.do_read_buffer(path, start_line, end_line)
 	end
 	if follow_reads then
 		local ns = vim.api.nvim_create_namespace("lg_follow_read")
-		local target_win
-		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-			local b = vim.api.nvim_win_get_buf(win)
-			if vim.bo[b].buftype == "" then target_win = win; break end
-		end
+		local target_win = require("lg.util").find_editor_win()
 		if target_win then
 			local b = vim.fn.bufnr(path)
 			if b == -1 then
@@ -289,30 +285,37 @@ function M.handle_message(data)
 		local path = msg.path
 		local old_text = msg.old_text
 		local new_text = msg.new_text
-		if not path or path == "" or not old_text or not new_text then
-			return vim.json.encode({ error = "path, old_text, new_text required" })
+		if not path or path == "" or not new_text then
+			return vim.json.encode({ error = "path and new_text required" })
 		end
+		old_text = old_text or ""
 		local hunk = require("lg.ui.hunk")
 		local resolved_early = vim.fn.fnamemodify(path, ":p")
 		local is_new_file = not vim.uv.fs_stat(resolved_early)
 		local result = nil
 
 		if is_new_file then
-			-- New file: open buffer with content, prompt accept/reject
+			-- New file: prompt first, create on accept
+			local short = vim.fn.fnamemodify(resolved_early, ":~:.")
 			vim.fn.mkdir(vim.fn.fnamemodify(resolved_early, ":h"), "p")
-			vim.cmd("edit " .. vim.fn.fnameescape(resolved_early))
-			local bufnr = vim.api.nvim_get_current_buf()
-			local new_lines = vim.split(new_text:gsub("\n$", ""), "\n")
-			vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
 			vim.schedule(function()
-				vim.ui.select({ "Accept", "Reject" }, { prompt = "Create: " .. vim.fn.fnamemodify(resolved_early, ":~:.") }, function(_, idx)
+				vim.ui.select({ "Accept", "Reject" }, { prompt = "Create file: " .. short }, function(_, idx)
 					if idx == 1 then
+						local target_win = require("lg.util").find_editor_win()
+						if target_win then
+							vim.api.nvim_win_call(target_win, function()
+								vim.cmd("edit " .. vim.fn.fnameescape(resolved_early))
+							end)
+						else
+							vim.cmd("edit " .. vim.fn.fnameescape(resolved_early))
+						end
+						local bufnr = vim.fn.bufnr(resolved_early)
+						local new_lines = vim.split(new_text:gsub("\n$", ""), "\n")
+						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
 						vim.api.nvim_buf_call(bufnr, function() vim.cmd("write!") end)
-						result = vim.json.encode({ ok = true, status = "accepted" })
+						result = vim.json.encode({ ok = true, status = "created" })
 					else
-						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-						vim.cmd("bdelete! " .. bufnr)
-						result = vim.json.encode({ ok = false, status = "rejected", error = "User rejected new file" })
+						result = vim.json.encode({ ok = false, status = "rejected", error = "User rejected file creation" })
 					end
 				end)
 			end)

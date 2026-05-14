@@ -122,6 +122,10 @@ func handleToolCall(params json.RawMessage) (any, error) {
 				IsError: true,
 			}, nil
 		}
+		dir := args.Path[:max(0, strings.LastIndex(args.Path, "/"))]
+		if dir != "" {
+			os.MkdirAll(dir, 0755)
+		}
 		resp, err := nvim.SendToNeovim(map[string]any{"method": "edit_file", "path": args.Path, "old_text": args.OldText, "new_text": args.NewText})
 		if err != nil {
 			return protocol.ToolResult{
