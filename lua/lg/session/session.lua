@@ -161,6 +161,7 @@ end
 
 local _send_queue = {}
 local _busy = false
+local _has_history = false
 
 local function flush_send_queue()
 	if #_send_queue == 0 then
@@ -294,6 +295,7 @@ function M._setup_event_handlers()
 		if ev.session_id ~= main_session_id then
 			return
 		end
+		_has_history = true
 		status.stop("Done")
 		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
 		if M._on_done then
@@ -656,6 +658,7 @@ function M.reset()
 	_connect_queue = nil
 	_send_queue = {}
 	_busy = false
+	_has_history = false
 	M._on_done = nil
 	M._session_count = 0
 	require("lg.session.server").clear_tokens()
@@ -671,6 +674,7 @@ function M.clear()
 	_connect_queue = nil
 	_send_queue = {}
 	_busy = false
+	_has_history = false
 	M._on_done = nil
 	M._session_count = 0
 	require("lg.session.server").clear_tokens()
@@ -823,6 +827,15 @@ function M.select_model()
 
 					-- If no active session history, just switch directly
 					if not main_session_id then
+						save_state({ provider = opts.provider, model = model_id })
+						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+						return
+					end
+
+					-- No conversation yet — just switch model in place
+					if not _has_history then
+						client.set_model(main_session_id, model_id)
+						session_models.currentModelId = model_id
 						save_state({ provider = opts.provider, model = model_id })
 						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
 						return
