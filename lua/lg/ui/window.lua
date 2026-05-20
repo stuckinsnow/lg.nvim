@@ -123,10 +123,6 @@ local function render_status()
 		line = line .. string.format("  󱙺 %.0f%%", state.context_pct)
 	end
 
-	if state.metering_total > 0 then
-		line = line .. string.format("   %.3f %s", state.metering_total, state.metering_unit)
-	end
-
 	return { line }, { { 0, 0, -1, "LgStatus" } }
 end
 
@@ -300,6 +296,9 @@ end
 
 function M.set_context_pct(pct)
 	state.context_pct = pct
+	if buf_valid(state.bufs.chat) and vim.api.nvim_get_current_buf() == state.bufs.chat then
+		require("lg.kitty").set(pct)
+	end
 	M.refresh()
 end
 
@@ -565,6 +564,19 @@ function M.open()
 	vim.bo[chat_buf].modifiable = true
 
 	setup_chat_keymaps(chat_buf)
+
+	vim.api.nvim_create_autocmd("BufEnter", {
+		buffer = chat_buf,
+		callback = function()
+			local pct = state.context_pct
+			if pct then require("lg.kitty").set(pct) end
+		end,
+	})
+	vim.api.nvim_create_autocmd("BufLeave", {
+		buffer = chat_buf,
+		callback = function() require("lg.kitty").clear() end,
+	})
+
 	M.refresh()
 
 	pcall(vim.api.nvim_set_current_win, state.wins.chat)

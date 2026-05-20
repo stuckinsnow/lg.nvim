@@ -56,6 +56,9 @@ function M._render(info, breakdown)
 	local used = breakdown.used or 0
 	local limit = breakdown.limit or 1
 	local pct = (used / limit) * 100
+
+	require("lg.kitty").set(pct)
+
 	local bar_w = 20
 	local filled = math.floor(bar_w * pct / 100)
 	local remaining = limit - used
@@ -98,7 +101,7 @@ function M._render(info, breakdown)
 	vim.bo[buf].modifiable = false
 	vim.bo[buf].filetype = "markdown"
 	local w, h = 45, #lines + 1
-	vim.api.nvim_open_win(buf, true, {
+	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		row = math.floor((vim.o.lines - h) / 2),
 		col = math.floor((vim.o.columns - w) / 2),
@@ -109,7 +112,17 @@ function M._render(info, breakdown)
 		title = " Kiro Usage ",
 		title_pos = "center",
 	})
-	vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf })
+	local function close()
+		require("lg.kitty").clear()
+		if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+	end
+	vim.keymap.set("n", "q", close, { buffer = buf })
+	vim.keymap.set("n", "<Esc>", close, { buffer = buf })
+	vim.api.nvim_create_autocmd("WinClosed", {
+		pattern = tostring(win),
+		once = true,
+		callback = function() require("lg.kitty").clear() end,
+	})
 end
 
 return M

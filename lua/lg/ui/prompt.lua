@@ -20,6 +20,8 @@ local M = {}
 --- @param cb fun(text: string, flags: PromptFlags)
 --- @param on_cancel? fun()
 function M.open(cb, on_cancel)
+	local ctx_pct = require("lg.ui.window").get_context_pct()
+	if ctx_pct then require("lg.kitty").set(ctx_pct) end
 	local ui = vim.api.nvim_list_uis()[1]
 	local width = math.floor(ui.width * 0.6)
 	local height = 8
@@ -51,6 +53,7 @@ function M.open(cb, on_cancel)
 		vim.cmd("stopinsert")
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
+		require("lg.kitty").clear()
 		if text ~= "" then
 			cb(text, {
 				has_file_lsp = text:match("@FILE_LSP") ~= nil,
@@ -73,6 +76,7 @@ function M.open(cb, on_cancel)
 	local function cancel()
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
+		require("lg.kitty").clear()
 		if on_cancel then
 			on_cancel()
 		end
