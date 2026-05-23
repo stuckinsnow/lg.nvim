@@ -291,14 +291,6 @@ function M.search()
 	require("lg.tools.search").open()
 end
 
-function M.find(query)
-	require("lg.tools.search-index").find(query)
-end
-
-function M.register_repo()
-	require("lg.tools.search-index").register()
-end
-
 function M.add_file(path)
 	if path and path ~= "" then
 		context.add_file(path)

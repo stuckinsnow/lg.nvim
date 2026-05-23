@@ -38,7 +38,6 @@ lua/lg/
 │   ├── smart-paint.lua   -- Treesitter-aware painting
 │   ├── paint-commits.lua -- Paint regions from git commits
 │   ├── search.lua        -- Codebase search UI
-│   ├── search-index.lua  -- Semantic search with nomic-embed-text
 │   └── tool.lua          -- Tool execution helpers
 └── spinner/              -- Animated progress indicators
 
