@@ -11,52 +11,6 @@ Supports **kiro-cli** and **opencode** as providers.
 3. AI edits painted regions automatically — no approval prompts
 4. Session persists between edits (clear when you want fresh context)
 
-## Architecture
-
-```
-lua/lg/
-├── init.lua              -- Entry point, thin orchestrator
-├── completion.lua        -- Blink.cmp source for @ and # completions
-├── quick-edit.lua        -- Paint + prompt + isolated session in one step
-├── quick-chat.lua        -- Chat about selection (no edits)
-├── status.lua            -- Statusline integration
-├── session/
-│   ├── session.lua       -- ACP subprocess lifecycle
-│   ├── send.lua          -- Prompt building, prefix handling, dispatch
-│   ├── server.lua        -- Unix socket server for MCP bridge
-│   ├── client.lua        -- Socket client for IPC
-│   └── protocol.lua      -- ACP/JSON-RPC message building
-├── ui/
-│   ├── paint.lua         -- Visual region painting with extmarks
-│   ├── diff.lua          -- Buffer editing + gutter markers
-│   ├── window.lua        -- Side panel (regions, history, chat)
-│   ├── hunk.lua          -- Diff hunk accept/reject
-│   └── prompt.lua        -- Floating multi-line prompt input
-├── tools/
-│   ├── lsp.lua           -- LSP context gathering for painted regions
-│   ├── context.lua       -- Read-only context regions
-│   ├── smart-paint.lua   -- Treesitter-aware painting
-│   ├── paint-commits.lua -- Paint regions from git commits
-│   ├── search.lua        -- Codebase search UI
-│   └── tool.lua          -- Tool execution helpers
-└── spinner/              -- Animated progress indicators
-
-acp/
-└── main.go               -- Go binary: ACP session manager (socket server)
-
-mcp/
-└── main.go               -- MCP server (paint_edit + get_painted_regions tools)
-
-git-mcp/
-└── main.go               -- Git MCP server (git_log, git_show, git_diff, git_blame)
-
-hint-mcp/
-└── main.go               -- Hint MCP server (lg_hint tool for AI diagnostics)
-
-lsp/
-└── main.go               -- Hint LSP display server (receives hints, publishes diagnostics)
-```
-
 ## Installation
 
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
@@ -109,6 +63,7 @@ This builds:
 - `git-mcp/lg-git-mcp` — git MCP server
 - `hint-mcp/lg-hint-mcp` — hint MCP server
 - `lsp/lg-lsp` — hint LSP display server
+- `tap/lg-tap` — ACP passthrough proxy for tap-chat mode
 
 To run tests:
 
@@ -208,8 +163,23 @@ Use these prefixes in your prompt to enable special modes:
 | `@FILE_LSP` | Gathers LSP diagnostics for the entire current file. |
 | `@TSC` | Runs `tsc --noEmit` and includes type errors as context. |
 | `@SUB` | Runs the next prefix as a subagent (e.g. `@SUB HINT`) — doesn't block the main session. |
+| `@ASK` | Read-only chat — AI answers questions about painted code but cannot edit any files. |
+| `@SHELL` | Spawns a shell subagent that runs commands with manual approval. |
+| `@DEVLENS` | Inspects React components in the browser via DevLens, injects component state/props as context. |
 
 Prefixes can be combined: `@DIAG @SEARCH fix the auth bug`
+
+### Prompt Shortcuts
+
+Use `#` shortcuts to quickly reference files in your prompt:
+
+| Shortcut | Expands to |
+|---|---|
+| `#buffer` | `@<current file path>` |
+| `#buffdir` | `@<current file's directory>/` |
+| `#./` | `@` (relative path prefix) |
+
+These are available as blink.cmp completions when typing `@` or `#` in the prompt.
 
 ## AI Hints (`@HINT`)
 
@@ -227,6 +197,80 @@ Example: `@HINT find potential null pointer issues in this code`
 ## Chat Mode
 
 Open the chat panel with `<leader>ac`. Messages sent from the chat window go through the same session but painted regions are hidden — the AI writes files directly instead of using `paint_edit`. A file watcher highlights git changes in real time without stealing focus from the chat.
+
+## Tap Chat
+
+Embeds the full Kiro TUI inside a Neovim terminal buffer. The `lg-tap` binary acts as an ACP passthrough proxy — it intercepts tool calls from the TUI and forwards them to Neovim over a unix socket. This gives you live diff previews in your editor as the TUI makes edits, with auto-accept on completion.
+
+Toggle with `lg.tap_chat()`.
+
+## Quick Edit
+
+Visual select → prompt → edit in one step. Paints the selection, opens a prompt, and runs an isolated oneshot session that only touches that region. No need to manually paint first.
+
+`<leader>aq` or `:LgQuickEdit`
+
+## Quick Chat
+
+Visual select → prompt → answer. Like quick edit but read-only — the AI answers questions about the selected code without making any edits.
+
+`lg.quick_chat()`
+
+## Context Paint
+
+Paint regions as read-only context (not editable). These are sent alongside editable regions to give the AI more information without allowing it to modify them.
+
+`<leader>ac` (visual) or `:LgContext`
+
+## Smart Paint
+
+Treesitter-aware painting — select a function/class/block by its AST node rather than line numbers.
+
+`lg.smart_paint()`
+
+## Paint from Commits
+
+Paint regions that were modified in specific git commits. Pick commits via fzf, and the changed hunks become painted regions.
+
+`lg.paint_from_commits()`
+
+## Add File
+
+Attach whole files as read-only context. Three methods available via `lg.add_file()`:
+- Paste a file path
+- Browse with mini.files
+- Search with fzf
+
+## Session Restore
+
+List and reload previous sessions for the current project. Uses fzf with preview (rendered via glow).
+
+`lg.restore_session()`
+
+## Usage Dashboard
+
+Shows Kiro credit usage in a floating window with progress bar, daily averages, and budget projections. Also sets the Kitty terminal progress bar via OSC 9;4.
+
+`lg.usage()`
+
+## Follow Reads
+
+Highlights files in the editor as the AI reads them, so you can see what it's looking at in real time.
+
+Toggle with `lg.toggle_follow()`.
+
+## Clear Menu
+
+An fzf-based menu to selectively clear different things (paint, context, markers, hints, session, follow highlights, or everything).
+
+`lg.clear_menu()`
+
+## Model & Provider Selection
+
+Switch models or providers mid-session:
+
+- `lg.select_model()` — pick from available models
+- `lg.select_provider()` — switch between kiro and opencode
 
 ## Git Subagent
 
@@ -248,6 +292,10 @@ Example: `@GIT something broke in the last 3 commits, find what changed in auth.
 | `:LgClearLast` | Clear the last painted region |
 | `:LgSend [prompt]` | Send painted regions to kiro-cli |
 | `:LgClearSession` | Kill session, start fresh |
+| `:LgContext` | Paint visual selection as read-only context |
+| `:LgClearContext` | Clear all context regions |
+| `:LgClearAll` | Clear all paint + context |
+| `:LgQuickEdit` | Quick edit: paint + prompt + isolated session in one step |
 | `:LgToggle` | Toggle side panel |
 
 ## Config
