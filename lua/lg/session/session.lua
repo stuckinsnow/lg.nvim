@@ -31,19 +31,26 @@ local providers = {
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
 }
 
+-- OpenCode agents mirror the kiro agents 1:1 (defined in
+-- ~/.config/opencode/opencode.json). Each lg mode maps to a dedicated
+-- OpenCode agent with the same tool whitelist, switched via session/set_mode.
+-- The planner toggle (kiro_default/kiro_planner) maps to the chat/plan agents
+-- so its behaviour matches the kiro path (lg-chat / lg-plan).
 local opencode_modes = {
-	lg = "build",
-	["lg-chat"] = "build",
-	["lg-plan"] = "plan",
-	["lg-oneshot"] = "build",
-	["lg-info"] = "build",
-	reviewer = "plan",
-	suggester = "plan",
-	helper = "plan",
-	asker = "plan",
-	fullstack = "build",
-	kiro_default = "build",
-	kiro_planner = "plan",
+	lg = "lg",
+	["lg-chat"] = "lg-chat",
+	["lg-plan"] = "lg-plan",
+	["lg-oneshot"] = "lg-oneshot",
+	["lg-info"] = "lg-info",
+	reviewer = "reviewer",
+	suggester = "suggester",
+	helper = "helper",
+	asker = "asker",
+	["lg-shell"] = "lg-shell",
+	devlens = "devlens",
+	fullstack = "fullstack",
+	kiro_default = "lg-chat",
+	kiro_planner = "lg-plan",
 }
 
 local function resolve_mode(mode_id)

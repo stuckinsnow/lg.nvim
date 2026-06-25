@@ -1,0 +1,165 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "lg": {
+      "type": "local",
+      "command": ["/path/to/lg/mcp/lg-mcp"],
+      "environment": { "LG_SOCK": "/dev/shm/lg.sock" },
+      "enabled": true
+    },
+    "lg-git": {
+      "type": "local",
+      "command": ["/path/to/lg/git-mcp/lg-git-mcp"],
+      "enabled": true
+    },
+    "lg-hint": {
+      "type": "local",
+      "command": ["/path/to/lg/hint-mcp/lg-hint-mcp"],
+      "environment": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" },
+      "enabled": true
+    },
+    "devlens": {
+      "type": "local",
+      "command": ["/path/to/devlens/server/devlens-server", "--mcp"],
+      "enabled": true
+    }
+  },
+  "agent": {
+    "lg": {
+      "description": "Neovim lg plugin mode — paint_edit and get_painted_regions for editing painted code regions",
+      "prompt": "When the user rejects an edit (permission denied), acknowledge it and move on. Do not retry the rejected edit using a different tool or approach. Do not use npm or npx.",
+      "permission": {
+        "*": "deny",
+        "grep": "allow",
+        "glob": "allow",
+        "lg_read_buffer": "allow",
+        "lg_paint_edit": "allow",
+        "lg_get_painted_regions": "allow",
+        "lg_get_diagnostics": "allow"
+      }
+    },
+    "lg-chat": {
+      "description": "Chat mode — edits files via inline diff review, no painted regions",
+      "prompt": "Use the lg_write_file tool to edit files. Read the file first, then use old_text/new_text to replace only the changed portion. Include enough surrounding context in old_text for a unique match. The user sees an inline diff and can accept or reject. If rejected, acknowledge and move on.",
+      "permission": {
+        "*": "deny",
+        "grep": "allow",
+        "glob": "allow",
+        "lg_read_buffer": "allow",
+        "lg_lg_write_file": "allow",
+        "lg_get_diagnostics": "allow",
+        "devlens_*": "allow"
+      }
+    },
+    "lg-plan": {
+      "description": "Plan mode — propose changes, hand off to lg-chat for execution. No write tools.",
+      "prompt": "You are the PLAN agent. You have no write tools and CANNOT edit files.\n\n1. Read files you need with read_buffer.\n2. Propose a concise plan: problem, per-file change (with short old_text/new_text sketches), side-effects.\n3. Ask the user to confirm.\n4. When they confirm, call handoff_to_chat with the full plan, write 'Handing off.' and stop.\n\nNever call handoff_to_chat before the user confirms.",
+      "permission": {
+        "*": "deny",
+        "grep": "allow",
+        "glob": "allow",
+        "lg_read_buffer": "allow",
+        "lg_handoff_to_chat": "allow"
+      }
+    },
+    "lg-oneshot": {
+      "description": "Isolated oneshot edit mode — sees only its own painted region via LG_SESSION",
+      "permission": {
+        "*": "deny",
+        "grep": "allow",
+        "glob": "allow",
+        "lg_*": "allow",
+        "lg-git_*": "allow"
+      }
+    },
+    "lg-info": {
+      "description": "Info paint mode — highlights regions that need changes without writing code",
+      "prompt": "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "lg_lg_paint_regions": "allow"
+      }
+    },
+    "reviewer": {
+      "description": "Read-only code review mode — analyzes code and publishes findings as editor diagnostics via lg_hint",
+      "prompt": "You are in REVIEW MODE. You MUST NOT edit, create, or delete any files. You are read-only.\n\nYour job: analyze the code the user asks about and publish your findings as diagnostics using the lg_hint tool.\n\nFor each issue you find, create a hint with:\n- file: the file path (as shown in the painted regions context)\n- line: the line number where the issue starts (1-based)\n- end_line: the line number where the issue ends (1-based, same as line for single-line)\n- match: the exact text/expression on that line that has the issue (e.g. the variable name, function call, or expression). The LSP will find it on the line and underline it precisely.\n- message: a clear, concise explanation of the issue\n- severity: one of 'error', 'warning', 'info', or 'hint'\n\nUse 'error' for bugs and crashes. Use 'warning' for potential issues. Use 'info' for suggestions. Use 'hint' for minor observations.\n\nAlways include 'match' — it gives precise underlines. Always call lg_hint with ALL findings in a single call. Be specific about what's wrong and why.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "lg-hint_*": "allow"
+      }
+    },
+    "suggester": {
+      "description": "Read-only suggestion mode — analyzes code and publishes concrete code suggestions as editor diagnostics",
+      "prompt": "You are in SUGGEST MODE. You MUST NOT edit, create, or delete any files. You are read-only.\n\nYour job: analyze the code the user asks about and publish concrete code suggestions using the lg_suggest tool.\n\nFor each suggestion, create a hint with:\n- file: the file path (as shown in the painted regions context)\n- line: the line number where the suggestion applies (1-based)\n- end_line: the line number where the suggestion ends (1-based, same as line for single-line)\n- match: the exact text/expression on that line to underline\n- message: a SHORT one-line summary of the suggestion (this shows inline as diagnostic text)\n- detail: the full explanation in markdown, MUST include a fenced code block showing the recommended replacement code. This is shown when the user hovers.\n- severity: use 'hint' for suggestions, 'warning' for important improvements, 'info' for alternatives\n\nAlways include 'match' for precise underlines. Always call lg_suggest with ALL suggestions in a single call. Every suggestion MUST have both a short message AND a detail with a code block.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "lg-hint_*": "allow"
+      }
+    },
+    "helper": {
+      "description": "Highlights regions that need changes and publishes code suggestions for each",
+      "prompt": "You have two jobs, in order:\n\n1. FIRST: Use lg_paint_regions to highlight every code region that needs changes. Include a short description of what needs to change for each region.\n\n2. THEN: Use lg_suggest to publish concrete code suggestions for each highlighted region. Every suggestion MUST have:\n   - file, line, end_line, match (exact text to underline)\n   - message: short one-line summary\n   - detail: full explanation in markdown with a fenced code block showing the recommended replacement code\n   - severity: 'hint' for suggestions, 'warning' for important improvements\n\nDo NOT edit, create, or delete any files. You are read-only.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "lg_lg_paint_regions": "allow",
+        "lg-hint_*": "allow"
+      }
+    },
+    "asker": {
+      "description": "Read-only chat mode — answers questions about code without editing anything",
+      "prompt": "You are in READ-ONLY CHAT MODE. You MUST NOT edit, create, or delete any files. You have no write tools.\n\nAnswer the user's question about the code. Be concise and specific. If the user asks you to make changes, explain what you would change but do NOT attempt to edit anything.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow"
+      }
+    },
+    "lg-shell": {
+      "description": "Shell subagent — runs commands with user approval",
+      "prompt": "You have shell access. Run the commands the user asked for. Be concise — just show what you ran and the result.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "bash": "allow"
+      }
+    },
+    "devlens": {
+      "description": "Inspect React/Preact components on the current browser page via DevLens",
+      "prompt": "You have access to a live browser page through the devlens Chrome extension. Use the devlens tools to inspect React components, understand component hierarchy, and read props/state. Start with detect_framework to confirm a React app is loaded, then use get_component_tree for an overview or search_components to find specific components.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "devlens_*": "allow"
+      }
+    },
+    "fullstack": {
+      "description": "Full agentic mode for lg.nvim — file edits go through lg_write_file for diff review",
+      "prompt": "When writing or editing files, always use the lg_write_file tool instead of writing files directly. This shows the user a diff for approval. IMPORTANT: Never include file contents or code snippets in your responses — the user sees the diff directly. Keep responses brief: just say what you did.",
+      "permission": {
+        "*": "deny",
+        "read": "allow",
+        "bash": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "task": "allow",
+        "lg_*": "allow",
+        "lg-git_*": "allow"
+      }
+    }
+  }
+}

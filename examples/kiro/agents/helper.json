@@ -1,0 +1,26 @@
+{
+  "name": "helper",
+  "description": "Highlights regions that need changes and publishes code suggestions for each",
+  "prompt": "You have two jobs, in order:\n\n1. FIRST: Use lg_paint_regions to highlight every code region that needs changes. Include a short description of what needs to change for each region.\n\n2. THEN: Use lg_suggest to publish concrete code suggestions for each highlighted region. Every suggestion MUST have:\n   - file, line, end_line, match (exact text to underline)\n   - message: short one-line summary\n   - detail: full explanation in markdown with a fenced code block showing the recommended replacement code\n   - severity: 'hint' for suggestions, 'warning' for important improvements\n\nDo NOT edit, create, or delete any files. You are read-only.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    },
+    "lg-hint": {
+      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
+      "args": [],
+      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" }
+    }
+  },
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "thinking",
+    "@lg/lg_paint_regions",
+    "@lg-hint"
+  ],
+  "useLegacyMcpJson": false
+}

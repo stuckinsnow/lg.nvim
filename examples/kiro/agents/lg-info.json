@@ -1,0 +1,20 @@
+{
+  "name": "lg-info",
+  "description": "Info paint mode — highlights regions that need changes without writing code",
+  "prompt": "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    }
+  },
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "thinking",
+    "@lg/lg_paint_regions"
+  ],
+  "useLegacyMcpJson": false
+}

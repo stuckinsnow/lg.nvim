@@ -1,0 +1,26 @@
+{
+  "name": "lg-chat",
+  "description": "Chat mode — edits files via inline diff review, no painted regions",
+  "prompt": "Use the lg_write_file tool to edit files. Read the file first, then use old_text/new_text to replace only the changed portion. Include enough surrounding context in old_text for a unique match. The user sees an inline diff and can accept or reject. If rejected, acknowledge and move on.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    },
+    "devlens": {
+      "command": "/path/to/devlens/server/devlens-server",
+      "args": ["--mcp"]
+    }
+  },
+  "tools": [
+    "grep",
+    "glob",
+    "thinking",
+    "@lg/read_buffer",
+    "@lg/lg_write_file",
+    "@lg/get_diagnostics",
+    "@devlens"
+  ],
+  "useLegacyMcpJson": false
+}

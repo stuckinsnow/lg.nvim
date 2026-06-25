@@ -17,7 +17,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-  "your-user/lg",
+  "stuckinsnow/lg",
   build = "./build.sh",
   config = function()
     local lg = require("lg")
@@ -73,70 +73,89 @@ cd mcp && go test -v
 cd git-mcp && go test -v
 ```
 
-## MCP Server Setup
+## MCP Servers & Agents
 
-lg uses MCP servers to expose tools to the AI CLI. The plugin starts a unix socket at `/dev/shm/lg.sock` on startup — you just need to tell your CLI where to find the MCP binaries.
+lg drives the AI CLI by switching it between a set of **agents** — each agent is
+locked to a specific role with a restricted tool set. Painting, chatting,
+planning, reviewing, etc. each run under their own agent, so the model only ever
+sees the tools that mode needs. The plugin switches agents per request via the
+ACP `session/set_mode` call.
 
-### kiro-cli
+Setup has two parts:
 
-Add to `~/.kiro/settings/mcp.json`:
+1. **MCP servers** — expose lg's tools to the CLI (paint edits, file diffs, hints, git).
+2. **Agents** — whitelist which of those tools each mode may use.
 
-```json
-{
-  "mcpServers": {
-    "lg": {
-      "command": "/path/to/lg/mcp/lg-mcp",
-      "args": [],
-      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
-    },
-    "lg-git": {
-      "command": "/path/to/lg/git-mcp/lg-git-mcp",
-      "args": []
-    }
-  }
-}
-```
+The plugin opens a unix socket at `/dev/shm/lg.sock` on startup; the MCP binaries
+talk to Neovim over it. Hints use a second socket at `/dev/shm/lg-hint.sock`.
 
-For the reviewer agent mode, add to `~/.kiro/agents/reviewer.json`:
+### MCP servers
 
-```json
-{
-  "name": "reviewer",
-  "mcpServers": {
-    "lg-hint": {
-      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
-      "args": [],
-      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock" }
-    }
-  },
-  "tools": ["read", "grep", "glob", "thinking", "@lg-hint"],
-  "useLegacyMcpJson": false
-}
-```
+| Server | Binary | Tools it exposes |
+|---|---|---|
+| `lg` | `mcp/lg-mcp` | `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `lg_search_codebase`, `handoff_to_chat` |
+| `lg-git` | `git-mcp/lg-git-mcp` | `git_log`, `git_show`, `git_diff`, `git_blame` |
+| `lg-hint` | `hint-mcp/lg-hint-mcp` | `lg_hint`, `lg_suggest` |
+| `devlens` | external devlens server (private, optional) | React component inspection |
 
-### opencode
+### Agents
 
-Add to `~/.config/opencode/opencode.json`:
+Each mode below maps to one agent. The tool column is the canonical whitelist —
+configure the same set in whichever provider you use.
 
-```json
-{
-  "mcp": {
-    "lg": {
-      "type": "local",
-      "command": ["/path/to/lg/mcp/lg-mcp"],
-      "environment": { "LG_SOCK": "/dev/shm/lg.sock" },
-      "enabled": true
-    },
-    "lg-git": {
-      "type": "local",
-      "command": ["/path/to/lg/git-mcp/lg-git-mcp"],
-      "enabled": true
-    }
-  }
-}
-```
+| Agent | Role | Whitelisted tools |
+|---|---|---|
+| `lg` | Paint edit (default) | `grep`, `glob`, `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics` |
+| `lg-chat` | Chat edit via inline diff | `grep`, `glob`, `read_buffer`, `lg_write_file`, `get_diagnostics`, devlens |
+| `lg-plan` | Planning, no writes | `grep`, `glob`, `read_buffer`, `handoff_to_chat` |
+| `lg-oneshot` | Isolated quick edit | `grep`, `glob`, all `lg` tools, all `lg-git` tools |
+| `lg-info` | Info paint (highlight only) | `read`, `grep`, `glob`, `lg_paint_regions` |
+| `reviewer` | Hint diagnostics (read-only) | `read`, `grep`, `glob`, `lg_hint` |
+| `suggester` | Code suggestions (read-only) | `read`, `grep`, `glob`, `lg_suggest` |
+| `helper` | Highlight + suggest (read-only) | `read`, `grep`, `glob`, `lg_paint_regions`, `lg_hint`, `lg_suggest` |
+| `asker` | Read-only Q&A | `read`, `grep`, `glob` |
+| `lg-shell` | Shell with manual approval | `read`, shell |
+| `devlens` | React component inspection | `read`, `grep`, `glob`, devlens |
+| `fullstack` | Full agentic mode | `read`, shell, `grep`, `glob`, all `lg` + `lg-git` tools |
 
-Replace `/path/to/lg` with the actual plugin install path (e.g. `~/.local/share/nvim/lazy/lg`).
+The two providers name and restrict tools differently:
+
+- **kiro-cli** — one JSON file per agent in `~/.kiro/agents/`, with an explicit
+  `tools` allow-list. MCP tools are referenced as `@server/tool` (e.g.
+  `@lg/paint_edit`) or `@server` for every tool on a server (e.g. `@lg-hint`).
+- **opencode** — a single `opencode.json` with an `agent` block. Tool access is
+  controlled with `permission` rules rather than an allow-list, so each agent
+  denies everything (`"*": "deny"`) and then allows what it needs. MCP tools are
+  named `server_tool` (e.g. `lg_paint_edit`, `lg-hint_lg_hint`) and permission
+  keys accept wildcards (`lg-hint_*`, `lg_*`).
+
+### Setup
+
+Ready-to-use configs live in [`examples/`](examples/) — copy them and replace
+`/path/to/lg` (and `/path/to/devlens`) with your install paths. `LG_INDEX_URL`
+(for `@SEARCH`) is optional; add it to the `lg` server's env if you run an
+embeddings server.
+
+**kiro-cli** — one JSON file per agent:
+
+- `examples/kiro/settings/mcp.json` → `~/.kiro/settings/mcp.json`
+- `examples/kiro/agents/*.json` → `~/.kiro/agents/`
+
+Each agent declares the MCP server(s) it calls and lists its `tools`. MCP tools
+are referenced as `@server/tool` (e.g. `@lg/paint_edit`) or `@server` for every
+tool on a server (e.g. `@lg-hint`).
+
+**opencode** — a single file:
+
+- `examples/opencode/opencode.json` → `~/.config/opencode/opencode.json`
+
+MCP servers are declared once under `mcp`; each agent is a `permission` whitelist
+under `agent` that denies everything (`"*": "deny"`) then re-allows its tools (the
+last matching rule wins). MCP tools are named `server_tool` and permission keys
+accept wildcards (`lg-hint_*`, `lg_*`). Note the doubled prefix on
+`lg_lg_write_file` / `lg_lg_paint_regions`: opencode prefixes MCP tools with the
+server name, and these tools are themselves named `lg_write_file` /
+`lg_paint_regions`.
 
 ## Usage
 

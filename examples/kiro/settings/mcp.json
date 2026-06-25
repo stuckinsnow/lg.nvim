@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "devlens": {
+      "command": "/path/to/devlens/server/devlens-server",
+      "args": ["--mcp"]
+    }
+  }
+}

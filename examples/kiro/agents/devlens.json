@@ -1,0 +1,19 @@
+{
+  "name": "devlens",
+  "description": "Inspect React/Preact components on the current browser page — detect framework, browse component tree, search components by name with props and state",
+  "prompt": "You have access to a live browser page through the devlens Chrome extension. Use the devlens tools to inspect React components, understand component hierarchy, and read props/state. Start with detect_framework to confirm a React app is loaded, then use get_component_tree for an overview or search_components to find specific components.",
+  "mcpServers": {
+    "devlens": {
+      "command": "/path/to/devlens/server/devlens-server",
+      "args": ["--mcp"]
+    }
+  },
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "thinking",
+    "@devlens"
+  ],
+  "useLegacyMcpJson": false
+}

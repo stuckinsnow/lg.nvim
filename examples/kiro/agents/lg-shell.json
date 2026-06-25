@@ -1,0 +1,11 @@
+{
+  "name": "lg-shell",
+  "description": "Shell subagent — runs commands with user approval",
+  "prompt": "You have shell access. Run the commands the user asked for. Be concise — just show what you ran and the result.",
+  "tools": [
+    "read",
+    "shell",
+    "thinking"
+  ],
+  "useLegacyMcpJson": false
+}

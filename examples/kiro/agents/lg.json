@@ -1,0 +1,22 @@
+{
+  "name": "lg",
+  "description": "Neovim lg plugin mode — provides paint_edit and get_painted_regions tools for editing painted code regions",
+  "prompt": "When the user rejects an edit (permission denied), acknowledge it and move on. Do not retry the rejected edit using a different tool or approach. Do not use npm or npx.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    }
+  },
+  "tools": [
+    "grep",
+    "glob",
+    "thinking",
+    "@lg/read_buffer",
+    "@lg/paint_edit",
+    "@lg/get_painted_regions",
+    "@lg/get_diagnostics"
+  ],
+  "useLegacyMcpJson": false
+}

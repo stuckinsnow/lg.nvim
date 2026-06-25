@@ -1,0 +1,28 @@
+{
+  "name": "fullstack",
+  "description": "Full agentic mode for lg.nvim — file edits require user approval via diff review",
+  "prompt": "When writing or editing files, always use the lg_write_file tool instead of writing files directly. This shows the user a diff for approval. IMPORTANT: Never include file contents or code snippets in your responses — the user sees the diff directly. Keep responses brief: just say what you did.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    },
+    "lg-git": {
+      "command": "/path/to/lg/git-mcp/lg-git-mcp",
+      "args": []
+    }
+  },
+  "tools": [
+    "read",
+    "shell",
+    "grep",
+    "glob",
+    "code",
+    "thinking",
+    "delegate",
+    "@lg",
+    "@lg-git"
+  ],
+  "useLegacyMcpJson": false
+}

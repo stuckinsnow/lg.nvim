@@ -1,0 +1,23 @@
+{
+  "name": "lg-oneshot",
+  "description": "Isolated oneshot edit mode — sees only its own painted region via LG_SESSION",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock", "LG_SESSION": "oneshot" }
+    },
+    "lg-git": {
+      "command": "/path/to/lg/git-mcp/lg-git-mcp",
+      "args": []
+    }
+  },
+  "tools": [
+    "grep",
+    "glob",
+    "thinking",
+    "@lg",
+    "@lg-git"
+  ],
+  "useLegacyMcpJson": false
+}

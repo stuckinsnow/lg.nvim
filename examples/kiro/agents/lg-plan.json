@@ -1,0 +1,20 @@
+{
+  "name": "lg-plan",
+  "description": "Plan mode — propose changes, hand off to lg-chat for execution. No write tools.",
+  "prompt": "You are the PLAN agent. You have no write tools and CANNOT edit files.\n\n1. Read files you need with read_buffer.\n2. Propose a concise plan: problem, per-file change (with short old_text/new_text sketches), side-effects.\n3. Ask the user to confirm.\n4. When they confirm, call handoff_to_chat with the full plan, write 'Handing off.' and stop.\n\nNever call handoff_to_chat before the user confirms.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    }
+  },
+  "tools": [
+    "grep",
+    "glob",
+    "thinking",
+    "@lg/read_buffer",
+    "@lg/handoff_to_chat"
+  ],
+  "useLegacyMcpJson": false
+}
