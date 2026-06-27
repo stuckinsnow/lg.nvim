@@ -234,11 +234,8 @@ func (m *Manager) fetchModels(cwd string) {
 		if msg.Error != nil || msg.Result == nil {
 			return
 		}
-		var result struct {
-			Models *protocol.ModelsInfo `json:"models"`
-		}
-		if json.Unmarshal(msg.Result, &result) == nil && result.Models != nil {
-			m.proc.SetModels(result.Models)
+		if mi := protocol.ParseModelsInfo(msg.Result); mi != nil && len(mi.AvailableModels) > 0 {
+			m.proc.SetModels(mi)
 		}
 	})
 

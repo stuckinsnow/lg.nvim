@@ -19,7 +19,6 @@ local function attach_listener(bufnr)
 
 	vim.api.nvim_buf_attach(bufnr, false, {
 		on_lines = function(_, buf, _, first, last_old, _)
-			-- Remove any marks on the changed lines
 			local marks = vim.api.nvim_buf_get_extmarks(buf, ns, { first, 0 }, { last_old - 1, -1 }, {})
 			for _, m in ipairs(marks) do
 				vim.api.nvim_buf_del_extmark(buf, ns, m[1])

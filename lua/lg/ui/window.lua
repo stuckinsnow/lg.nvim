@@ -314,8 +314,7 @@ function M.add_metering(data)
 	state.metering_unit = unit
 	state.last_turn_ms = ms
 
-	-- Severity thresholds (credit-denominated; unit name isn't checked since
-	-- kiro reports "credits" for all models).
+	-- Severity thresholds; unit isn't checked since kiro reports "credits" for all models.
 	local severity = "normal"
 	if val > 10 then
 		severity = "alarm"

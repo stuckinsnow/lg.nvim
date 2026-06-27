@@ -81,11 +81,9 @@ func (c *conn) handle(req Request) {
 			c.writeLine(Response{Error: ev.Error})
 			return
 		}
-		var result struct {
-			Models json.RawMessage `json:"models"`
-		}
-		if json.Unmarshal(ev.Data, &result) == nil && result.Models != nil {
-			c.writeLine(Response{OK: true, SessionID: sess.ID, Models: result.Models})
+		if mi := protocol.ParseModelsInfo(ev.Data); mi != nil && len(mi.AvailableModels) > 0 {
+			data, _ := json.Marshal(mi)
+			c.writeLine(Response{OK: true, SessionID: sess.ID, Models: data})
 		} else {
 			c.writeLine(Response{OK: true, SessionID: sess.ID})
 		}

@@ -1,5 +1,4 @@
 --- Context paint: read-only regions included as reference in prompts
---- Same structure as paint.lua but different highlights and namespace
 
 local M = {}
 

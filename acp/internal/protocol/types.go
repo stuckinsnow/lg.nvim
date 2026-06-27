@@ -63,6 +63,51 @@ type ModelsInfo struct {
 
 type ModelInfo struct {
 	ModelID string `json:"modelId"`
+	Name    string `json:"name,omitempty"`
+}
+
+// ParseModelsInfo extracts model info from a session/new (or session/set_model)
+// result. It prefers the standard ACP `models.availableModels` field (used by
+// kiro). When that is empty — as with opencode 1.17+, which moved the model list
+// into the generic `configOptions` mechanism — it falls back to the
+// `configOptions` entry whose id is "model".
+func ParseModelsInfo(raw json.RawMessage) *ModelsInfo {
+	if len(raw) == 0 {
+		return nil
+	}
+	var parsed struct {
+		Models        *ModelsInfo `json:"models"`
+		ConfigOptions []struct {
+			ID           string `json:"id"`
+			CurrentValue string `json:"currentValue"`
+			Options      []struct {
+				Value string `json:"value"`
+				Name  string `json:"name"`
+			} `json:"options"`
+		} `json:"configOptions"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil
+	}
+	// Preferred: standard availableModels (kiro).
+	if parsed.Models != nil && len(parsed.Models.AvailableModels) > 0 {
+		return parsed.Models
+	}
+	// Fallback: opencode configOptions model select.
+	for _, co := range parsed.ConfigOptions {
+		if co.ID != "model" {
+			continue
+		}
+		mi := &ModelsInfo{CurrentModelID: co.CurrentValue}
+		for _, o := range co.Options {
+			mi.AvailableModels = append(mi.AvailableModels, ModelInfo{ModelID: o.Value, Name: o.Name})
+		}
+		if len(mi.AvailableModels) > 0 {
+			return mi
+		}
+	}
+	// Last resort: preserve whatever models block existed (may carry currentModelId).
+	return parsed.Models
 }
 
 // SessionUpdateParams wraps session/update notification params.

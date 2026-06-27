@@ -12,6 +12,8 @@ local protocol = require("lg.session.protocol")
 local status = require("lg.status")
 local subagent = require("lg.session.subagent")
 local restore = require("lg.session.restore")
+local models = require("lg.session.models")
+local modes = require("lg.session.modes")
 
 local M = {}
 
@@ -31,33 +33,8 @@ local providers = {
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
 }
 
--- OpenCode agents mirror the kiro agents 1:1 (defined in
--- ~/.config/opencode/opencode.json). Each lg mode maps to a dedicated
--- OpenCode agent with the same tool whitelist, switched via session/set_mode.
--- The planner toggle (kiro_default/kiro_planner) maps to the chat/plan agents
--- so its behaviour matches the kiro path (lg-chat / lg-plan).
-local opencode_modes = {
-	lg = "lg",
-	["lg-chat"] = "lg-chat",
-	["lg-plan"] = "lg-plan",
-	["lg-oneshot"] = "lg-oneshot",
-	["lg-info"] = "lg-info",
-	reviewer = "reviewer",
-	suggester = "suggester",
-	helper = "helper",
-	asker = "asker",
-	["lg-shell"] = "lg-shell",
-	devlens = "devlens",
-	fullstack = "fullstack",
-	kiro_default = "lg-chat",
-	kiro_planner = "lg-plan",
-}
-
 local function resolve_mode(mode_id)
-	if opts.provider == "opencode" then
-		return opencode_modes[mode_id] or "build"
-	end
-	return mode_id
+	return modes.resolve_mode(opts.provider, mode_id)
 end
 
 local state_path = "/dev/shm/lg-state.json"
@@ -497,6 +474,46 @@ function M.setup(user_opts)
 		opts.provider = saved.provider
 	end
 
+	-- Wire up models module (provider/model selection needs session internals)
+	models.init({
+		connect = connect,
+		get_models = function()
+			return session_models
+		end,
+		set_current_model = function(id)
+			if session_models then
+				session_models.currentModelId = id
+			end
+		end,
+		reset = function()
+			M.reset()
+		end,
+		clear = function()
+			M.clear()
+		end,
+		save_state = save_state,
+		load_state = load_state,
+		get_provider = function()
+			return opts.provider
+		end,
+		set_provider = function(p)
+			opts.provider = p
+		end,
+		set_on_done = function(fn)
+			M._on_done = fn
+		end,
+		set_busy = function(b)
+			_busy = b
+		end,
+		get_main_session_id = function()
+			return main_session_id
+		end,
+		get_has_history = function()
+			return _has_history
+		end,
+		providers = providers,
+	})
+
 	-- Wire up subagent module
 	subagent._ensure_acp = ensure_acp
 	subagent._resolve_mode = resolve_mode
@@ -729,197 +746,21 @@ function M.is_busy()
 	return _busy
 end
 
+-- Wrappers delegating to models.lua (keep these callable on the session module).
 function M.select_model()
-	connect(function(sid)
-		if not sid or not session_models then
-			vim.notify("lg: no models available", vim.log.levels.WARN)
-			return
-		end
-
-		-- Fetch fresh options (includes credit multiplier in `group`).
-		-- Fall back to session_models if the RPC fails.
-		client.rpc_call(sid, "_kiro.dev/commands/options", { sessionId = sid, command = "model", partial = "" }, function(resp)
-			vim.schedule(function()
-				local options = nil
-				if resp and resp.ok and resp.data then
-					local data = resp.data
-					if type(data) == "string" then
-						local ok, parsed = pcall(vim.json.decode, data)
-						if ok then data = parsed end
-					end
-					if type(data) == "table" and data.options then
-						options = data.options
-					end
-				end
-
-				-- Build entries
-				local labels = {}
-				local by_label = {}
-				local current = session_models.currentModelId
-
-				if options then
-					for _, o in ipairs(options) do
-						local id = o.value or o.label
-						local mult = o.group or ""
-						local label = id
-						if mult ~= "" then
-							label = string.format("%-22s  %s", id, mult)
-						end
-						if id == current then
-							label = label .. "  (current)"
-						end
-						table.insert(labels, label)
-						by_label[label] = id
-					end
-				else
-					-- Fallback: no multipliers
-					for _, m in ipairs(session_models.availableModels or {}) do
-						local label = m.modelId
-						if m.modelId == current then
-							label = label .. "  (current)"
-						end
-						table.insert(labels, label)
-						by_label[label] = m.modelId
-					end
-				end
-
-				vim.ui.select(labels, { prompt = "lg model (current: " .. (current or "?") .. "):" }, function(choice)
-					if not choice then return end
-					local model_id = by_label[choice]
-					if not model_id or model_id == current then return end
-
-					local function apply_switch(strategy)
-						if strategy == "clear" then
-							M.reset()
-							save_state({ provider = opts.provider, model = model_id })
-							vim.notify("lg: model → " .. model_id .. " (session cleared)", vim.log.levels.INFO)
-						elseif strategy == "handoff" then
-							-- Ask old model to write a handoff prompt, then reset and send it
-							status.start("Writing handoff…")
-							local handoff_prompt = "Write a concise handoff summary for a new AI model that is taking over this conversation. Include: what the user is working on, what has been done so far, and what the user wants next. Output ONLY the handoff text, no preamble."
-							local handoff_text = ""
-							local unsub = client.on("text", function(ev)
-								if ev.session_id == sid then
-									handoff_text = handoff_text .. (ev.text or "")
-								end
-							end)
-							M._on_done = function()
-								_busy = false
-								unsub()
-								vim.schedule(function()
-									status.stop("Handoff ready")
-									M.reset()
-									save_state({ provider = opts.provider, model = model_id })
-									-- Connect creates fresh session with new model
-									connect(function(new_sid)
-										if not new_sid then return end
-										client.set_model(new_sid, model_id)
-										session_models.currentModelId = model_id
-										local messages = protocol.build_prompt({}, {}, "Context from previous session (different model):\n\n" .. handoff_text .. "\n\nAcknowledge briefly and wait for my next instruction.")
-										status.start("Sending handoff…")
-										M._on_done = function()
-											_busy = false
-											status.stop("Model → " .. model_id)
-											require("lg.ui.window").add_status("Model switched → " .. model_id .. " (with handoff)")
-										end
-										_busy = true
-										client.prompt(new_sid, messages)
-									end)
-								end)
-							end
-							_busy = true
-							client.prompt(sid, { { type = "text", text = handoff_prompt } })
-						end
-					end
-
-					-- If no active session history, just switch directly
-					if not main_session_id then
-						save_state({ provider = opts.provider, model = model_id })
-						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
-						return
-					end
-
-					-- No conversation yet — just switch model in place
-					if not _has_history then
-						client.set_model(main_session_id, model_id)
-						session_models.currentModelId = model_id
-						save_state({ provider = opts.provider, model = model_id })
-						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
-						return
-					end
-
-					vim.ui.select(
-						{ "Clear & reset", "Handoff to new model" },
-						{ prompt = "Switch to " .. model_id .. ":" },
-						function(_, idx)
-							if idx == 1 then
-								apply_switch("clear")
-							elseif idx == 2 then
-								apply_switch("handoff")
-							end
-						end
-					)
-				end)
-			end)
-		end)
-	end)
+	models.select_model()
 end
 
-local ephemeral_override = nil
-
 function M.current_model()
-	if ephemeral_override then
-		return ephemeral_override.model
-	end
-	if session_models then
-		return session_models.currentModelId
-	end
-	local saved = load_state()
-	return saved.model
+	return models.current_model()
 end
 
 function M.current_provider()
-	if ephemeral_override then
-		return ephemeral_override.provider
-	end
-	return opts.provider
+	return models.current_provider()
 end
 
 function M.select_provider()
-	local names = {}
-	for key, p in pairs(providers) do
-		local label = p.name
-		if opts.provider == key then
-			label = label .. " (current)"
-		end
-		table.insert(names, { key = key, label = label })
-	end
-	table.sort(names, function(a, b)
-		return a.label < b.label
-	end)
-
-	vim.ui.select(
-		vim.tbl_map(function(n)
-			return n.label
-		end, names),
-		{ prompt = "lg provider (current: " .. (providers[opts.provider].name or "?") .. "):" },
-		function(choice, idx)
-			if not choice or not idx then
-				return
-			end
-			local picked = names[idx].key
-			if picked == opts.provider and main_session_id then
-				return
-			end
-			opts.provider = picked
-			M.clear()
-			save_state({ provider = picked, model = M.current_model() })
-			vim.notify("lg: provider → " .. providers[picked].name, vim.log.levels.INFO)
-			vim.schedule(function()
-				M.select_model()
-			end)
-		end
-	)
+	models.select_provider()
 end
 
 function M.compact()
@@ -1139,9 +980,9 @@ end
 
 function M.send_quick_chat(prompt, on_done)
 	subagent.send_quick_chat(prompt, on_done, function(o)
-		ephemeral_override = o
+		models.set_override(o)
 	end, function()
-		ephemeral_override = nil
+		models.clear_override()
 	end)
 end
 

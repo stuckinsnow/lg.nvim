@@ -27,7 +27,6 @@ local function render(h)
 	for _, id in ipairs(h.extmark_ids) do pcall(api.nvim_buf_del_extmark, h.bufnr, dns, id) end
 	h.extmark_ids = {}
 
-	-- Mark old lines
 	for i = 0, #h.old_lines - 1 do
 		local row = h.row + i
 		if row < api.nvim_buf_line_count(h.bufnr) then
@@ -152,7 +151,6 @@ function M.propose_write(path, old_content, new_content, on_resolve)
 		on_resolve(true)
 		return
 	end
-	-- Attach callback to the last hunk
 	hunks[#hunks].on_resolve = on_resolve
 end
 

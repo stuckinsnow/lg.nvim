@@ -1,6 +1,5 @@
 local w = require("lg.ui.window")
 
--- Make sure panel is open
 w.open()
 
 -- Simulate streaming chunks with delays

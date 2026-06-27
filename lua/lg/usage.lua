@@ -9,9 +9,8 @@ function M.show()
 		return
 	end
 
-	-- Session not ready. execute_command triggers connect(), and its callback
-	-- fires after connect resolves. By then event handlers are set up, so we
-	-- register our one-shot listener in the callback (after clear_handlers ran).
+	-- Session not ready: execute_command triggers connect(); register the
+	-- one-shot listener inside its callback, after clear_handlers has run.
 	session.execute_command("usage", function(resp)
 		if resp.ok and resp.data then
 			-- Worked on first try (unlikely on cold start but handle it)

@@ -62,7 +62,6 @@ local function start_listener()
 	state.sock = server
 end
 
---- Handle a tap event
 function M._on_event(raw)
 	local ok, msg = pcall(vim.json.decode, raw)
 	if not ok then
