@@ -145,7 +145,7 @@ function M.open()
 		term = true,
 		cwd = vim.fn.getcwd(),
 		env = {
-			KIRO_AGENT_PATH = tap_bin,
+			KIRO_CHAT_CLI_BIN = tap_bin,
 			REAL_KIRO_AGENT = "kiro-cli",
 			TERM = "xterm-256color",
 			COLORFGBG = "15;0",

@@ -1,8 +1,8 @@
 // lg-tap: ACP passthrough proxy that taps stdout for tool calls
 // and forwards them to neovim over a unix socket.
 //
-// Usage (set as KIRO_AGENT_PATH):
-//   KIRO_AGENT_PATH=lg-tap REAL_KIRO_AGENT=kiro-cli kiro-cli chat --tui
+// Usage (set as KIRO_CHAT_CLI_BIN):
+//   KIRO_CHAT_CLI_BIN=lg-tap REAL_KIRO_AGENT=kiro-cli kiro-cli chat --tui
 package main
 
 import (

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The kiro TUI (`tui.js`) communicates with the agent (`kiro-cli`) over **ACP** — a JSON-RPC 2.0 protocol over stdin/stdout. By setting `KIRO_AGENT_PATH`, you can inject a proxy between the TUI and the real agent.
+The kiro TUI (`tui.js`) communicates with the agent (`kiro-cli`) over **ACP** — a JSON-RPC 2.0 protocol over stdin/stdout. By setting `KIRO_CHAT_CLI_BIN`, you can inject a proxy between the TUI and the real agent.
 
 ## Wrapped TUI (lg-tap)
 
@@ -18,7 +18,7 @@ neovim terminal buffer
     │       ▼
     │   bun tui.js chat --tui
     │       │
-    │       │  KIRO_AGENT_PATH=lg-tap
+    │       │  KIRO_CHAT_CLI_BIN=lg-tap
     │       ▼
     │   lg-tap (Go binary, stdin/stdout proxy)
     │       │
@@ -33,7 +33,7 @@ neovim terminal buffer
 ### How to launch
 
 ```bash
-KIRO_AGENT_PATH=/path/to/lg-tap \
+KIRO_CHAT_CLI_BIN=/path/to/lg-tap \
 REAL_KIRO_AGENT=kiro-cli \
     ~/.local/share/kiro-cli/bun \
     ~/.local/share/kiro-cli/tui.js chat --tui
