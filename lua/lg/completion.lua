@@ -10,7 +10,7 @@ local at_items = {
   { label = "@DEVLENS", detail = "Inspect React components in the browser via DevLens, inject state as context" },
   { label = "@SEARCH", detail = "Semantic codebase search with nomic-embed-text before acting" },
   { label = "@DIAG", detail = "Check LSP diagnostics in open buffers before editing" },
-  { label = "@INFO", detail = "AI highlights regions and explains changes — no code written" },
+  { label = "@INFO", detail = "AI highlights, and explains in chat only" },
   { label = "@TSC", detail = "Run tsc --noEmit and include type errors as context" },
   { label = "@HINT", detail = "AI reviews code and publishes findings as editor diagnostics" },
   { label = "@SUGGEST", detail = "AI publishes code suggestions as diagnostics — hover to see recommended code" },

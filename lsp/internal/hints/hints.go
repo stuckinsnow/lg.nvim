@@ -171,8 +171,43 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 	return
 }
 
-func ClearAll() {
-	// Send empty diagnostics — client clears them
-	// We don't track open files, so we rely on the Lua side to call clear per-file
-	// But we can publish empty for any file the Lua side tells us about
+type StoredHint struct {
+	File      string `json:"file"`
+	Line      int    `json:"line"`
+	EndLine   int    `json:"end_line"`
+	Column    int    `json:"column"`
+	EndColumn int    `json:"end_column"`
+	Message   string `json:"message"`
+	Detail    string `json:"detail"`
+	Severity  int    `json:"severity"`
+}
+
+func Get(fileFilter string) []StoredHint {
+	Mu.Lock()
+	defer Mu.Unlock()
+	out := []StoredHint{}
+	for uri, diags := range Diags {
+		file := strings.TrimPrefix(uri, "file://")
+		if fileFilter != "" && file != fileFilter {
+			continue
+		}
+		details := Details[uri]
+		for i, d := range diags {
+			detail := ""
+			if i < len(details) {
+				detail = details[i]
+			}
+			out = append(out, StoredHint{
+				File:      file,
+				Line:      d.Range.Start.Line + 1,
+				EndLine:   d.Range.End.Line + 1,
+				Column:    d.Range.Start.Character + 1,
+				EndColumn: d.Range.End.Character + 1,
+				Message:   d.Message,
+				Detail:    detail,
+				Severity:  d.Severity,
+			})
+		}
+	}
+	return out
 }

@@ -71,6 +71,13 @@ func main() {
 				"required":             []string{"hints"},
 				"additionalProperties": &f,
 			}
+			getHintsSchema := map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"file": map[string]string{"type": "string", "description": "Optional file path to filter by (absolute or relative to project root). Omit to return all published hints."},
+				},
+				"additionalProperties": &f,
+			}
 			resp.Result = map[string]any{
 				"tools": []map[string]any{
 					{
@@ -83,6 +90,11 @@ func main() {
 						"description": "Publish code suggestions as diagnostics in the editor. Each suggestion appears as an underline — the hover message MUST contain a markdown code block showing the recommended replacement code. Use this to propose concrete code changes without editing anything.",
 						"inputSchema": hintSchema,
 					},
+					{
+						"name":        "get_hints",
+						"description": "Read back all hints/suggestions currently published (from lg_hint/lg_suggest). Reads from the hint LSP store, so it works even when the file is not open in the editor, and includes the full hover detail. Optionally filter by file.",
+						"inputSchema": getHintsSchema,
+					},
 				},
 			}
 		case "tools/call":
@@ -92,7 +104,37 @@ func main() {
 			}
 			json.Unmarshal(req.Params, &call)
 
-			if call.Name != "lg_hint" && call.Name != "lg_suggest" {
+			if call.Name == "get_hints" {
+				var args struct {
+					File string `json:"file"`
+				}
+				json.Unmarshal(call.Arguments, &args)
+				if args.File != "" && !filepath.IsAbs(args.File) {
+					args.File, _ = filepath.Abs(args.File)
+				}
+				lspResp, err := hint.SendToLSP(map[string]any{"method": "get_hints", "file": args.File})
+				if err != nil {
+					resp.Result = protocol.ToolResult{
+						Content: []protocol.TextContent{{Type: "text", Text: "get_hints failed: " + err.Error()}},
+						IsError: true,
+					}
+				} else {
+					var result struct {
+						Hints []json.RawMessage `json:"hints"`
+					}
+					json.Unmarshal(lspResp, &result)
+					if len(result.Hints) == 0 {
+						resp.Result = protocol.ToolResult{
+							Content: []protocol.TextContent{{Type: "text", Text: "No hints currently published."}},
+						}
+					} else {
+						pretty, _ := json.MarshalIndent(result.Hints, "", "  ")
+						resp.Result = protocol.ToolResult{
+							Content: []protocol.TextContent{{Type: "text", Text: fmt.Sprintf("%d hint(s) currently published:\n\n%s", len(result.Hints), string(pretty))}},
+						}
+					}
+				}
+			} else if call.Name != "lg_hint" && call.Name != "lg_suggest" {
 				resp.Error = map[string]any{"code": -32601, "message": "unknown tool: " + call.Name}
 			} else {
 				var args struct {

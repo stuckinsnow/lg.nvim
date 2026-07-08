@@ -7,6 +7,11 @@
       "command": "/path/to/lg/mcp/lg-mcp",
       "args": [],
       "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    },
+    "lg-hint": {
+      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
+      "args": [],
+      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" }
     }
   },
   "tools": [
@@ -16,7 +21,8 @@
     "@lg/read_buffer",
     "@lg/paint_edit",
     "@lg/get_painted_regions",
-    "@lg/get_diagnostics"
+    "@lg/get_diagnostics",
+    "@lg-hint/get_hints"
   ],
   "useLegacyMcpJson": false
 }

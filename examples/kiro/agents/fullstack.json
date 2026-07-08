@@ -11,6 +11,11 @@
     "lg-git": {
       "command": "/path/to/lg/git-mcp/lg-git-mcp",
       "args": []
+    },
+    "lg-hint": {
+      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
+      "args": [],
+      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" }
     }
   },
   "tools": [
@@ -22,7 +27,8 @@
     "thinking",
     "delegate",
     "@lg",
-    "@lg-git"
+    "@lg-git",
+    "@lg-hint/get_hints"
   ],
   "useLegacyMcpJson": false
 }

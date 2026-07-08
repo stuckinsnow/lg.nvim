@@ -44,6 +44,10 @@ func Start(sockPath string) {
 						}
 						out, _ := json.Marshal(resp)
 						c.Write(append(out, '\n'))
+					case "get_hints":
+						got := hints.Get(req.File)
+						out, _ := json.Marshal(map[string]any{"ok": true, "hints": got})
+						c.Write(append(out, '\n'))
 					case "clear":
 						hints.Mu.Lock()
 						if len(req.Hints) > 0 {

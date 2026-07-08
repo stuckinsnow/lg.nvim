@@ -35,7 +35,8 @@
         "lg_read_buffer": "allow",
         "lg_paint_edit": "allow",
         "lg_get_painted_regions": "allow",
-        "lg_get_diagnostics": "allow"
+        "lg_get_diagnostics": "allow",
+        "lg-hint_get_hints": "allow"
       }
     },
     "lg-chat": {
@@ -124,7 +125,8 @@
         "*": "deny",
         "read": "allow",
         "grep": "allow",
-        "glob": "allow"
+        "glob": "allow",
+        "lg-hint_get_hints": "allow"
       }
     },
     "lg-shell": {
@@ -158,7 +160,8 @@
         "glob": "allow",
         "task": "allow",
         "lg_*": "allow",
-        "lg-git_*": "allow"
+        "lg-git_*": "allow",
+        "lg-hint_get_hints": "allow"
       }
     }
   }

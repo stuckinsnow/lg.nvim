@@ -276,6 +276,147 @@ func TestHover(t *testing.T) {
 	os.Remove(sockPath)
 }
 
+func TestGetHints(t *testing.T) {
+	sockPath = "/tmp/lg-hint-get-test.sock"
+	os.Remove(sockPath)
+
+	hints.Mu.Lock()
+	hints.Diags = map[string][]lsptype.Diagnostic{}
+	hints.Details = map[string][]string{}
+	hints.Mu.Unlock()
+
+	origStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	transport.Writer = bufio.NewWriter(w)
+
+	socket.Start(sockPath)
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatal("dial:", err)
+	}
+	setReq := `{"method":"set_hints","hints":[{"file":"/tmp/get-test.go","line":10,"end_line":10,"column":5,"end_column":15,"message":"possible nil deref","detail":"### fix\n` + "```go\\ncheck != nil\\n```" + `","severity":"hint"}]}`
+	fmt.Fprintln(conn, setReq)
+	sc := bufio.NewScanner(conn)
+	sc.Scan()
+
+	fmt.Fprintln(conn, `{"method":"get_hints"}`)
+	if !sc.Scan() {
+		t.Fatal("no get_hints response")
+	}
+	getLine := sc.Text()
+	conn.Close()
+
+	transport.Writer.Flush()
+	w.Close()
+	buf := make([]byte, 4096)
+	for {
+		n, err := r.Read(buf)
+		if n == 0 || err != nil {
+			break
+		}
+	}
+	r.Close()
+	os.Stdout = origStdout
+
+	var got struct {
+		OK    bool               `json:"ok"`
+		Hints []hints.StoredHint `json:"hints"`
+	}
+	if err := json.Unmarshal([]byte(getLine), &got); err != nil {
+		t.Fatal("unmarshal get_hints response:", err, getLine)
+	}
+	if !got.OK {
+		t.Fatal("get_hints not ok:", getLine)
+	}
+	if len(got.Hints) != 1 {
+		t.Fatalf("expected 1 hint, got %d: %s", len(got.Hints), getLine)
+	}
+	h := got.Hints[0]
+	if h.File != "/tmp/get-test.go" {
+		t.Errorf("expected file /tmp/get-test.go, got %q", h.File)
+	}
+	if h.Line != 10 {
+		t.Errorf("expected 1-based line 10, got %d", h.Line)
+	}
+	if h.Column != 5 {
+		t.Errorf("expected 1-based column 5, got %d", h.Column)
+	}
+	if h.EndColumn != 15 {
+		t.Errorf("expected 1-based end column 15, got %d", h.EndColumn)
+	}
+	if h.Message != "possible nil deref" {
+		t.Errorf("expected message, got %q", h.Message)
+	}
+	if !strings.Contains(h.Detail, "check != nil") {
+		t.Errorf("expected detail to contain suggestion code, got %q", h.Detail)
+	}
+
+	os.Remove(sockPath)
+}
+
+func TestGetHintsFilter(t *testing.T) {
+	sockPath = "/tmp/lg-hint-getfilter-test.sock"
+	os.Remove(sockPath)
+
+	hints.Mu.Lock()
+	hints.Diags = map[string][]lsptype.Diagnostic{}
+	hints.Details = map[string][]string{}
+	hints.Mu.Unlock()
+
+	origStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	transport.Writer = bufio.NewWriter(w)
+
+	socket.Start(sockPath)
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatal("dial:", err)
+	}
+	fmt.Fprintln(conn, `{"method":"set_hints","hints":[{"file":"/tmp/a.go","line":1,"message":"a","severity":"hint"}]}`)
+	sc := bufio.NewScanner(conn)
+	sc.Scan()
+	fmt.Fprintln(conn, `{"method":"set_hints","hints":[{"file":"/tmp/b.go","line":1,"message":"b","severity":"hint"}]}`)
+	sc.Scan()
+
+	fmt.Fprintln(conn, `{"method":"get_hints","file":"/tmp/b.go"}`)
+	if !sc.Scan() {
+		t.Fatal("no get_hints response")
+	}
+	getLine := sc.Text()
+	conn.Close()
+
+	transport.Writer.Flush()
+	w.Close()
+	buf := make([]byte, 4096)
+	for {
+		n, err := r.Read(buf)
+		if n == 0 || err != nil {
+			break
+		}
+	}
+	r.Close()
+	os.Stdout = origStdout
+
+	var got struct {
+		Hints []hints.StoredHint `json:"hints"`
+	}
+	json.Unmarshal([]byte(getLine), &got)
+	if len(got.Hints) != 1 {
+		t.Fatalf("expected 1 filtered hint, got %d: %s", len(got.Hints), getLine)
+	}
+	if got.Hints[0].File != "/tmp/b.go" {
+		t.Errorf("expected only /tmp/b.go, got %q", got.Hints[0].File)
+	}
+
+	os.Remove(sockPath)
+}
+
 func TestHintSocketClear(t *testing.T) {
 	sockPath = "/tmp/lg-hint-clear-test.sock"
 	os.Remove(sockPath)

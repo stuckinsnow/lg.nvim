@@ -52,4 +52,5 @@ type Hint struct {
 type HintRequest struct {
 	Method string `json:"method"`
 	Hints  []Hint `json:"hints"`
+	File   string `json:"file,omitempty"`
 }

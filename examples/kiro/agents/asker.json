@@ -2,11 +2,19 @@
   "name": "asker",
   "description": "Read-only chat mode — answers questions about code without editing anything",
   "prompt": "You are in READ-ONLY CHAT MODE. You MUST NOT edit, create, or delete any files. You have no write tools.\n\nAnswer the user's question about the code. Be concise and specific. If the user asks you to make changes, explain what you would change but do NOT attempt to edit anything.",
+  "mcpServers": {
+    "lg-hint": {
+      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
+      "args": [],
+      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" }
+    }
+  },
   "tools": [
     "read",
     "grep",
     "glob",
-    "thinking"
+    "thinking",
+    "@lg-hint/get_hints"
   ],
   "useLegacyMcpJson": false
 }
