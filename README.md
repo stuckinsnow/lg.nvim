@@ -1,5 +1,7 @@
 # lg
 
+https://github.com/user-attachments/assets/bf60cf75-cad0-404c-b550-132866b736fd
+
 An AI coding client for Neovim, driven over ACP. Two ways to work:
 
 - **Paint mode** — visually select regions and let the AI edit **only** those
