@@ -41,11 +41,6 @@ func (r *RPCID) UnmarshalJSON(data []byte) error {
 
 func (r *RPCID) IntVal() int { return r.num }
 
-type RPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
 func (m *Message) IsResponse() bool     { return m.ID != nil && m.Method == "" }
 func (m *Message) IsRequest() bool      { return m.ID != nil && m.Method != "" }
 func (m *Message) IsNotification() bool { return m.ID == nil && m.Method != "" }

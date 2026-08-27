@@ -87,6 +87,32 @@ function M.run(config)
 				config.on_done(agent_text, tool_error)
 			end)
 
+			-- A failed turn never emits prompt_done, so tear down here too or the
+			-- handlers, session and spinner all leak.
+			unsubs[#unsubs + 1] = client.on("prompt_error", function(ev)
+				if ev.session_id ~= sub_sid then return end
+				for _, unsub in ipairs(unsubs) do unsub() end
+				client.destroy_session(sub_sid)
+
+				local model_check = require("lg.session.model-check")
+				local explanation = model_check.explain_error(ev.error, nil, M._opts().provider)
+				local reason = explanation or ev.error or "unknown"
+				status.stop(config.label .. " failed")
+				vim.notify("lg: " .. config.label .. " failed — " .. reason, vim.log.levels.ERROR)
+
+				if config.finish_subagent ~= false then
+					require("lg.ui.window").finish_subagent()
+				end
+				if config.fire_autocmds ~= false then
+					vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
+				end
+				if config.on_fail then
+					config.on_fail()
+				else
+					config.on_done(agent_text, tool_error)
+				end
+			end)
+
 			unsubs[#unsubs + 1] = client.on("permission_request", function(ev)
 				if ev.session_id ~= sub_sid then return end
 				local data = ev.data

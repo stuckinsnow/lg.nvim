@@ -1,15 +1,30 @@
 # lg
 
-Paint regions in Neovim, then let an AI CLI edit **only** those regions via ACP.
+An AI coding client for Neovim, driven over ACP. Two ways to work:
+
+- **Paint mode** — visually select regions and let the AI edit **only** those
+  regions, nothing else in the file.
+- **Chat mode** — a normal agentic chat panel with no region scoping. The AI
+  reads, writes and creates files across the project, with edits landing as
+  inline diffs in your buffers.
+
+Both share one session, so you can scope an edit tightly, then open the chat and
+keep the same conversation going.
 
 Supports **kiro-cli** and **opencode** as providers.
 
 ## How it works
 
+Paint mode:
+
 1. Visually select code → paint it as an editable region
 2. Trigger send with a prompt
 3. AI edits painted regions automatically — no approval prompts
 4. Session persists between edits (clear when you want fresh context)
+
+Chat mode (`<leader>ac`): painted regions are ignored and the AI works on the
+whole project like any other agentic CLI — see [Chat Mode](#chat-mode). `@ASK`
+gives you the same thing read-only, and `fullstack` mode adds shell access.
 
 ## Installation
 
@@ -71,6 +86,14 @@ To run tests:
 cd lsp && go test -v
 cd mcp && go test -v
 cd git-mcp && go test -v
+cd acp && go test ./... -v
+```
+
+Lua tests run under headless Neovim:
+
+```bash
+nvim --headless -l tests/test_model_check.lua
+nvim --headless -l tests/test_prompt_error.lua
 ```
 
 ## MCP Servers & Agents

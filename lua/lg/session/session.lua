@@ -14,6 +14,7 @@ local subagent = require("lg.session.subagent")
 local restore = require("lg.session.restore")
 local models = require("lg.session.models")
 local modes = require("lg.session.modes")
+local model_check = require("lg.session.model-check")
 
 local M = {}
 
@@ -220,6 +221,9 @@ local function connect(on_ready)
 			main_session_id = resp.session_id
 			if resp.models then
 				session_models = resp.models
+				-- Surface stale pinned models now, rather than mid-turn when an
+				-- agent switch fails with an opaque error.
+				model_check.validate_agents(session_models, opts.provider)
 			end
 
 			refresh_session_count()
@@ -300,7 +304,27 @@ function M._setup_event_handlers()
 		if ev.session_id ~= main_session_id then
 			return
 		end
-		status.stop("Error: " .. (ev.error or "unknown"))
+		local explanation = model_check.explain_error(ev.error, session_models, opts.provider)
+		if explanation then
+			status.stop("Model unavailable")
+			vim.notify("lg: " .. explanation, vim.log.levels.ERROR)
+		else
+			status.stop("Error: " .. (ev.error or "unknown"))
+		end
+		require("lg.ui.window").add_status("Request failed: " .. (explanation or ev.error or "unknown"))
+		vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestFinished" })
+		-- The turn is over, so run the completion callback anyway: it restores the
+		-- agent mode, clears the busy flag and flushes the send queue. Skipping it
+		-- would leave the session wedged in the failed mode with queued prompts
+		-- that never fire.
+		if M._on_done then
+			local cb = M._on_done
+			M._on_done = nil
+			cb()
+		else
+			_busy = false
+			flush_send_queue()
+		end
 	end)
 
 	client.on("permission_request", function(ev)

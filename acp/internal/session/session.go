@@ -388,7 +388,14 @@ func (s *Session) handleFSWrite(msg *protocol.Message) {
 
 func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message) {
 	if msg.Error != nil {
-		s.events <- Event{Type: "prompt_error", SessionID: s.ID, Error: msg.Error.Message}
+		// Drop the pending onDone: the turn will never complete, and leaving it
+		// behind leaks the callback for the lifetime of the session.
+		s.mu.Lock()
+		delete(s.onDone, rpcID)
+		s.mu.Unlock()
+		detail := msg.Error.Detail()
+		log.Printf("acp: prompt error: %s", detail)
+		s.events <- Event{Type: "prompt_error", SessionID: s.ID, Error: detail}
 		return
 	}
 
