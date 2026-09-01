@@ -52,3 +52,7 @@ end, { desc = "Fill chat with test data" })
 vim.api.nvim_create_user_command("LgQuickEdit", function()
   require("lg").quick_edit()
 end, { range = true, desc = "Quick edit: paint + prompt + isolated session" })
+
+vim.api.nvim_create_user_command("LgBuild", function()
+  require("lg.bin").build()
+end, { desc = "Build lg's Go binaries" })

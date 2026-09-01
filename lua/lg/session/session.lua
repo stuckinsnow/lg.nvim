@@ -93,8 +93,11 @@ local function ensure_acp(on_ready)
 
 		vim.fn.delete(acp_sock)
 
-		local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h:h")
-		local bin = plugin_dir .. "/acp/lg-acp"
+		local bin = require("lg.bin").require("lg-acp")
+		if not bin then
+			on_ready(false)
+			return
+		end
 
 		local logfile = "/dev/shm/lg-acp.log"
 		acp_proc = vim.system(

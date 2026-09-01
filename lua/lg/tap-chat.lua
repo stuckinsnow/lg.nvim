@@ -126,10 +126,12 @@ function M.open()
 		return
 	end
 
-	start_listener()
+	local tap_bin = require("lg.bin").require("lg-tap")
+	if not tap_bin then
+		return
+	end
 
-	local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
-	local tap_bin = plugin_dir .. "/tap/lg-tap"
+	start_listener()
 
 	state.buf = vim.api.nvim_create_buf(false, true)
 	vim.cmd("vsplit")

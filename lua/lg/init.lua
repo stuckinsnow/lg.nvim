@@ -22,9 +22,8 @@ function M.setup(opts)
 	server.start()
 
 	-- Start hint LSP
-	local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
-	local lsp_bin = plugin_dir .. "/lsp/lg-lsp"
-	if vim.fn.executable(lsp_bin) == 1 then
+	local lsp_bin = require("lg.bin").find("lg-lsp")
+	if lsp_bin then
 		vim.api.nvim_create_autocmd("FileType", {
 			group = vim.api.nvim_create_augroup("lg_hint_lsp", { clear = true }),
 			callback = function(ev)
