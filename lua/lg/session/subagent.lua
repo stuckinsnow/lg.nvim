@@ -123,20 +123,9 @@ function M.run(config)
 				local options = data.options or {}
 
 				if config.manual_permissions then
-					local title = data.title or "Permission request"
 					local rpc_id = data.rpc_id
-					local reject_id, allow_id
-					for _, opt in ipairs(options) do
-						if not reject_id and (opt.kind == "reject_once" or opt.kind == "reject_always") then
-							reject_id = opt.optionId
-						end
-						if not allow_id and (opt.kind == "allow_always" or opt.kind == "allow_once") then
-							allow_id = opt.optionId
-						end
-					end
-					vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
-						local oid = choice == "Allow" and allow_id or reject_id or allow_id
-						if oid then client.respond_permission(sub_sid, rpc_id, oid) end
+					require("lg.ui.approval").permission(data.title or "Permission request", options, function(oid)
+						client.respond_permission(sub_sid, rpc_id, oid)
 					end)
 				else
 					local oid

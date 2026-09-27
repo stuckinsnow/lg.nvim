@@ -343,24 +343,12 @@ function M._setup_event_handlers()
 		end
 		local title = data.title or "Permission request"
 		local rpc_id = data.rpc_id
-		local options = data.options or {}
 
-		local reject_id, allow_id
-		for _, opt in ipairs(options) do
-			if not reject_id and (opt.kind == "reject_once" or opt.kind == "reject_always") then
-				reject_id = opt.optionId
-			end
-			if not allow_id and (opt.kind == "allow_always" or opt.kind == "allow_once") then
-				allow_id = opt.optionId
-			end
-		end
-
-		vim.ui.select({ "Allow", "Reject" }, { prompt = title .. "?" }, function(choice)
-			local oid = choice == "Allow" and allow_id or reject_id or allow_id
-			if oid and ev.session_id then
+		require("lg.ui.approval").permission(title, data.options, function(oid, allowed)
+			if ev.session_id then
 				client.respond_permission(ev.session_id, rpc_id, oid)
 			end
-			status.update(choice == "Allow" and ("Approved: " .. title) or ("Rejected: " .. title))
+			status.update(allowed and ("Approved: " .. title) or ("Rejected: " .. title))
 		end)
 	end)
 

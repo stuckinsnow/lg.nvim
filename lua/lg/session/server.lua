@@ -299,7 +299,7 @@ function M.handle_message(data)
 			local short = vim.fn.fnamemodify(resolved_early, ":~:.")
 			vim.fn.mkdir(vim.fn.fnamemodify(resolved_early, ":h"), "p")
 			vim.schedule(function()
-				vim.ui.select({ "Accept", "Reject" }, { prompt = "Create file: " .. short }, function(_, idx)
+				require("lg.ui.approval").select({ "Accept", "Reject" }, { prompt = "Create file: " .. short }, function(_, idx)
 					if idx == 1 then
 						local target_win = require("lg.util").find_editor_win()
 						if target_win then
@@ -386,7 +386,7 @@ function M.handle_message(data)
 		local root = vim.fn.getcwd() .. "/"
 		if not path:find(root, 1, true) then
 			local result = nil
-			vim.ui.select({ "Allow", "Deny" }, { prompt = "Read outside project: " .. path }, function(_, idx)
+			require("lg.ui.approval").select({ "Allow", "Deny" }, { prompt = "Read outside project: " .. path }, function(_, idx)
 				if idx == 1 then
 					result = M.do_read_buffer(path, msg.start_line, msg.end_line)
 				else
