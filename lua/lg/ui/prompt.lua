@@ -16,10 +16,25 @@ local M = {}
 --- @field has_suggest boolean
 --- @field has_ask boolean
 
+local function title(info)
+	return " lg prompt (ctrl-s to send, q/esc to cancel) " .. (info and ("│ " .. info .. " ") or "")
+end
+
+--- Update the status shown after the title of an open prompt window
+--- @param win integer
+--- @param info string
+function M.set_info(win, info)
+	if vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_set_config(win, { title = title(info), title_pos = "center" })
+	end
+end
+
 --- Open a floating buffer for prompt input, call cb(text, flags) on submit
 --- @param cb fun(text: string, flags: PromptFlags)
 --- @param on_cancel? fun()
-function M.open(cb, on_cancel)
+--- @param info? string extra status shown after the title (e.g. mode, provider/model)
+--- @return integer win
+function M.open(cb, on_cancel, info)
 	local ctx_pct = require("lg.ui.window").get_context_pct()
 	if ctx_pct then require("lg.kitty").set(ctx_pct) end
 	local ui = vim.api.nvim_list_uis()[1]
@@ -39,7 +54,7 @@ function M.open(cb, on_cancel)
 		col = math.floor((ui.width - width) / 2),
 		style = "minimal",
 		border = "rounded",
-		title = " lg prompt (ctrl-s to send, q/esc to cancel) ",
+		title = title(info),
 		title_pos = "center",
 	})
 
@@ -86,6 +101,7 @@ function M.open(cb, on_cancel)
 	vim.keymap.set("n", "<Esc>", cancel, { buffer = buf })
 	vim.keymap.set("n", "<CR>", submit, { buffer = buf })
 	vim.keymap.set({ "n", "i" }, "<C-s>", submit, { buffer = buf })
+	return win
 end
 
 return M

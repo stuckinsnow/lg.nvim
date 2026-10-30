@@ -774,6 +774,14 @@ function M.current_provider()
 	return models.current_provider()
 end
 
+--- Connect if needed so the provider reports its model, then call cb(model_id).
+--- @param cb fun(model: string?)
+function M.fetch_model(cb)
+	connect(function()
+		cb(M.current_model())
+	end)
+end
+
 function M.select_provider()
 	models.select_provider()
 end

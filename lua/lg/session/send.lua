@@ -564,7 +564,19 @@ function M.send(opts)
 			has_ask = text and text:match("@ASK") ~= nil,
 		})
 	else
-		require("lg.ui.prompt").open(do_send)
+		local prompt_ui = require("lg.ui.prompt")
+		local mode = #regions > 0 and ("painted (" .. #regions .. ")") or "oneshot"
+		local provider = session.current_provider() or "?"
+		local function info(model)
+			return mode .. " │ " .. provider .. "/" .. (model or "…")
+		end
+		local model = session.current_model()
+		local win = prompt_ui.open(do_send, nil, info(model))
+		if not model then
+			session.fetch_model(vim.schedule_wrap(function(m)
+				prompt_ui.set_info(win, info(m or "default"))
+			end))
+		end
 	end
 end
 
