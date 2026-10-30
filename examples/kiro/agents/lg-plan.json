@@ -16,5 +16,10 @@
     "@lg/read_buffer",
     "@lg/handoff_to_chat"
   ],
-  "useLegacyMcpJson": false
+  "useLegacyMcpJson": false,
+  "permissions": {
+    "rules": [
+      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+    ]
+  }
 }

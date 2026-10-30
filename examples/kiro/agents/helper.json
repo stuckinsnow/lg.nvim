@@ -22,5 +22,10 @@
     "@lg/lg_paint_regions",
     "@lg-hint"
   ],
-  "useLegacyMcpJson": false
+  "useLegacyMcpJson": false,
+  "permissions": {
+    "rules": [
+      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+    ]
+  }
 }

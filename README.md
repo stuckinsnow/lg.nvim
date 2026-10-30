@@ -168,7 +168,9 @@ embeddings server.
 
 Each agent declares the MCP server(s) it calls and lists its `tools`. MCP tools
 are referenced as `@server/tool` (e.g. `@lg/paint_edit`) or `@server` for every
-tool on a server (e.g. `@lg-hint`).
+tool on a server (e.g. `@lg-hint`). The examples include the kiro-cli V3
+`permissions` block (workspace reads allowed), so they load without running
+`/upgrade-agent`.
 
 **opencode** — a single file:
 
@@ -240,7 +242,7 @@ Example: `@HINT find potential null pointer issues in this code`
 
 ## Chat Mode
 
-Open the chat panel with `<leader>ac`. Messages sent from the chat window go through the same session but painted regions are hidden — the AI writes files directly instead of using `paint_edit`. A file watcher highlights git changes in real time without stealing focus from the chat.
+Open the chat panel with `<leader>ac`. Messages sent from the chat window go through the same session but painted regions are hidden — the AI edits with `lg_write_file` instead of `paint_edit`. Each edit shows as an inline diff to accept or reject; accepted edits are applied to the buffer, not saved to disk. New files prompt for creation and are written to disk on accept.
 
 ## Tap Chat
 

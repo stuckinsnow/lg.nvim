@@ -16,5 +16,10 @@
     "thinking",
     "@lg/lg_paint_regions"
   ],
-  "useLegacyMcpJson": false
+  "useLegacyMcpJson": false,
+  "permissions": {
+    "rules": [
+      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+    ]
+  }
 }
