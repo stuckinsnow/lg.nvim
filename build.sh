@@ -29,7 +29,6 @@ targets=(
 	"hint-mcp:lg-hint-mcp"
 	"lsp:lg-lsp"
 	"mcp:lg-mcp"
-	"tap:lg-tap"
 )
 
 for target in "${targets[@]}"; do

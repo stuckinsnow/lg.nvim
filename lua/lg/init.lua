@@ -165,17 +165,9 @@ end
 
 local hunk = require("lg.ui.hunk")
 function M.accept_hunk()
-	local tap = require("lg.tap-chat")
-	if tap.is_active() then
-		return
-	end
 	hunk.accept()
 end
 function M.reject_hunk()
-	local tap = require("lg.tap-chat")
-	if tap.is_active() then
-		return
-	end
 	hunk.reject()
 end
 
@@ -278,10 +270,6 @@ end
 
 function M.focus_chat()
 	window.focus_input()
-end
-
-function M.tap_chat()
-	require("lg.tap-chat").toggle()
 end
 
 -- ── Search / context ───────────────────────────────────────────────

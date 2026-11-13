@@ -154,13 +154,12 @@ function M.propose_write(path, old_content, new_content, on_resolve)
 	hunks[#hunks].on_resolve = on_resolve
 end
 
-function M.propose_edit(path, old_text, new_text, opts)
-	opts = opts or {}
+function M.propose_edit(path, old_text, new_text)
 	if type(old_text) ~= "string" or type(new_text) ~= "string" then return false end
 	hl()
 	local resolved = vim.fn.fnamemodify(path, ":p")
 
-	-- Find a normal window (don't switch to it if no_focus)
+	-- Find a normal window
 	local target_win
 	local cur_win = api.nvim_get_current_win()
 	if vim.bo[api.nvim_win_get_buf(cur_win)].buftype == "" then
@@ -177,9 +176,7 @@ function M.propose_edit(path, old_text, new_text, opts)
 		end
 	end
 
-	if not opts.no_focus then
-		api.nvim_set_current_win(target_win)
-	end
+	api.nvim_set_current_win(target_win)
 
 	-- Find or open buffer
 	local bufnr
@@ -239,16 +236,7 @@ function M.propose_edit(path, old_text, new_text, opts)
 	hunks[#hunks + 1] = h
 	render(h)
 
-	if opts.no_focus then
-		-- Scroll to the change without stealing focus
-		local bwin = vim.fn.bufwinid(bufnr)
-		if bwin ~= -1 then
-			api.nvim_win_set_cursor(bwin, { math.min(h.row + 1, api.nvim_buf_line_count(bufnr)), 0 })
-			api.nvim_win_call(bwin, function() vim.cmd("normal! zz") end)
-		end
-	else
-		jump(#hunks)
-	end
+	jump(#hunks)
 
 	-- Clear watcher marks on this buffer so they don't overlap
 	pcall(api.nvim_buf_clear_namespace, bufnr, api.nvim_create_namespace("lg_auto_paint"), 0, -1)
@@ -319,25 +307,6 @@ function M.reject_all()
 			end
 		end
 	end)
-end
-
-function M.reject_all_silent()
-	for _, h in ipairs(hunks) do
-		if h.accepted == nil then
-			h.accepted = false
-			clear_extmarks(h)
-			api.nvim_buf_clear_namespace(h.bufnr, dns, 0, -1)
-		end
-	end
-	hunks = {}
-end
-
-function M.pending()
-	local out = {}
-	for i, h in ipairs(hunks) do
-		if h.accepted == nil then out[#out + 1] = i end
-	end
-	return out
 end
 
 function M.clear()

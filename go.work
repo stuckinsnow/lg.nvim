@@ -7,5 +7,4 @@ use (
 	./lsp
 	./mcp
 	./pkg
-	./tap
 )

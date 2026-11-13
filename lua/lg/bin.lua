@@ -21,7 +21,6 @@ local subdirs = {
 	["lg-hint-mcp"] = "hint-mcp",
 	["lg-lsp"] = "lsp",
 	["lg-mcp"] = "mcp",
-	["lg-tap"] = "tap",
 }
 
 --- All binary names, in a stable order.

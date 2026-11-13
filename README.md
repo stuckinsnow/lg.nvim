@@ -80,7 +80,6 @@ This builds:
 - `git-mcp/lg-git-mcp` — git MCP server
 - `hint-mcp/lg-hint-mcp` — hint MCP server
 - `lsp/lg-lsp` — hint LSP display server
-- `tap/lg-tap` — ACP passthrough proxy for tap-chat mode
 
 To run tests:
 
@@ -243,12 +242,6 @@ Example: `@HINT find potential null pointer issues in this code`
 ## Chat Mode
 
 Open the chat panel with `<leader>ac`. Messages sent from the chat window go through the same session but painted regions are hidden — the AI edits with `lg_write_file` instead of `paint_edit`. Each edit shows as an inline diff to accept or reject; accepted edits are applied to the buffer, not saved to disk. New files prompt for creation and are written to disk on accept.
-
-## Tap Chat
-
-Embeds the full Kiro TUI inside a Neovim terminal buffer. The `lg-tap` binary acts as an ACP passthrough proxy — it intercepts tool calls from the TUI and forwards them to Neovim over a unix socket. This gives you live diff previews in your editor as the TUI makes edits, with auto-accept on completion.
-
-Toggle with `lg.tap_chat()`.
 
 ## Quick Edit
 
