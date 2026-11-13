@@ -4,10 +4,6 @@ Drop-in agent and MCP configs for both providers. Replace `/path/to/lg` with
 your plugin install path (e.g. `~/.local/share/nvim/lazy/lg`) and
 `/path/to/devlens` with your devlens checkout in every file before using.
 
-The `LG_INDEX_URL` env var (for the `@SEARCH` semantic search) is optional and
-left out of these examples — add it to the `lg` server's env if you run an
-embeddings server.
-
 The `devlens` MCP server and agent are optional (devlens is a separate, private
 tool). If you don't use it, drop the `devlens` MCP entry and the `devlens` /
 `lg-chat` devlens references.

@@ -117,7 +117,7 @@ talk to Neovim over it. Hints use a second socket at `/dev/shm/lg-hint.sock`.
 
 | Server | Binary | Tools it exposes |
 |---|---|---|
-| `lg` | `mcp/lg-mcp` | `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `lg_search_codebase`, `handoff_to_chat` |
+| `lg` | `mcp/lg-mcp` | `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat` |
 | `lg-git` | `git-mcp/lg-git-mcp` | `git_log`, `git_show`, `git_diff`, `git_blame` |
 | `lg-hint` | `hint-mcp/lg-hint-mcp` | `lg_hint`, `lg_suggest`, `get_hints` |
 | `devlens` | external devlens server (private, optional) | React component inspection |
@@ -156,9 +156,7 @@ The two providers name and restrict tools differently:
 ### Setup
 
 Ready-to-use configs live in [`examples/`](examples/) — copy them and replace
-`/path/to/lg` (and `/path/to/devlens`) with your install paths. `LG_INDEX_URL`
-(for `@SEARCH`) is optional; add it to the `lg` server's env if you run an
-embeddings server.
+`/path/to/lg` (and `/path/to/devlens`) with your install paths.
 
 **kiro-cli** — one JSON file per agent:
 
@@ -202,7 +200,6 @@ Use these prefixes in your prompt to enable special modes:
 | `@SUGGEST` | AI publishes code suggestions as diagnostics — hover to see recommended code. |
 | `@HELP` | AI highlights regions + publishes code suggestions for each. |
 | `@GIT` | Spawns a cheap subagent (Haiku/GPT-4.1) to analyze git history, then injects the result as context into the main session. |
-| `@SEARCH` | Tells the AI to use semantic codebase search (nomic-embed-text) before acting. Requires `LG_INDEX_URL`. |
 | `@DIAG` | Tells the AI to check LSP diagnostics before making edits. |
 | `@LSP` | Gathers LSP info (types, references) for painted regions and includes it as context. |
 | `@FILE_LSP` | Gathers LSP diagnostics for the entire current file. |
@@ -212,7 +209,7 @@ Use these prefixes in your prompt to enable special modes:
 | `@SHELL` | Spawns a shell subagent that runs commands with manual approval. |
 | `@DEVLENS` | Inspects React components in the browser via DevLens, injects component state/props as context. |
 
-Prefixes can be combined: `@DIAG @SEARCH fix the auth bug`
+Prefixes can be combined: `@DIAG @GIT fix the auth bug`
 
 ### Prompt Shortcuts
 

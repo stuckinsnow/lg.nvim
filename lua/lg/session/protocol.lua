@@ -64,20 +64,6 @@ function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_
     table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
   end
 
-  -- Search results context
-  local search_ctx = require("lg.tools.context").get_searches()
-  if #search_ctx > 0 then
-    local ctx = { "### Semantic search results (read-only reference):\n" }
-    for _, s in ipairs(search_ctx) do
-      table.insert(ctx, string.format('Searched for "%s" (nomic-embed-text):', s.query))
-      for _, r in ipairs(s.results) do
-        table.insert(ctx, string.format("  %.2f  %s:%d-%d", r.score, r.file, r.start_line, r.end_line))
-      end
-      table.insert(ctx, "")
-    end
-    table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
-  end
-
   -- File context
   local files = require("lg.tools.context").get_files()
   if #files > 0 then

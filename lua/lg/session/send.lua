@@ -430,13 +430,6 @@ function M.send(opts)
 				"Use the get_diagnostics tool to check for LSP errors/warnings in open buffers before making edits."
 			)
 		end
-		if flags.has_search then
-			prompt = prompt:gsub("@SEARCH%s*", "")
-			table.insert(
-				tool_hints,
-				"Use the lg_search_codebase tool first to find relevant code — it uses nomic-embed-text semantic search over the codebase. Fall back to your own search tools if needed."
-			)
-		end
 		if #tool_hints > 0 then
 			prompt = table.concat(tool_hints, "\n") .. "\n\n" .. prompt
 		end

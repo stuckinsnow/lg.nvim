@@ -69,7 +69,7 @@ Providers: kiro-cli, opencode
 4. PROMPT PREFIXES                                              *lg-prefixes*
 
 Type these at the start of your prompt. Combine freely:
-`@DIAG @SEARCH fix the auth bug`
+`@DIAG @GIT fix the auth bug`
 
   `@INFO`       AI highlights regions and explains what to do — no code
               written. Use `<leader>aA` to convert to real paint.
@@ -82,9 +82,6 @@ Type these at the start of your prompt. Combine freely:
 
   `@GIT`        Spawns a cheap subagent to analyze git history, injects
               the result as context into the main session.
-
-  `@SEARCH`     Semantic codebase search (nomic-embed-text) before acting.
-              Requires `LG_INDEX_URL`.
 
   `@DIAG`       Check LSP diagnostics in open buffers before editing.
 
@@ -241,7 +238,7 @@ Tests:
   ├── server.lua    Unix socket server for MCP bridge
   └── window.lua    Side panel (regions + history)
 
-  mcp/              MCP server (paint_edit, lg_write_file, lg_search_codebase)
+  mcp/              MCP server (paint_edit, lg_write_file)
   git-mcp/          Git MCP server (git_log, git_show, git_diff, git_blame)
   hint-mcp/         Hint MCP server (lg_hint tool)
   lsp/              Hint LSP display server

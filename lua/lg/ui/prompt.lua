@@ -7,7 +7,6 @@ local M = {}
 --- @field has_lsp boolean
 --- @field has_tsc boolean
 --- @field has_diag boolean
---- @field has_search boolean
 --- @field has_auto_paint boolean
 --- @field has_git boolean
 --- @field has_devlens boolean
@@ -75,7 +74,6 @@ function M.open(cb, on_cancel, info)
 				has_lsp = text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
 				has_tsc = text:match("@TSC") ~= nil,
 				has_diag = text:match("@DIAG") ~= nil,
-				has_search = text:match("@SEARCH") ~= nil,
 				has_auto_paint = text:match("@INFO") ~= nil,
 				has_git = text:match("@GIT") ~= nil,
 				has_devlens = text:match("@DEVLENS") ~= nil,

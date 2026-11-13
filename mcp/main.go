@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"lg-mcp/internal/nvim"
 	"lg-mcp/internal/protocol"
-	"lg-mcp/internal/search"
 	"os"
 	"strings"
 )
@@ -59,34 +58,6 @@ func handleToolCall(params json.RawMessage) (any, error) {
 		data, _ := json.MarshalIndent(regions, "", "  ")
 		return protocol.ToolResult{
 			Content: []protocol.TextContent{{Type: "text", Text: string(data)}},
-		}, nil
-
-	case "lg_search_codebase":
-		if search.IndexURL == "" {
-			return protocol.ToolResult{
-				Content: []protocol.TextContent{{Type: "text", Text: "LG_INDEX_URL not set"}},
-				IsError: true,
-			}, nil
-		}
-		var args struct {
-			Query string `json:"query"`
-			TopN  int    `json:"top_n"`
-		}
-		if err := json.Unmarshal(call.Arguments, &args); err != nil {
-			return protocol.ToolResult{
-				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
-				IsError: true,
-			}, nil
-		}
-		data, err := search.SearchIndex(args.Query, args.TopN)
-		if err != nil {
-			return protocol.ToolResult{
-				Content: []protocol.TextContent{{Type: "text", Text: "search failed: " + err.Error()}},
-				IsError: true,
-			}, nil
-		}
-		return protocol.ToolResult{
-			Content: []protocol.TextContent{{Type: "text", Text: data}},
 		}, nil
 
 	case "get_diagnostics":
@@ -300,19 +271,6 @@ func handleToolsList() any {
 				},
 			},
 			{
-				Name:        "lg_search_codebase",
-				Description: "Semantic search over codebase via embeddings.",
-				InputSchema: protocol.ToolSchema{
-					Type: "object",
-					Properties: map[string]any{
-						"query": map[string]string{"type": "string", "description": "Search query"},
-						"top_n": map[string]any{"type": "integer", "description": "Results count (default 5)"},
-					},
-					Required:             []string{"query"},
-					AdditionalProperties: &f,
-				},
-			},
-			{
 				Name:        "get_diagnostics",
 				Description: "Get LSP diagnostics from open buffers. Only use when explicitly asked.",
 				InputSchema: protocol.ToolSchema{
@@ -395,7 +353,6 @@ func handleToolsList() any {
 func main() {
 	nvim.SockPath = os.Getenv("LG_SOCK")
 	nvim.SessionID = os.Getenv("LG_SESSION")
-	search.IndexURL = os.Getenv("LG_INDEX_URL")
 
 	if nvim.SockPath == "" {
 		fmt.Fprintf(os.Stderr, "LG_SOCK not set\n")

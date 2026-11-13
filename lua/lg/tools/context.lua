@@ -55,16 +55,6 @@ end
 
 function M.count() return #regions end
 
---- @type { query: string, results: table[] }[]
-local searches = {}
-
-function M.get_searches() return searches end
-function M.clear_searches() searches = {} end
-
-function M.add_search(query, results)
-  table.insert(searches, { query = query, results = results })
-end
-
 --- @type string[]
 local files = {}
 
@@ -96,7 +86,6 @@ function M.clear()
   end
   regions = {}
   files = {}
-  searches = {}
   devlens = {}
 end
 

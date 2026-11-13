@@ -181,15 +181,6 @@ local function render_context()
 		table.insert(lines, "  📎 " .. vim.fn.fnamemodify(img, ":~:."))
 		table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
 	end
-	local srch = require("lg.tools.context").get_searches()
-	for _, s in ipairs(srch) do
-		table.insert(lines, string.format('  searched "%s" with nomic-embed-text (%d results)', s.query, #s.results))
-		table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
-		for _, r in ipairs(s.results) do
-			table.insert(lines, string.format("    %.2f  %s:%d-%d", r.score, r.file, r.start_line, r.end_line))
-			table.insert(hls, { #lines - 1, 0, -1, "LgSeparator" })
-		end
-	end
 	local dlens = require("lg.tools.context").get_devlens()
 	for _, d in ipairs(dlens) do
 		local label = "  🔍 DevLens: " .. table.concat(d.tokens, ", ")
