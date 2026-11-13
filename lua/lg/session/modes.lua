@@ -16,8 +16,6 @@ local opencode_modes = {
 	["lg-shell"] = "lg-shell",
 	devlens = "devlens",
 	fullstack = "fullstack",
-	kiro_default = "lg-chat",
-	kiro_planner = "lg-plan",
 }
 
 --- Resolve an lg mode_id to the backend's agent/mode name for `provider`.

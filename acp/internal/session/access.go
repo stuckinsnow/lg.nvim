@@ -3,8 +3,6 @@ package session
 import (
 	"path/filepath"
 	"strings"
-
-	"lg-acp/internal/protocol"
 )
 
 // Sensitive filename patterns — blocked regardless of mode.
@@ -60,13 +58,15 @@ func isSensitive(path string) bool {
 	return false
 }
 
+const reasonOutsideCWD = "blocked: outside project directory"
+
 // CheckAccess returns "" if allowed, or a denial reason.
 func (g *AccessGuard) CheckAccess(path string) string {
 	if isSensitive(path) {
 		return "blocked: sensitive file"
 	}
 	if g.IsOutsideCWD(path) {
-		return "blocked: outside project directory"
+		return reasonOutsideCWD
 	}
 	return ""
 }
@@ -121,17 +121,4 @@ func isFileOperation(title string) bool {
 // isReadOnlyFileOp returns true if the title is a read/find (not create/delete).
 func isReadOnlyFileOp(title string) bool {
 	return strings.HasPrefix(title, "Reading ") || strings.HasPrefix(title, "Finding ")
-}
-
-// ExtractPathFromMeta pulls the first absolute path from _meta.trustOptions[].display.
-func ExtractPathFromMeta(meta *protocol.PermissionMeta) string {
-	if meta == nil {
-		return ""
-	}
-	for _, opt := range meta.TrustOptions {
-		if strings.HasPrefix(opt.Display, "/") {
-			return opt.Display
-		}
-	}
-	return ""
 }

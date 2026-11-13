@@ -51,148 +51,134 @@ function M.pick_model(provider_filter)
 			return
 		end
 
-		-- Fetch fresh options (includes credit multiplier in `group`).
-		-- Fall back to the live models table if the RPC fails.
-		client.rpc_call(sid, "_kiro.dev/commands/options", { sessionId = sid, command = "model", partial = "" }, function(resp)
-			vim.schedule(function()
-				local options = nil
-				if resp and resp.ok and resp.data then
-					local data = resp.data
-					if type(data) == "string" then
-						local ok, parsed = pcall(vim.json.decode, data)
-						if ok then data = parsed end
+		vim.schedule(function()
+			-- Only include models under this provider prefix (e.g.
+			-- "github-copilot") when a filter is given.
+			local function matches(id)
+				return not provider_filter or vim.startswith(id or "", provider_filter .. "/")
+			end
+
+			local labels = {}
+			local by_label = {}
+			local sm = ctx.get_models()
+			local current = sm.currentModelId
+
+			for _, m in ipairs(sm.availableModels or {}) do
+				if matches(m.modelId) then
+					local label = m.modelId
+					if m.rateMultiplier then
+						label = string.format("%-22s  %gx", m.modelId, m.rateMultiplier)
 					end
-					if type(data) == "table" and data.options then
-						options = data.options
+					if m.modelId == current then
+						label = label .. "  (current)"
 					end
+					table.insert(labels, label)
+					by_label[label] = m.modelId
 				end
+			end
 
-				-- Only include models under this provider prefix (e.g.
-				-- "github-copilot") when a filter is given.
-				local function matches(id)
-					return not provider_filter or vim.startswith(id or "", provider_filter .. "/")
+			if #labels == 0 then
+				vim.notify(
+					"lg: no models available" .. (provider_filter and (" for " .. provider_filter) or ""),
+					vim.log.levels.WARN
+				)
+				return
+			end
+
+			local prompt = provider_filter
+					and ("lg model — " .. provider_filter .. " (current: " .. (current or "?") .. "):")
+				or ("lg model (current: " .. (current or "?") .. "):")
+			vim.ui.select(labels, { prompt = prompt }, function(choice)
+				if not choice then
+					return
 				end
-
-				-- Build entries
-				local labels = {}
-				local by_label = {}
-				local sm = ctx.get_models()
-				local current = sm.currentModelId
-
-				if options then
-					for _, o in ipairs(options) do
-						local id = o.value or o.label
-						if matches(id) then
-							local mult = o.group or ""
-							local label = id
-							if mult ~= "" then
-								label = string.format("%-22s  %s", id, mult)
-							end
-							if id == current then
-								label = label .. "  (current)"
-							end
-							table.insert(labels, label)
-							by_label[label] = id
-						end
-					end
-				else
-					-- Fallback: no multipliers. Prefer the friendly name when present.
-					for _, m in ipairs(sm.availableModels or {}) do
-						if matches(m.modelId) then
-							local label = m.name and (m.name .. "  (" .. m.modelId .. ")") or m.modelId
-							if m.modelId == current then
-								label = label .. "  (current)"
-							end
-							table.insert(labels, label)
-							by_label[label] = m.modelId
-						end
-					end
-				end
-
-				if #labels == 0 then
-					vim.notify("lg: no models available" .. (provider_filter and (" for " .. provider_filter) or ""), vim.log.levels.WARN)
+				local model_id = by_label[choice]
+				if not model_id or model_id == current then
 					return
 				end
 
-				local prompt = provider_filter and ("lg model — " .. provider_filter .. " (current: " .. (current or "?") .. "):")
-					or ("lg model (current: " .. (current or "?") .. "):")
-				vim.ui.select(labels, { prompt = prompt }, function(choice)
-					if not choice then return end
-					local model_id = by_label[choice]
-					if not model_id or model_id == current then return end
-
-					local function apply_switch(strategy)
-						if strategy == "clear" then
-							ctx.reset()
-							ctx.save_state({ provider = ctx.get_provider(), model = model_id })
-							vim.notify("lg: model → " .. model_id .. " (session cleared)", vim.log.levels.INFO)
-						elseif strategy == "handoff" then
-							-- Ask old model to write a handoff prompt, then reset and send it
-							status.start("Writing handoff…")
-							local handoff_prompt = "Write a concise handoff summary for a new AI model that is taking over this conversation. Include: what the user is working on, what has been done so far, and what the user wants next. Output ONLY the handoff text, no preamble."
-							local handoff_text = ""
-							local unsub = client.on("text", function(ev)
-								if ev.session_id == sid then
-									handoff_text = handoff_text .. (ev.text or "")
-								end
-							end)
-							ctx.set_on_done(function()
-								ctx.set_busy(false)
-								unsub()
-								vim.schedule(function()
-									status.stop("Handoff ready")
-									ctx.reset()
-									ctx.save_state({ provider = ctx.get_provider(), model = model_id })
-									-- Connect creates fresh session with new model
-									ctx.connect(function(new_sid)
-										if not new_sid then return end
-										client.set_model(new_sid, model_id)
-										ctx.set_current_model(model_id)
-										local messages = protocol.build_prompt({}, {}, "Context from previous session (different model):\n\n" .. handoff_text .. "\n\nAcknowledge briefly and wait for my next instruction.")
-										status.start("Sending handoff…")
-										ctx.set_on_done(function()
-											ctx.set_busy(false)
-											status.stop("Model → " .. model_id)
-											require("lg.ui.window").add_status("Model switched → " .. model_id .. " (with handoff)")
-										end)
-										ctx.set_busy(true)
-										client.prompt(new_sid, messages)
+				local function apply_switch(strategy)
+					if strategy == "clear" then
+						ctx.reset()
+						ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+						vim.notify("lg: model → " .. model_id .. " (session cleared)", vim.log.levels.INFO)
+					elseif strategy == "handoff" then
+						-- Ask old model to write a handoff prompt, then reset and send it
+						status.start("Writing handoff…")
+						local handoff_prompt =
+							"Write a concise handoff summary for a new AI model that is taking over this conversation. Include: what the user is working on, what has been done so far, and what the user wants next. Output ONLY the handoff text, no preamble."
+						local handoff_text = ""
+						local unsub = client.on("text", function(ev)
+							if ev.session_id == sid then
+								handoff_text = handoff_text .. (ev.text or "")
+							end
+						end)
+						ctx.set_on_done(function()
+							ctx.set_busy(false)
+							unsub()
+							vim.schedule(function()
+								status.stop("Handoff ready")
+								ctx.reset()
+								ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+								-- Connect creates fresh session with new model
+								ctx.connect(function(new_sid)
+									if not new_sid then
+										return
+									end
+									client.set_model(new_sid, model_id)
+									ctx.set_current_model(model_id)
+									local messages = protocol.build_prompt(
+										{},
+										{},
+										"Context from previous session (different model):\n\n"
+											.. handoff_text
+											.. "\n\nAcknowledge briefly and wait for my next instruction."
+									)
+									status.start("Sending handoff…")
+									ctx.set_on_done(function()
+										ctx.set_busy(false)
+										status.stop("Model → " .. model_id)
+										require("lg.ui.window").add_status(
+											"Model switched → " .. model_id .. " (with handoff)"
+										)
 									end)
+									ctx.set_busy(true)
+									client.prompt(new_sid, messages)
 								end)
 							end)
-							ctx.set_busy(true)
-							client.prompt(sid, { { type = "text", text = handoff_prompt } })
+						end)
+						ctx.set_busy(true)
+						client.prompt(sid, { { type = "text", text = handoff_prompt } })
+					end
+				end
+
+				-- If no active session history, just switch directly
+				if not ctx.get_main_session_id() then
+					ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+					vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+					return
+				end
+
+				-- No conversation yet — just switch model in place
+				if not ctx.get_has_history() then
+					client.set_model(ctx.get_main_session_id(), model_id)
+					ctx.set_current_model(model_id)
+					ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+					vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+					return
+				end
+
+				vim.ui.select(
+					{ "Clear & reset", "Handoff to new model" },
+					{ prompt = "Switch to " .. model_id .. ":" },
+					function(_, idx)
+						if idx == 1 then
+							apply_switch("clear")
+						elseif idx == 2 then
+							apply_switch("handoff")
 						end
 					end
-
-					-- If no active session history, just switch directly
-					if not ctx.get_main_session_id() then
-						ctx.save_state({ provider = ctx.get_provider(), model = model_id })
-						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
-						return
-					end
-
-					-- No conversation yet — just switch model in place
-					if not ctx.get_has_history() then
-						client.set_model(ctx.get_main_session_id(), model_id)
-						ctx.set_current_model(model_id)
-						ctx.save_state({ provider = ctx.get_provider(), model = model_id })
-						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
-						return
-					end
-
-					vim.ui.select(
-						{ "Clear & reset", "Handoff to new model" },
-						{ prompt = "Switch to " .. model_id .. ":" },
-						function(_, idx)
-							if idx == 1 then
-								apply_switch("clear")
-							elseif idx == 2 then
-								apply_switch("handoff")
-							end
-						end
-					)
-				end)
+				)
 			end)
 		end)
 	end)
@@ -238,7 +224,9 @@ function M.select_model()
 		end
 		vim.schedule(function()
 			vim.ui.select(labels, { prompt = "lg cli provider:" }, function(choice)
-				if not choice then return end
+				if not choice then
+					return
+				end
 				M.pick_model(by_label[choice])
 			end)
 		end)

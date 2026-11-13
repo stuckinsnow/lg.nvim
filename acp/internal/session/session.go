@@ -6,18 +6,22 @@ import (
 	"lg-acp/internal/protocol"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-func newSession(proc *process.Process) *Session {
+func newSession(proc *process.Process, state State, id, cwd string) *Session {
 	return &Session{
-		State:          StateCreating,
+		ID:             id,
+		State:          state,
 		proc:           proc,
+		Guard:          NewAccessGuard(cwd),
 		events:         make(chan Event, 256),
 		onDone:         make(map[int]func()),
 		pendingPerms:   make(map[int]*protocol.RPCID),
 		approvedDirs:   make(map[string]bool),
 		pendingPermDir: make(map[int]string),
+		pendingPermOpt: make(map[int][]protocol.PermissionOption),
 	}
 }
 
@@ -48,22 +52,19 @@ func (s *Session) SetMode(modeID string) error {
 	return s.proc.Write(protocol.SessionSetModeRequest(id, s.ID, modeID))
 }
 
-// SetModel sends session/set_model.
+// SetModel switches the session model. Kiro v3 only accepts the model as a
+// config option; other agents use session/set_model.
 func (s *Session) SetModel(modelID string) error {
 	id := s.proc.NextID()
 	s.proc.TrackResponse(id, func(msg *protocol.Message) {})
+	if s.proc.IsKiro() {
+		return s.proc.Write(protocol.SessionSetConfigOptionRequest(id, s.ID, "model", modelID))
+	}
 	return s.proc.Write(protocol.SessionSetModelRequest(id, s.ID, modelID))
 }
 
-// ExecuteCommand sends _kiro.dev/commands/execute.
-func (s *Session) ExecuteCommand(command string, args map[string]any, onDone func(msg *protocol.Message)) error {
-	id := s.proc.NextID()
-	s.proc.TrackResponse(id, onDone)
-	return s.proc.Write(protocol.CommandExecuteRequest(id, s.ID, command, args))
-}
-
 // RPCCall sends an arbitrary JSON-RPC request and tracks the response.
-// Used for non-standard methods like _kiro.dev/commands/model/options.
+// Used for kiro extension methods like _kiro/session/compact.
 func (s *Session) RPCCall(method string, params map[string]any, onDone func(msg *protocol.Message)) error {
 	id := s.proc.NextID()
 	s.proc.TrackResponse(id, onDone)
@@ -88,19 +89,22 @@ func (s *Session) Cancel() {
 func (s *Session) RespondPermission(rpcID int, optionID string) {
 	s.mu.Lock()
 	origID := s.pendingPerms[rpcID]
-	delete(s.pendingPerms, rpcID)
 	dir := s.pendingPermDir[rpcID]
+	opts := s.pendingPermOpt[rpcID]
+	delete(s.pendingPerms, rpcID)
 	delete(s.pendingPermDir, rpcID)
+	delete(s.pendingPermOpt, rpcID)
 	s.mu.Unlock()
-	if origID != nil {
-		s.proc.Write(protocol.PermissionResponse(origID, optionID))
-		// If user approved a read-only outside-cwd op, remember the dir
-		if dir != "" && (optionID == "allow_once" || optionID == "allow_always") {
-			s.mu.Lock()
-			s.approvedDirs[dir] = true
-			s.mu.Unlock()
-			log.Printf("acp: approved dir for session: %s", dir)
-		}
+	if origID == nil {
+		return
+	}
+	s.proc.Write(protocol.PermissionResponse(origID, optionID))
+	// If user approved a read-only outside-cwd op, remember the dir
+	if dir != "" && isAllow(opts, optionID) {
+		s.mu.Lock()
+		s.approvedDirs[dir] = true
+		s.mu.Unlock()
+		log.Printf("acp: approved dir for session: %s", dir)
 	}
 }
 
@@ -130,50 +134,17 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 		s.handleFSRead(msg)
 	case "fs/write_text_file":
 		s.handleFSWrite(msg)
-	case "_kiro.dev/metadata":
-		var params struct {
-			SessionID              string  `json:"sessionId"`
-			ContextUsagePercentage float64 `json:"contextUsagePercentage"`
-			MeteringUsage          []struct {
-				Value      float64 `json:"value"`
-				Unit       string  `json:"unit"`
-				UnitPlural string  `json:"unitPlural"`
-			} `json:"meteringUsage"`
-			TurnDurationMs int64 `json:"turnDurationMs"`
+	default:
+		// Never leave an agent-to-client request unanswered: the agent would wait forever.
+		if msg.IsRequest() {
+			s.proc.Write(protocol.MethodNotFoundResponse(msg.ID, msg.Method))
 		}
-		if json.Unmarshal(msg.Params, &params) == nil {
-			data, _ := json.Marshal(map[string]any{"context_pct": params.ContextUsagePercentage})
-			s.events <- Event{Type: "context_usage", SessionID: s.ID, Data: data}
-
-			if len(params.MeteringUsage) > 0 || params.TurnDurationMs > 0 {
-				var total float64
-				unit := "credits"
-				for _, m := range params.MeteringUsage {
-					total += m.Value
-					if m.UnitPlural != "" {
-						unit = m.UnitPlural
-					} else if m.Unit != "" {
-						unit = m.Unit
-					}
-				}
-				mdata, _ := json.Marshal(map[string]any{
-					"total":            total,
-					"unit":             unit,
-					"turn_duration_ms": params.TurnDurationMs,
-					"entries":          len(params.MeteringUsage),
-				})
-				s.events <- Event{Type: "metering", SessionID: s.ID, Data: mdata}
-			}
-		}
-	case "_kiro.dev/compaction/status":
-		s.events <- Event{Type: "compaction", SessionID: s.ID, Data: msg.Params}
-	case "_kiro.dev/commands/available":
-		s.events <- Event{Type: "commands_available", SessionID: s.ID, Data: msg.Params}
-	case "_kiro.dev/clear/status":
-		s.events <- Event{Type: "clear_status", SessionID: s.ID, Data: msg.Params}
-	case "_kiro.dev/agent/switched":
-		s.events <- Event{Type: "agent_switched", SessionID: s.ID, Data: msg.Params}
 	}
+}
+
+func (s *Session) emit(typ string, data any) {
+	raw, _ := json.Marshal(data)
+	s.events <- Event{Type: typ, SessionID: s.ID, Data: raw}
 }
 
 func (s *Session) handleUpdate(msg *protocol.Message) {
@@ -200,16 +171,136 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 		}
 		s.events <- Event{Type: "tool_call", SessionID: s.ID, Text: title}
 	case "tool_call_update":
-		if update.Status == "error" {
+		if update.Status == "failed" || update.Status == "error" {
 			errMsg := update.Message
 			if errMsg == "" {
 				errMsg = update.Title
 			}
+			if reason := update.Meta.Kiro.FailureReason; reason != "" && errMsg != "" {
+				errMsg += " (" + reason + ")"
+			}
 			s.events <- Event{Type: "tool_error", SessionID: s.ID, Text: errMsg}
 		}
+	case "current_mode_update":
+		s.setMode(update.CurrentModeID)
+	case "config_option_update":
+		for _, co := range update.ConfigOptions {
+			if co.ID == "mode" {
+				s.setMode(co.CurrentValue)
+			}
+		}
+	case "available_commands_update":
+		cmds := make([]map[string]string, 0, len(update.AvailableCommands))
+		for _, c := range update.AvailableCommands {
+			cmds = append(cmds, map[string]string{"name": c.Name})
+		}
+		s.emit("commands_available", map[string]any{"commands": cmds})
+	case "session_info_update":
+		s.handleInfoUpdate(update.Meta.Kiro)
 	default:
 		s.events <- Event{Type: "update", SessionID: s.ID, Data: params.Update}
 	}
+}
+
+// handleInfoUpdate maps kiro's session_info_update kinds onto lg's events.
+func (s *Session) handleInfoUpdate(k protocol.KiroUpdateMeta) {
+	if k.ContextUsage != nil {
+		s.emit("context_usage", map[string]any{"context_pct": k.ContextUsage.UsagePercentage})
+	}
+	switch k.Kind {
+	case "turn_completion":
+		if k.Replay {
+			return
+		}
+		var total float64
+		unit := "credits"
+		for _, m := range k.PromptTurnSummaries {
+			total += m.Usage
+			if m.UnitPlural != "" {
+				unit = m.UnitPlural
+			} else if m.Unit != "" {
+				unit = m.Unit
+			}
+		}
+		s.emit("metering", map[string]any{
+			"total":            total,
+			"unit":             unit,
+			"turn_duration_ms": k.ElapsedTime,
+			"entries":          len(k.PromptTurnSummaries),
+		})
+	case "summarization_started":
+		s.emit("compaction", map[string]any{"status": "started"})
+	}
+}
+
+// setMode records the agent mode and reports real switches. The first mode
+// seen after a load is recorded silently, since nothing switched.
+func (s *Session) setMode(mode string) {
+	if mode == "" {
+		return
+	}
+	s.mu.Lock()
+	prev := s.mode
+	s.mode = mode
+	s.mu.Unlock()
+	if prev != "" && prev != mode {
+		s.emit("agent_switched", map[string]string{"agentName": mode, "previousAgentName": prev})
+	}
+}
+
+// --- permissions ---
+
+func (s *Session) allow(id *protocol.RPCID, opts []protocol.PermissionOption, title string) {
+	// Prefer allow_once: on kiro v3, allow_always writes a persistent rule.
+	optionID := findOption(opts, "allow_once", "allow_always")
+	if optionID == "" && len(opts) > 0 {
+		optionID = opts[0].OptionID
+	}
+	s.proc.Write(protocol.PermissionResponse(id, optionID))
+	s.events <- Event{Type: "permission_auto", SessionID: s.ID, Text: title}
+}
+
+func (s *Session) deny(id *protocol.RPCID, opts []protocol.PermissionOption, title, reason string) {
+	log.Printf("acp: permission denied %s (%s)", title, reason)
+	optionID := findOption(opts, "reject_once", "reject_always")
+	if optionID == "" && len(opts) > 0 {
+		optionID = opts[len(opts)-1].OptionID
+	}
+	s.proc.Write(protocol.PermissionResponse(id, optionID))
+	s.events <- Event{Type: "permission_denied", SessionID: s.ID, Text: title + " — " + reason}
+}
+
+// ask forwards the request to Lua. dir, when set, is remembered as approved
+// for reads if the user allows it.
+func (s *Session) ask(id *protocol.RPCID, opts []protocol.PermissionOption, title, dir string) {
+	s.mu.Lock()
+	s.nextPermKey++
+	key := s.nextPermKey
+	s.pendingPerms[key] = id
+	s.pendingPermOpt[key] = opts
+	if dir != "" {
+		s.pendingPermDir[key] = dir
+	}
+	s.mu.Unlock()
+	data := map[string]any{"title": title, "options": opts, "rpc_id": key}
+	if dir != "" {
+		data["_dir"] = dir
+	}
+	s.emit("permission_request", data)
+}
+
+func (s *Session) dirApproved(p string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.approvedDirs[p] {
+		return true
+	}
+	for dir := range s.approvedDirs {
+		if strings.HasPrefix(p, dir+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Session) handlePermission(msg *protocol.Message) {
@@ -220,85 +311,96 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return
 	}
+	if params.Meta != nil && params.Meta.Kiro.Consent != nil {
+		s.handleConsent(msg.ID, params)
+		return
+	}
+	s.handleTitlePermission(msg.ID, params)
+}
 
+// handleConsent decides kiro v3 permission requests from _meta.kiro.consent.
+func (s *Session) handleConsent(id *protocol.RPCID, params protocol.PermissionParams) {
+	c := params.Meta.Kiro.Consent
+	opts := params.Options
+
+	switch c.Capability {
+	case "fs_read", "fs_write":
+		p := c.Resource
+		if !filepath.IsAbs(p) {
+			root := c.WorkspaceRoot
+			if root == "" {
+				root = s.Guard.cwd
+			}
+			p = filepath.Join(root, p)
+		}
+		read := c.Capability == "fs_read"
+		title := "Write " + p
+		if read {
+			title = "Read " + p
+		}
+		reason := s.Guard.CheckAccess(p)
+		switch {
+		case reason == "" && read:
+			s.allow(id, opts, title)
+		case reason == "":
+			s.ask(id, opts, title, "")
+		case read && reason == reasonOutsideCWD && s.dirApproved(p):
+			s.allow(id, opts, title)
+		case read && reason == reasonOutsideCWD:
+			s.ask(id, opts, title, p)
+		default:
+			s.deny(id, opts, title, reason)
+		}
+	case "shell":
+		s.ask(id, opts, "Run: "+c.Resource, "")
+	case "mcp":
+		server, _, _ := strings.Cut(c.Resource, "/")
+		title := "@" + c.Resource
+		if server == "lg" || server == "lg-hint" {
+			s.allow(id, opts, title)
+		} else {
+			s.ask(id, opts, title, "")
+		}
+	default:
+		title := c.Capability
+		if c.Resource != "" {
+			title += ": " + c.Resource
+		}
+		s.allow(id, opts, title)
+	}
+}
+
+// handleTitlePermission decides permission requests that carry no consent
+// metadata (opencode), based on the tool title.
+func (s *Session) handleTitlePermission(id *protocol.RPCID, params protocol.PermissionParams) {
 	title := ""
 	if params.ToolCall != nil {
 		title = params.ToolCall.Title
 	}
+	opts := params.Options
 
 	// Check access guard on file-related permissions
 	if s.Guard != nil {
-		p := ExtractPathFromTitle(title)
-		if p == "" && isFileOperation(title) {
-			// Title gave a relative path — try _meta.trustOptions for the real one
-			p = ExtractPathFromMeta(params.Meta)
-		}
-		if p != "" {
+		if p := ExtractPathFromTitle(title); p != "" {
 			log.Printf("acp: guard check title=%q path=%q", title, p)
 			if reason := s.Guard.CheckAccess(p); reason != "" {
 				// Outside CWD — but if it's read-only, check approved dirs
-				if isReadOnlyFileOp(title) && reason == "blocked: outside project directory" {
-					s.mu.Lock()
-					approved := s.approvedDirs[p]
-					if !approved {
-						// Check if any parent dir was approved
-						for dir := range s.approvedDirs {
-							if strings.HasPrefix(p, dir+"/") || p == dir {
-								approved = true
-								break
-							}
-						}
+				if isReadOnlyFileOp(title) && reason == reasonOutsideCWD {
+					if s.dirApproved(p) {
+						s.allow(id, opts, title)
+					} else {
+						log.Printf("acp: outside-cwd read op, requesting approval: %s (path=%s)", title, p)
+						s.ask(id, opts, title, p)
 					}
-					s.mu.Unlock()
-					if approved {
-						optionID := findOption(params.Options, "allow_always", "allow_once")
-						if optionID == "" && len(params.Options) > 0 {
-							optionID = params.Options[0].OptionID
-						}
-						s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
-						s.events <- Event{Type: "permission_auto", SessionID: s.ID, Text: title}
-						return
-					}
-					// First time seeing this dir — ask user, remember path for approval
-					log.Printf("acp: outside-cwd read op, requesting approval: %s (path=%s)", title, p)
-					s.mu.Lock()
-					s.nextPermKey++
-					key := s.nextPermKey
-					s.pendingPerms[key] = msg.ID
-					s.pendingPermDir[key] = p
-					s.mu.Unlock()
-					data, _ := json.Marshal(map[string]any{
-						"title":   title,
-						"options": params.Options,
-						"rpc_id":  key,
-						"_dir":    p,
-					})
-					s.events <- Event{Type: "permission_request", SessionID: s.ID, Data: data}
 					return
 				}
-				log.Printf("acp: permission denied %s (%s)", title, reason)
-				optionID := findOption(params.Options, "reject_once", "reject_always")
-				if optionID == "" && len(params.Options) > 0 {
-					optionID = params.Options[len(params.Options)-1].OptionID
-				}
-				s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
-				s.events <- Event{Type: "permission_denied", SessionID: s.ID, Text: title + " — " + reason}
+				s.deny(id, opts, title, reason)
 				return
 			}
 		} else if isFileOperation(title) {
-			// Can't extract path from title or _meta — route through manual approval.
+			// Can't extract a verifiable path — route through manual approval.
 			log.Printf("acp: unverifiable file op, requesting approval: %s", title)
-			s.mu.Lock()
-			s.nextPermKey++
-			key := s.nextPermKey
-			s.pendingPerms[key] = msg.ID
-			s.mu.Unlock()
-			data, _ := json.Marshal(map[string]any{
-				"title":   title,
-				"options": params.Options,
-				"rpc_id":  key,
-			})
-			s.events <- Event{Type: "permission_request", SessionID: s.ID, Data: data}
+			s.ask(id, opts, title, "")
 			return
 		}
 	}
@@ -308,30 +410,14 @@ func (s *Session) handlePermission(msg *protocol.Message) {
 		strings.HasPrefix(title, "Deleting ") ||
 		(strings.HasPrefix(title, "Running") && !strings.Contains(title, "@lg/") && !strings.Contains(title, "@lg-hint/")) ||
 		strings.Contains(strings.ToLower(title), "devlens")
-
 	if needsApproval {
-		s.mu.Lock()
-		s.nextPermKey++
-		key := s.nextPermKey
-		s.pendingPerms[key] = msg.ID
-		s.mu.Unlock()
-		data, _ := json.Marshal(map[string]any{
-			"title":   title,
-			"options": params.Options,
-			"rpc_id":  key,
-		})
-		s.events <- Event{Type: "permission_request", SessionID: s.ID, Data: data}
+		s.ask(id, opts, title, "")
 		return
 	}
-
-	// Auto-approve safe operations
-	optionID := findOption(params.Options, "allow_always", "allow_once")
-	if optionID == "" && len(params.Options) > 0 {
-		optionID = params.Options[0].OptionID
-	}
-	s.proc.Write(protocol.PermissionResponse(msg.ID, optionID))
-	s.events <- Event{Type: "permission_auto", SessionID: s.ID, Text: title}
+	s.allow(id, opts, title)
 }
+
+// --- fs ---
 
 func (s *Session) handleFSRead(msg *protocol.Message) {
 	if msg.ID == nil {
@@ -357,7 +443,25 @@ func (s *Session) handleFSRead(msg *protocol.Message) {
 	}
 
 	s.events <- Event{Type: "fs_read", SessionID: s.ID, Text: params.Path}
-	s.proc.Write(protocol.FSReadResponse(msg.ID, string(content)))
+	s.proc.Write(protocol.FSReadResponse(msg.ID, sliceLines(string(content), params.Line, params.Limit)))
+}
+
+// sliceLines returns `limit` lines starting at 1-based `line`. Zero values mean
+// "from the start" and "to the end".
+func sliceLines(content string, line, limit int) string {
+	if line <= 1 && limit <= 0 {
+		return content
+	}
+	lines := strings.SplitAfter(content, "\n")
+	start := max(line-1, 0)
+	if start >= len(lines) {
+		return ""
+	}
+	end := len(lines)
+	if limit > 0 && start+limit < end {
+		end = start + limit
+	}
+	return strings.Join(lines[start:end], "")
 }
 
 func (s *Session) handleFSWrite(msg *protocol.Message) {
@@ -419,4 +523,14 @@ func findOption(opts []protocol.PermissionOption, kinds ...string) string {
 		}
 	}
 	return ""
+}
+
+// isAllow reports whether optionID is one of the allow options.
+func isAllow(opts []protocol.PermissionOption, optionID string) bool {
+	for _, o := range opts {
+		if o.OptionID == optionID {
+			return o.Kind == "allow_once" || o.Kind == "allow_always"
+		}
+	}
+	return false
 }

@@ -38,8 +38,7 @@ func TestParseModelsInfoOpencodeConfigOptions(t *testing.T) {
 	}
 }
 
-// kiro returns the standard availableModels; configOptions fallback must not
-// override it.
+// availableModels, when present, wins over the configOptions fallback.
 func TestParseModelsInfoKiroAvailableModels(t *testing.T) {
 	raw := json.RawMessage(`{
 		"sessionId": "ses_y",
@@ -64,5 +63,26 @@ func TestParseModelsInfoEmpty(t *testing.T) {
 	}
 	if mi := ParseModelsInfo(json.RawMessage(`{"sessionId":"z"}`)); mi != nil {
 		t.Fatalf("no models/configOptions should return nil, got %+v", mi)
+	}
+}
+
+// kiro v3 lists models in configOptions with a credit multiplier in _meta.kiro.
+func TestParseModelsInfoKiroV3ConfigOptions(t *testing.T) {
+	raw := json.RawMessage(`{
+		"sessionId": "sess_x",
+		"configOptions": [
+			{"id": "mode", "currentValue": "lg", "options": [{"value": "lg", "name": "lg"}]},
+			{"id": "model", "currentValue": "auto", "options": [
+				{"value": "auto", "name": "auto", "_meta": {"kiro": {"rateMultiplier": 1}}},
+				{"value": "claude-opus-5.5", "name": "claude-opus-5.5", "_meta": {"kiro": {"rateMultiplier": 2}}}
+			]}
+		]
+	}`)
+	mi := ParseModelsInfo(raw)
+	if mi == nil || mi.CurrentModelID != "auto" || len(mi.AvailableModels) != 2 {
+		t.Fatalf("unexpected models info: %+v", mi)
+	}
+	if got := mi.AvailableModels[1].RateMultiplier; got != 2 {
+		t.Fatalf("rateMultiplier = %v, want 2", got)
 	}
 }

@@ -23,14 +23,15 @@ type Process struct {
 	mu     sync.Mutex
 
 	// routing
-	sessions   map[string]MessageHandler   // sessionId -> handler
-	pending    map[int]MessageHandler       // rpc id -> handler (for responses)
+	sessions   map[string]MessageHandler // sessionId -> handler
+	pending    map[int]MessageHandler    // rpc id -> handler (for responses)
 	sessionsMu sync.RWMutex
 	pendingMu  sync.Mutex
 
-	ready    chan struct{} // closed when initialize handshake completes
-	initErr  error
-	models   *protocol.ModelsInfo
+	ready   chan struct{} // closed when initialize handshake completes
+	initErr error
+	models  *protocol.ModelsInfo
+	kiro    bool // agent advertised _meta.kiro capabilities (kiro v3)
 }
 
 // MessageHandler receives routed messages for a session.
@@ -73,8 +74,19 @@ func Spawn(args []string, clientName string) (*Process, error) {
 	p.pending[id] = func(msg *protocol.Message) {
 		if msg.Error != nil {
 			p.initErr = fmt.Errorf("initialize error: %s", msg.Error.Message)
+		} else {
+			var res struct {
+				AgentCapabilities struct {
+					Meta struct {
+						Kiro json.RawMessage `json:"kiro"`
+					} `json:"_meta"`
+				} `json:"agentCapabilities"`
+			}
+			if json.Unmarshal(msg.Result, &res) == nil {
+				p.kiro = len(res.AgentCapabilities.Meta.Kiro) > 0
+			}
 		}
-		log.Printf("acp: initialize response received")
+		log.Printf("acp: initialize response received (kiro=%v)", p.kiro)
 		close(p.ready)
 	}
 	p.pendingMu.Unlock()
@@ -138,6 +150,12 @@ func (p *Process) UnregisterSession(sessionID string) {
 	p.sessionsMu.Lock()
 	delete(p.sessions, sessionID)
 	p.sessionsMu.Unlock()
+}
+
+// IsKiro reports whether the agent is kiro v3, which uses kiro's extension
+// methods (_kiro/*) and session/set_config_option instead of set_model.
+func (p *Process) IsKiro() bool {
+	return p.kiro
 }
 
 // Models returns the models info from the first session creation, if available.
@@ -218,4 +236,7 @@ func (p *Process) route(msg *protocol.Message) {
 	}
 	p.sessionsMu.RUnlock()
 	log.Printf("acp: unrouted message: method=%s id=%v", msg.Method, msg.ID)
+	if msg.IsRequest() {
+		p.Write(protocol.MethodNotFoundResponse(msg.ID, msg.Method))
+	}
 }

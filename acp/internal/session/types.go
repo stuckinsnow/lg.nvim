@@ -42,6 +42,8 @@ type Session struct {
 	nextPermKey    int
 	approvedDirs   map[string]bool // dirs approved for read access this session
 	pendingPermDir map[int]string  // rpc_id → dir path for read-only approvals
+	pendingPermOpt map[int][]protocol.PermissionOption
+	mode           string // current agent mode, for agent_switched events
 }
 
 // Manager owns the shared process and all sessions.

@@ -128,11 +128,11 @@ function M.run(config)
 						client.respond_permission(sub_sid, rpc_id, oid)
 					end)
 				else
+					-- Prefer allow_once: on kiro v3, allow_always writes a persistent rule.
 					local oid
 					for _, opt in ipairs(options) do
-						if opt.kind == "allow_always" or opt.kind == "allow_once" then
+						if opt.kind == "allow_once" or (not oid and opt.kind == "allow_always") then
 							oid = opt.optionId
-							break
 						end
 					end
 					if oid then client.respond_permission(sub_sid, data.rpc_id, oid) end

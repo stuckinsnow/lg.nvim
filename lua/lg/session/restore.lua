@@ -46,7 +46,8 @@ local function list_sessions_acp(on_done)
 			end
 			for _, s in ipairs(list) do
 				local title = s.title or ""
-				if not title:match("^ACP Session ") and not title:match("^New session %- ") then
+				-- Skip sessions that never got a prompt (default titles).
+				if not title:match("^ACP Session ") and not title:match("^New [Ss]ession") then
 					table.insert(sessions, {
 						id = s.sessionId or s.id,
 						cwd = s.cwd or "",

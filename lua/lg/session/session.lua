@@ -786,6 +786,24 @@ function M.select_provider()
 	models.select_provider()
 end
 
+--- Call a kiro extension method (e.g. "_kiro/session/compact") on the main
+--- session, connecting first if needed.
+--- @param method string
+--- @param callback fun(resp: table)
+function M.rpc(method, callback)
+	connect(function(sid)
+		if not sid then
+			callback({ error = "no session" })
+			return
+		end
+		client.rpc_call(sid, method, { sessionId = sid }, function(resp)
+			vim.schedule(function()
+				callback(resp)
+			end)
+		end)
+	end)
+end
+
 function M.compact()
 	connect(function(sid)
 		if not sid then
@@ -795,62 +813,35 @@ function M.compact()
 		local win = require("lg.ui.window")
 		local spin = require("lg.spinner.spinners").start({})
 		_busy = true
-		client.execute_command(sid, "compact", function(resp)
-			vim.schedule(function()
-				spin:stop()
-				_busy = false
-				client.set_mode(sid, resolve_mode("lg"))
-				if resp and resp.ok then
-					status.stop("Compacted")
-					win.add_status("Context compacted")
-				else
-					local err = (resp and resp.error) or "compact failed"
-					status.stop("Compact failed")
-					win.add_status("Compact failed: " .. err)
-				end
-				flush_send_queue()
-			end)
+		M.rpc("_kiro/session/compact", function(resp)
+			spin:stop()
+			_busy = false
+			client.set_mode(sid, resolve_mode("lg"))
+			if resp and resp.ok then
+				status.stop("Compacted")
+				win.add_status("Context compacted")
+			else
+				local err = (resp and resp.error) or "compact failed"
+				status.stop("Compact failed")
+				win.add_status("Compact failed: " .. err)
+			end
+			flush_send_queue()
 		end)
 	end)
 end
 
-function M.run_command(command, on_done)
-	if not main_session_id or not client.is_connected() then
-		if on_done then on_done() end
-		return
+--- Run a kiro slash command. Kiro v3 has no generic command API over ACP,
+--- so only commands lg maps to a v3 method are supported.
+--- @param command string e.g. "compact" or "/usage"
+function M.execute_command(command)
+	local name = command:gsub("^/", "")
+	if name == "compact" then
+		M.compact()
+	elseif name == "usage" then
+		require("lg.usage").show()
+	else
+		vim.notify("lg: /" .. name .. " isn't available through Kiro v3 ACP", vim.log.levels.WARN)
 	end
-	client.execute_command(main_session_id, command, function()
-		if on_done then vim.schedule(on_done) end
-	end)
-end
-
-function M.execute_command(command, callback)
-	connect(function(sid)
-		if not sid then
-			return
-		end
-		if command:sub(1, 1) ~= "/" then
-			command = "/" .. command
-		end
-		client.execute_command(sid, command, function(resp)
-			vim.schedule(function()
-				if callback then
-					callback(resp)
-				elseif resp.ok and resp.data then
-					local data = resp.data
-					if type(data) == "string" then
-						local ok, parsed = pcall(vim.json.decode, data)
-						if ok then data = parsed end
-					end
-					if data.message then
-						vim.notify(data.message, vim.log.levels.INFO)
-					end
-				elseif resp.error then
-					vim.notify(resp.error, vim.log.levels.ERROR)
-				end
-			end)
-		end)
-	end)
 end
 
 function M.available_commands()
@@ -914,7 +905,7 @@ function M._run_handoff(plan)
 	_planner_active = false
 	local win = require("lg.ui.window")
 	win.add_status("◀ plan confirmed — handing off to lg-chat")
-	client.execute_command(main_session_id, "agent", { agentName = "lg-chat" }, function(resp)
+	client.set_mode(main_session_id, resolve_mode("lg-chat"), function(resp)
 		if not (resp and resp.ok) then
 			win.add_status("handoff failed: " .. (resp and resp.error or "unknown"))
 			return
@@ -940,21 +931,11 @@ function M.set_planner(enabled, callback)
 			end
 			return
 		end
-		if opts.provider == "kiro" then
-			-- Switch agent via kiro's own command so we get the full
-			-- agent/switched + commands/available refresh.
-			client.execute_command(sid, "agent", { agentName = enabled and "lg-plan" or "lg-chat" }, function(resp)
-				if callback then
-					callback(resp and resp.ok == true)
-				end
-			end)
-		else
-			-- Opencode has no kiro extension; fall back to set_mode
-			client.set_mode(sid, resolve_mode(enabled and "kiro_planner" or "kiro_default"))
+		client.set_mode(sid, resolve_mode(enabled and "lg-plan" or "lg-chat"), function(resp)
 			if callback then
-				callback(true)
+				callback(resp and resp.ok == true)
 			end
-		end
+		end)
 	end)
 end
 

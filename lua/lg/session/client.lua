@@ -250,22 +250,9 @@ function M.terminate()
 	M.send({ method = "terminate" }, function() end)
 end
 
-function M.execute_command(session_id, command, args, callback)
-	if type(args) == "function" and callback == nil then
-		-- back-compat: execute_command(sid, cmd, callback)
-		callback = args
-		args = nil
-	end
-	local req = { method = "execute_command", session_id = session_id, command = command }
-	if args ~= nil then
-		req.args = args
-	end
-	M.send(req, callback)
-end
-
 --- Generic JSON-RPC passthrough.
 --- @param session_id string
---- @param method string  JSON-RPC method name (e.g. "_kiro.dev/commands/model/options")
+--- @param method string  JSON-RPC method name (e.g. "_kiro/session/compact")
 --- @param params table|nil
 --- @param callback fun(resp: table)
 function M.rpc_call(session_id, method, params, callback)

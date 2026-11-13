@@ -56,7 +56,8 @@ function M.permission(title, options, respond)
 		if not reject_id and (opt.kind == "reject_once" or opt.kind == "reject_always") then
 			reject_id = opt.optionId
 		end
-		if not allow_id and (opt.kind == "allow_always" or opt.kind == "allow_once") then
+		-- Prefer allow_once: on kiro v3, allow_always writes a persistent rule.
+		if opt.kind == "allow_once" or (not allow_id and opt.kind == "allow_always") then
 			allow_id = opt.optionId
 		end
 	end

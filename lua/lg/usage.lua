@@ -1,37 +1,7 @@
 local M = {}
 
 function M.show()
-	local session = require("lg.session.session")
-
-	-- If commands are already available, the session is ready
-	if #(session.available_commands()) > 0 then
-		M._fetch()
-		return
-	end
-
-	-- Session not ready: execute_command triggers connect(); register the
-	-- one-shot listener inside its callback, after clear_handlers has run.
-	session.execute_command("usage", function(resp)
-		if resp.ok and resp.data then
-			-- Worked on first try (unlikely on cold start but handle it)
-			vim.schedule(function() M._handle_resp(resp) end)
-			return
-		end
-		-- Command failed because agent wasn't ready yet. Listen for readiness.
-		local client = require("lg.session.client")
-		local unsub
-		unsub = client.on("commands_available", function()
-			if unsub then unsub() end
-			vim.schedule(function() M._fetch() end)
-		end)
-	end)
-end
-
-function M._fetch()
-	local session = require("lg.session.session")
-	session.execute_command("usage", function(resp)
-		vim.schedule(function() M._handle_resp(resp) end)
-	end)
+	require("lg.session.session").rpc("_kiro/account/getUsage", M._handle_resp)
 end
 
 function M._handle_resp(resp)

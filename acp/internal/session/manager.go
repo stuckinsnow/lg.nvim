@@ -6,8 +6,6 @@ import (
 	"lg-acp/internal/process"
 	"lg-acp/internal/protocol"
 	"log"
-	"os"
-	"path/filepath"
 	"sync/atomic"
 	"time"
 )
@@ -51,8 +49,7 @@ func (m *Manager) CreateSession(cwd string) (*Session, error) {
 		return nil, fmt.Errorf("process: %w", err)
 	}
 
-	s := newSession(m.proc)
-	s.Guard = NewAccessGuard(cwd)
+	s := newSession(m.proc, StateCreating, "", cwd)
 	tempID := fmt.Sprintf("temp-%d", atomic.AddInt64(&m.nextTemp, 1))
 
 	// Register a temporary handler for routing during creation
@@ -90,6 +87,7 @@ func (m *Manager) CreateSession(cwd string) (*Session, error) {
 		s.mu.Lock()
 		s.ID = result.SessionID
 		s.State = StateActive
+		s.mode = result.Modes.CurrentModeID
 		pending := s.pendingUpdates
 		s.pendingUpdates = nil
 		s.mu.Unlock()
@@ -104,8 +102,8 @@ func (m *Manager) CreateSession(cwd string) (*Session, error) {
 		m.sessions[s.ID] = s
 		m.mu.Unlock()
 
-		if result.Models != nil {
-			m.proc.SetModels(result.Models)
+		if mi := protocol.ParseModelsInfo(msg.Result); mi != nil {
+			m.proc.SetModels(mi)
 		}
 
 		s.events <- Event{
@@ -142,22 +140,37 @@ func (m *Manager) GetSession(id string) *Session {
 	return m.sessions[id]
 }
 
-// ListSessions calls session/list on the ACP process.
-func (m *Manager) ListSessions(cwd string) (json.RawMessage, error) {
+// call sends a request on the shared process and waits for its response.
+func (m *Manager) call(method string, params map[string]any) (json.RawMessage, error) {
 	if err := m.ensureProcess(); err != nil {
 		return nil, err
 	}
 	id := m.proc.NextID()
 	ch := make(chan *protocol.Message, 1)
 	m.proc.TrackResponse(id, func(msg *protocol.Message) { ch <- msg })
-	if err := m.proc.Write(protocol.SessionListRequest(id, cwd)); err != nil {
+	if err := m.proc.Write(protocol.GenericRequest(id, method, params)); err != nil {
 		return nil, err
 	}
-	msg := <-ch
-	if msg.Error != nil {
-		return nil, fmt.Errorf("%s", msg.Error.Message)
+	select {
+	case msg := <-ch:
+		if msg.Error != nil {
+			return nil, fmt.Errorf("%s", msg.Error.Detail())
+		}
+		return msg.Result, nil
+	case <-time.After(30 * time.Second):
+		return nil, fmt.Errorf("%s: timeout", method)
 	}
-	return msg.Result, nil
+}
+
+// ListSessions calls session/list on the ACP process.
+func (m *Manager) ListSessions(cwd string) (json.RawMessage, error) {
+	return m.call("session/list", map[string]any{"cwd": cwd})
+}
+
+// DeleteSession deletes a saved session through kiro's _kiro/session/delete.
+func (m *Manager) DeleteSession(sessionID string) error {
+	_, err := m.call("_kiro/session/delete", map[string]any{"sessionId": sessionID})
+	return err
 }
 
 // LoadSession loads a previous session by ID, returning a Session that streams replayed events.
@@ -166,22 +179,13 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 		return nil, err
 	}
 
-	// Fetch models via a throwaway session/new if we don't have them yet
-	if m.proc.Models() == nil {
+	// Kiro returns models from session/load; other agents (opencode) only
+	// report them on session/new, so fetch them with a throwaway session.
+	if !m.proc.IsKiro() && m.proc.Models() == nil {
 		m.fetchModels(cwd)
 	}
 
-	s := &Session{
-		ID:           sessionID,
-		State:          StateActive,
-		proc:           m.proc,
-		Guard:          NewAccessGuard(cwd),
-		events:         make(chan Event, 256),
-		onDone:         make(map[int]func()),
-		pendingPerms:   make(map[int]*protocol.RPCID),
-		approvedDirs:   make(map[string]bool),
-		pendingPermDir: make(map[int]string),
-	}
+	s := newSession(m.proc, StateActive, sessionID, cwd)
 
 	m.proc.RegisterSession(sessionID, func(msg *protocol.Message) {
 		s.handleMessage(msg)
@@ -196,11 +200,22 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 			s.events <- Event{Type: "error", Error: msg.Error.Message}
 			return
 		}
+		var result struct {
+			Meta struct {
+				AgentMode    string `json:"agentMode"`
+				ContextUsage *struct {
+					UsagePercentage float64 `json:"usagePercentage"`
+				} `json:"contextUsage"`
+			} `json:"_meta"`
+		}
+		json.Unmarshal(msg.Result, &result)
+		if mi := protocol.ParseModelsInfo(msg.Result); mi != nil {
+			m.proc.SetModels(mi)
+		}
+		s.setMode(result.Meta.AgentMode)
 		s.events <- Event{Type: "session_loaded", SessionID: sessionID}
-		// Emit last known context usage from the session file
-		if pct := readKiroContextPct(sessionID); pct > 0 {
-			data, _ := json.Marshal(map[string]any{"context_pct": pct})
-			s.events <- Event{Type: "context_usage", SessionID: sessionID, Data: data}
+		if cu := result.Meta.ContextUsage; cu != nil {
+			s.emit("context_usage", map[string]any{"context_pct": cu.UsagePercentage})
 		}
 	})
 
@@ -224,7 +239,8 @@ func (m *Manager) RemoveSession(id string) {
 	}
 }
 
-// fetchModels creates a throwaway session to populate models info.
+// fetchModels creates a throwaway session to populate models info, for agents
+// that only report models on session/new.
 func (m *Manager) fetchModels(cwd string) {
 	done := make(chan struct{})
 	id := m.proc.NextID()
@@ -292,33 +308,4 @@ func (m *Manager) Sessions() []string {
 		ids = append(ids, id)
 	}
 	return ids
-}
-
-// readKiroContextPct reads the last context_usage_percentage from a kiro session file.
-func readKiroContextPct(sessionID string) float64 {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return 0
-	}
-	data, err := os.ReadFile(filepath.Join(home, ".kiro", "sessions", "cli", sessionID+".json"))
-	if err != nil {
-		return 0
-	}
-	var f struct {
-		State struct {
-			Conv struct {
-				Turns []struct {
-					ContextPct float64 `json:"context_usage_percentage"`
-				} `json:"user_turn_metadatas"`
-			} `json:"conversation_metadata"`
-		} `json:"session_state"`
-	}
-	if json.Unmarshal(data, &f) != nil {
-		return 0
-	}
-	turns := f.State.Conv.Turns
-	if len(turns) == 0 {
-		return 0
-	}
-	return turns[len(turns)-1].ContextPct
 }

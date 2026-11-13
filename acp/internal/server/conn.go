@@ -162,7 +162,13 @@ func (c *conn) handle(req Request) {
 			cwd, _ = os.Getwd()
 		}
 		log.Printf("acp: list_sessions cwd=%s", cwd)
-		data, err := listSessions(c.srv.provider, cwd)
+		var data json.RawMessage
+		var err error
+		if c.srv.provider == "opencode" {
+			data, err = listOpencodeSessions(cwd)
+		} else {
+			data, err = mgr.ListSessions(cwd)
+		}
 		if err != nil {
 			c.writeLine(Response{Error: err.Error()})
 			return
@@ -175,7 +181,13 @@ func (c *conn) handle(req Request) {
 			return
 		}
 		log.Printf("acp: delete_session id=%s", req.SessionID)
-		if err := deleteSession(c.srv.provider, req.SessionID); err != nil {
+		var err error
+		if c.srv.provider == "opencode" {
+			err = deleteOpencodeSession(req.SessionID)
+		} else {
+			err = mgr.DeleteSession(req.SessionID)
+		}
+		if err != nil {
 			c.writeLine(Response{Error: err.Error()})
 			return
 		}
@@ -204,33 +216,6 @@ func (c *conn) handle(req Request) {
 
 	case "status":
 		c.writeLine(Response{OK: true, Active: len(mgr.Sessions())})
-
-	case "execute_command":
-		sess := mgr.GetSession(req.SessionID)
-		if sess == nil {
-			c.writeLine(Response{Error: "unknown session"})
-			return
-		}
-		if req.Command == "" {
-			c.writeLine(Response{Error: "missing command"})
-			return
-		}
-		var args map[string]any
-		if len(req.Args) > 0 {
-			if err := json.Unmarshal(req.Args, &args); err != nil {
-				c.writeLine(Response{Error: "bad args: " + err.Error()})
-				return
-			}
-		}
-		if err := sess.ExecuteCommand(req.Command, args, func(msg *protocol.Message) {
-			if msg.Error != nil {
-				c.writeLine(Response{Error: msg.Error.Message})
-			} else {
-				c.writeLine(Response{OK: true, Data: msg.Result})
-			}
-		}); err != nil {
-			c.writeLine(Response{Error: err.Error()})
-		}
 
 	case "rpc_call":
 		// Generic JSON-RPC passthrough. Uses req.Command as the method name

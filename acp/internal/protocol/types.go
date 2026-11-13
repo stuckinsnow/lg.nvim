@@ -47,8 +47,10 @@ func (m *Message) IsNotification() bool { return m.ID == nil && m.Method != "" }
 
 // SessionNewResult is the result of session/new.
 type SessionNewResult struct {
-	SessionID string      `json:"sessionId"`
-	Models    *ModelsInfo `json:"models,omitempty"`
+	SessionID string `json:"sessionId"`
+	Modes     struct {
+		CurrentModeID string `json:"currentModeId"`
+	} `json:"modes"`
 }
 
 type ModelsInfo struct {
@@ -57,15 +59,16 @@ type ModelsInfo struct {
 }
 
 type ModelInfo struct {
-	ModelID string `json:"modelId"`
-	Name    string `json:"name,omitempty"`
+	ModelID        string  `json:"modelId"`
+	Name           string  `json:"name,omitempty"`
+	RateMultiplier float64 `json:"rateMultiplier,omitempty"`
 }
 
-// ParseModelsInfo extracts model info from a session/new (or session/set_model)
-// result. It prefers the standard ACP `models.availableModels` field (used by
-// kiro). When that is empty — as with opencode 1.17+, which moved the model list
-// into the generic `configOptions` mechanism — it falls back to the
-// `configOptions` entry whose id is "model".
+// ParseModelsInfo extracts model info from a session/new, session/load or
+// set_config_option result. It prefers the `models.availableModels` field. When
+// that is empty — as with kiro v3 and opencode 1.17+, which both carry the model
+// list in `configOptions` — it falls back to the `configOptions` entry whose id
+// is "model".
 func ParseModelsInfo(raw json.RawMessage) *ModelsInfo {
 	if len(raw) == 0 {
 		return nil
@@ -78,24 +81,33 @@ func ParseModelsInfo(raw json.RawMessage) *ModelsInfo {
 			Options      []struct {
 				Value string `json:"value"`
 				Name  string `json:"name"`
+				Meta  struct {
+					Kiro struct {
+						RateMultiplier float64 `json:"rateMultiplier"`
+					} `json:"kiro"`
+				} `json:"_meta"`
 			} `json:"options"`
 		} `json:"configOptions"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil
 	}
-	// Preferred: standard availableModels (kiro).
+	// Preferred: availableModels.
 	if parsed.Models != nil && len(parsed.Models.AvailableModels) > 0 {
 		return parsed.Models
 	}
-	// Fallback: opencode configOptions model select.
+	// Fallback: configOptions model select (kiro v3, opencode).
 	for _, co := range parsed.ConfigOptions {
 		if co.ID != "model" {
 			continue
 		}
 		mi := &ModelsInfo{CurrentModelID: co.CurrentValue}
 		for _, o := range co.Options {
-			mi.AvailableModels = append(mi.AvailableModels, ModelInfo{ModelID: o.Value, Name: o.Name})
+			mi.AvailableModels = append(mi.AvailableModels, ModelInfo{
+				ModelID:        o.Value,
+				Name:           o.Name,
+				RateMultiplier: o.Meta.Kiro.RateMultiplier,
+			})
 		}
 		if len(mi.AvailableModels) > 0 {
 			return mi
@@ -119,6 +131,44 @@ type SessionUpdate struct {
 	ToolCallID    string        `json:"toolCallId,omitempty"`
 	Status        string        `json:"status,omitempty"`
 	Message       string        `json:"message,omitempty"`
+
+	// current_mode_update
+	CurrentModeID string `json:"currentModeId,omitempty"`
+	// config_option_update
+	ConfigOptions []ConfigOption `json:"configOptions,omitempty"`
+	// available_commands_update
+	AvailableCommands []struct {
+		Name string `json:"name"`
+	} `json:"availableCommands,omitempty"`
+
+	Meta struct {
+		Kiro KiroUpdateMeta `json:"kiro"`
+	} `json:"_meta"`
+}
+
+// ConfigOption is one entry of a configOptions list (mode, model, ...).
+type ConfigOption struct {
+	ID           string `json:"id"`
+	CurrentValue string `json:"currentValue"`
+}
+
+// KiroUpdateMeta is the `_meta.kiro` block kiro v3 attaches to updates.
+// session_info_update dispatches on Kind.
+type KiroUpdateMeta struct {
+	Kind         string `json:"kind"`
+	Replay       bool   `json:"replay"`
+	ContextUsage *struct {
+		UsagePercentage float64 `json:"usagePercentage"`
+	} `json:"contextUsage"`
+	// turn_completion
+	PromptTurnSummaries []struct {
+		Usage      float64 `json:"usage"`
+		Unit       string  `json:"unit"`
+		UnitPlural string  `json:"unitPlural"`
+	} `json:"promptTurnSummaries"`
+	ElapsedTime int64 `json:"elapsedTime"`
+	// failed tool_call_update: cancelled, denied or error
+	FailureReason string `json:"failureReason"`
 }
 
 type ContentBlock struct {
@@ -139,12 +189,16 @@ type PermissionParams struct {
 }
 
 type PermissionMeta struct {
-	TrustOptions []TrustOption `json:"trustOptions,omitempty"`
-}
-
-type TrustOption struct {
-	Label   string `json:"label"`
-	Display string `json:"display"`
+	Kiro struct {
+		// Consent says what the tool wants to do: capability is fs_read,
+		// fs_write, shell, mcp, web_fetch, ...; resource is the path, command
+		// or "server/tool" it applies to.
+		Consent *struct {
+			Capability    string `json:"capability"`
+			Resource      string `json:"resource"`
+			WorkspaceRoot string `json:"workspaceRoot"`
+		} `json:"consent"`
+	} `json:"kiro"`
 }
 
 type PermissionTool struct {
@@ -156,9 +210,12 @@ type PermissionOption struct {
 	Kind     string `json:"kind"`
 }
 
-// FSReadParams wraps fs/read_text_file params.
+// FSReadParams wraps fs/read_text_file params. Line is 1-based; zero values
+// mean "from the start" and "to the end".
 type FSReadParams struct {
-	Path string `json:"path"`
+	Path  string `json:"path"`
+	Line  int    `json:"line,omitempty"`
+	Limit int    `json:"limit,omitempty"`
 }
 
 // FSWriteParams wraps fs/write_text_file params.

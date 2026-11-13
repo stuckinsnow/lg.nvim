@@ -20,7 +20,7 @@ import (
 )
 
 var providers = map[string][]string{
-	"kiro":     {"kiro-cli", "acp"},
+	"kiro":     {"kiro-cli", "acp", "--agent-engine=v3"},
 	"opencode": {"opencode", "acp"},
 }
 

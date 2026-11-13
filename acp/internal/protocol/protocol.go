@@ -39,6 +39,11 @@ func SessionSetModelRequest(id int, sessionID, modelID string) Message {
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/set_model", Params: params}
 }
 
+func SessionSetConfigOptionRequest(id int, sessionID, configID, value string) Message {
+	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "configId": configID, "value": value})
+	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/set_config_option", Params: params}
+}
+
 func SessionCancelNotification(sessionID string) Message {
 	params, _ := json.Marshal(map[string]any{"sessionId": sessionID})
 	return Message{JSONRPC: "2.0", Method: "session/cancel", Params: params}
@@ -65,6 +70,12 @@ func PermissionResponse(id *RPCID, optionID string) Message {
 	return Message{JSONRPC: "2.0", ID: id, Result: result}
 }
 
+// MethodNotFoundResponse answers an agent-to-client request lg doesn't handle,
+// so the agent never waits on it.
+func MethodNotFoundResponse(id *RPCID, method string) Message {
+	return Message{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: -32601, Message: "Method not found: " + method}}
+}
+
 func FSReadResponse(id *RPCID, content string) Message {
 	result, _ := json.Marshal(map[string]any{"content": content})
 	return Message{JSONRPC: "2.0", ID: id, Result: result}
@@ -72,24 +83,6 @@ func FSReadResponse(id *RPCID, content string) Message {
 
 func FSWriteResponse(id *RPCID) Message {
 	return Message{JSONRPC: "2.0", ID: id, Result: json.RawMessage("null")}
-}
-
-func CommandExecuteRequest(id int, sessionID, command string, args map[string]any) Message {
-	cmd := command
-	if len(cmd) > 0 && cmd[0] == '/' {
-		cmd = cmd[1:]
-	}
-	if args == nil {
-		args = map[string]any{}
-	}
-	params, _ := json.Marshal(map[string]any{
-		"sessionId": sessionID,
-		"command": map[string]any{
-			"command": cmd,
-			"args":    args,
-		},
-	})
-	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "_kiro.dev/commands/execute", Params: params}
 }
 
 // GenericRequest builds an arbitrary JSON-RPC request with the given method and params.
