@@ -191,25 +191,12 @@ server name, and these tools are themselves named `lg_write_file` /
 
 ## Prompt Prefixes
 
-Use these prefixes in your prompt to enable special modes:
+Start a prompt with a prefix such as `@HINT`, `@ASK` or `@INFO` to change what
+lg does with it, for example review the code instead of editing it, or add LSP
+info as context. Type `@` in the prompt window to list them.
 
-| Prefix | Description |
-|---|---|
-| `@INFO` | AI highlights regions that need changes and explains what to do — no code written. Use `<leader>aA` to convert highlighted regions to real paint. |
-| `@HINT` | AI reviews code and publishes findings as editor diagnostics (squiggly underlines + hover messages). Read-only — no edits. Uses a dedicated reviewer agent mode. |
-| `@SUGGEST` | AI publishes code suggestions as diagnostics — hover to see recommended code. |
-| `@HELP` | AI highlights regions + publishes code suggestions for each. |
-| `@GIT` | Spawns a cheap subagent (Haiku/GPT-4.1) to analyze git history, then injects the result as context into the main session. |
-| `@DIAG` | Tells the AI to check LSP diagnostics before making edits. |
-| `@LSP` | Gathers LSP info (types, references) for painted regions and includes it as context. |
-| `@FILE_LSP` | Gathers LSP diagnostics for the entire current file. |
-| `@TSC` | Runs `tsc --noEmit` and includes type errors as context. |
-| `@SUB` | Runs the next prefix as a subagent (e.g. `@SUB HINT`) — doesn't block the main session. |
-| `@ASK` | Read-only chat — AI answers questions about painted code but cannot edit any files. |
-| `@SHELL` | Spawns a shell subagent that runs commands with manual approval. |
-| `@DEVLENS` | Inspects React components in the browser via DevLens, injects component state/props as context. |
-
-Prefixes can be combined: `@DIAG @GIT fix the auth bug`
+See [docs/ai/prefixes.md](docs/ai/prefixes.md) for what each prefix does and
+where its results show up.
 
 ### Prompt Shortcuts
 
