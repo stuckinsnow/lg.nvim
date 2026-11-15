@@ -1,5 +1,5 @@
 --- Chat: visual selection → chat-only prompt (no editing allowed)
---- Always uses OpenCode GPT-4.1 via ephemeral session.
+--- Always uses OpenCode github-copilot/auto via ephemeral session.
 
 local session = require("lg.session.session")
 local window = require("lg.ui.window")
@@ -15,9 +15,13 @@ function M.quick_chat()
 	local snippet = string.format("%s lines %d–%d:\n```\n%s\n```", fname, s[2], e[2], table.concat(lines, "\n"))
 
 	require("lg.ui.prompt").open(function(prompt)
-		if not prompt or prompt == "" then return end
+		if not prompt or prompt == "" then
+			return
+		end
 		local full = "You are in chat-only mode. Do NOT edit any code or use any editing tools. Just answer the question.\n\nCode snippet:\n"
-			.. snippet .. "\n\n" .. prompt
+			.. snippet
+			.. "\n\n"
+			.. prompt
 		window.add_prompt(prompt)
 		window.open()
 		session.send_quick_chat(full)

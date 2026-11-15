@@ -51,15 +51,12 @@ func (s *Session) SetMode(modeID string) error {
 	return s.proc.Write(protocol.SessionSetModeRequest(id, s.ID, modeID))
 }
 
-// SetModel switches the session model. Kiro v3 only accepts the model as a
-// config option; other agents use session/set_model.
+// SetModel switches the session model via the "model" config option. Kiro v3
+// and opencode 2.x only accept this; opencode 2.x removed session/set_model.
 func (s *Session) SetModel(modelID string) error {
 	id := s.proc.NextID()
 	s.proc.TrackResponse(id, func(msg *protocol.Message) {})
-	if s.proc.IsKiro() {
-		return s.proc.Write(protocol.SessionSetConfigOptionRequest(id, s.ID, "model", modelID))
-	}
-	return s.proc.Write(protocol.SessionSetModelRequest(id, s.ID, modelID))
+	return s.proc.Write(protocol.SessionSetConfigOptionRequest(id, s.ID, "model", modelID))
 }
 
 // RPCCall sends an arbitrary JSON-RPC request and tracks the response.
@@ -193,6 +190,9 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 			if co.ID == "mode" {
 				s.setMode(co.CurrentValue)
 			}
+		}
+		if mi := protocol.ParseModelsInfo(params.Update); mi != nil && len(mi.AvailableModels) > 0 {
+			s.proc.ReplaceModels(mi)
 		}
 	case "available_commands_update":
 		cmds := make([]map[string]string, 0, len(update.AvailableCommands))

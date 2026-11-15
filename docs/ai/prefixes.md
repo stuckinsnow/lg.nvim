@@ -10,22 +10,22 @@ the AI edits the painted regions directly.
 
 ## Quick reference
 
-| Prefix | Edits code? | Where the result shows up | Needs paint? |
-| --- | --- | --- | --- |
-| *(none)* | Yes, painted regions only | The buffer | Yes |
-| `@ASK` | No | Chat panel | No |
-| `@INFO` | No | Highlighted regions, quickfix list, chat panel | No |
-| `@HINT` | No | Diagnostics in the buffer | No |
-| `@SUGGEST` | No | Diagnostics with suggested code on hover | No |
-| `@HELP` | No | Highlighted regions, quickfix list, diagnostics with suggested code | No |
-| `@SHELL` | No | Chat panel (runs shell commands you approve) | No |
-| `@GIT` | Yes, after the git analysis | Chat panel, then the buffer | No |
-| `@DEVLENS` | Yes | The buffer | No |
-| `@LSP` | Yes | The buffer | Yes |
-| `@FILE_LSP` | Yes | The buffer | Yes |
-| `@DIAG` | Yes | The buffer | Yes |
-| `@TSC` | Yes | The buffer | Yes |
-| `@SUB` | Modifier | Runs `@HINT`, `@SUGGEST` or `@HELP` in the background | No |
+| Prefix      | Edits code?                 | Where the result shows up                                           | Needs paint? |
+| ----------- | --------------------------- | ------------------------------------------------------------------- | ------------ |
+| _(none)_    | Yes, painted regions only   | The buffer                                                          | Yes          |
+| `@ASK`      | No                          | Chat panel                                                          | No           |
+| `@INFO`     | No                          | Highlighted regions, quickfix list, chat panel                      | No           |
+| `@HINT`     | No                          | Diagnostics in the buffer                                           | No           |
+| `@SUGGEST`  | No                          | Diagnostics with suggested code on hover                            | No           |
+| `@HELP`     | No                          | Highlighted regions, quickfix list, diagnostics with suggested code | No           |
+| `@SHELL`    | No                          | Chat panel (runs shell commands you approve)                        | No           |
+| `@GIT`      | Yes, after the git analysis | Chat panel, then the buffer                                         | No           |
+| `@DEVLENS`  | Yes                         | The buffer                                                          | No           |
+| `@LSP`      | Yes                         | The buffer                                                          | Yes          |
+| `@FILE_LSP` | Yes                         | The buffer                                                          | Yes          |
+| `@DIAG`     | Yes                         | The buffer                                                          | Yes          |
+| `@TSC`      | Yes                         | The buffer                                                          | Yes          |
+| `@SUB`      | Modifier                    | Runs `@HINT`, `@SUGGEST` or `@HELP` in the background               | No           |
 
 ## Asking and reviewing (no edits)
 
@@ -90,7 +90,7 @@ approval first. Output and the AI's reply appear in the chat panel.
 
 ### `@GIT`
 
-A cheap model (claude-haiku-4.5 on Kiro, gpt-4.1 on opencode) first looks
+A cheap model (claude-haiku-4.5 on Kiro, github-copilot/auto on opencode) first looks
 through git history to answer your question. Its findings appear in the chat
 panel, then your request is sent to the main session with them as context.
 

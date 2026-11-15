@@ -231,15 +231,13 @@ local function connect(on_ready)
 
 			refresh_session_count()
 
+			-- Restore the saved model even when it's missing from this first
+			-- list: opencode only adds some models (github-copilot/auto) in a
+			-- later config_option_update.
 			local saved = load_state()
 			if saved.model and session_models then
-				for _, m in ipairs(session_models.availableModels or {}) do
-					if m.modelId == saved.model then
-						client.set_model(main_session_id, saved.model)
-						session_models.currentModelId = saved.model
-						break
-					end
-				end
+				client.set_model(main_session_id, saved.model)
+				session_models.currentModelId = saved.model
 			end
 
 			client.set_mode(main_session_id, resolve_mode("lg"))
@@ -411,7 +409,9 @@ function M._setup_event_handlers()
 				data = parsed
 			end
 		end
-		if not data then return end
+		if not data then
+			return
+		end
 		require("lg.ui.window").add_metering(data)
 	end)
 
@@ -522,6 +522,9 @@ function M.setup(user_opts)
 		connect = connect,
 		get_models = function()
 			return session_models
+		end,
+		set_models = function(m)
+			session_models = m
 		end,
 		set_current_model = function(id)
 			if session_models then
@@ -938,7 +941,8 @@ function M._run_handoff(plan)
 			win.add_status("handoff failed: " .. (resp and resp.error or "unknown"))
 			return
 		end
-		local prompt = "Execute this plan now using lg_write_file. Read the file first if you need to verify old_text matches, but do not re-plan or re-ask for confirmation — the user already approved.\n\n--- PLAN ---\n" .. plan
+		local prompt = "Execute this plan now using lg_write_file. Read the file first if you need to verify old_text matches, but do not re-plan or re-ask for confirmation — the user already approved.\n\n--- PLAN ---\n"
+			.. plan
 		status.start("Executing plan...")
 		M._on_done = function()
 			_busy = false

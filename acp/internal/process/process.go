@@ -28,10 +28,11 @@ type Process struct {
 	sessionsMu sync.RWMutex
 	pendingMu  sync.Mutex
 
-	ready   chan struct{} // closed when initialize handshake completes
-	initErr error
-	models  *protocol.ModelsInfo
-	kiro    bool // agent advertised _meta.kiro capabilities (kiro v3)
+	ready    chan struct{} // closed when initialize handshake completes
+	initErr  error
+	models   *protocol.ModelsInfo
+	modelsMu sync.RWMutex
+	kiro     bool // agent advertised _meta.kiro capabilities (kiro v3)
 }
 
 // MessageHandler receives routed messages for a session.
@@ -161,21 +162,33 @@ func (p *Process) UnregisterSession(sessionID string) {
 }
 
 // IsKiro reports whether the agent is kiro v3, which uses kiro's extension
-// methods (_kiro/*) and session/set_config_option instead of set_model.
+// methods (_kiro/*).
 func (p *Process) IsKiro() bool {
 	return p.kiro
 }
 
-// Models returns the models info from the first session creation, if available.
+// Models returns the latest models info reported by the agent, if any.
 func (p *Process) Models() *protocol.ModelsInfo {
+	p.modelsMu.RLock()
+	defer p.modelsMu.RUnlock()
 	return p.models
 }
 
 // SetModels stores models info (called by session manager on first session/new).
 func (p *Process) SetModels(m *protocol.ModelsInfo) {
+	p.modelsMu.Lock()
+	defer p.modelsMu.Unlock()
 	if p.models == nil {
 		p.models = m
 	}
+}
+
+// ReplaceModels overwrites the models info. opencode 2.x sends its real,
+// routable model list in config_option_update after session/new.
+func (p *Process) ReplaceModels(m *protocol.ModelsInfo) {
+	p.modelsMu.Lock()
+	defer p.modelsMu.Unlock()
+	p.models = m
 }
 
 // Terminate kills the subprocess and its process group.

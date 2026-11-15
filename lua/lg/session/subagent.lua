@@ -50,7 +50,9 @@ function M.run(config)
 			local unsubs = {}
 
 			unsubs[#unsubs + 1] = client.on("text", function(ev)
-				if ev.session_id ~= sub_sid then return end
+				if ev.session_id ~= sub_sid then
+					return
+				end
 				agent_text = agent_text .. ev.text
 				if config.on_text then
 					config.on_text(ev.text)
@@ -60,12 +62,16 @@ function M.run(config)
 			end)
 
 			unsubs[#unsubs + 1] = client.on("tool_call", function(ev)
-				if ev.session_id ~= sub_sid then return end
+				if ev.session_id ~= sub_sid then
+					return
+				end
 				status.update(config.label .. ": " .. (ev.text or "unknown"))
 			end)
 
 			unsubs[#unsubs + 1] = client.on("tool_error", function(ev)
-				if ev.session_id ~= sub_sid then return end
+				if ev.session_id ~= sub_sid then
+					return
+				end
 				if config.track_tool_errors ~= false then
 					tool_error = ev.text or "unknown error"
 				end
@@ -73,10 +79,16 @@ function M.run(config)
 			end)
 
 			unsubs[#unsubs + 1] = client.on("prompt_done", function(ev)
-				if ev.session_id ~= sub_sid then return end
-				for _, unsub in ipairs(unsubs) do unsub() end
+				if ev.session_id ~= sub_sid then
+					return
+				end
+				for _, unsub in ipairs(unsubs) do
+					unsub()
+				end
 				client.destroy_session(sub_sid)
-				if tool_error then status.flash("Tool error: " .. tool_error) end
+				if tool_error then
+					status.flash("Tool error: " .. tool_error)
+				end
 				status.stop(config.label .. " done")
 				if config.finish_subagent ~= false then
 					require("lg.ui.window").finish_subagent()
@@ -90,8 +102,12 @@ function M.run(config)
 			-- A failed turn never emits prompt_done, so tear down here too or the
 			-- handlers, session and spinner all leak.
 			unsubs[#unsubs + 1] = client.on("prompt_error", function(ev)
-				if ev.session_id ~= sub_sid then return end
-				for _, unsub in ipairs(unsubs) do unsub() end
+				if ev.session_id ~= sub_sid then
+					return
+				end
+				for _, unsub in ipairs(unsubs) do
+					unsub()
+				end
 				client.destroy_session(sub_sid)
 
 				local model_check = require("lg.session.model-check")
@@ -114,11 +130,15 @@ function M.run(config)
 			end)
 
 			unsubs[#unsubs + 1] = client.on("permission_request", function(ev)
-				if ev.session_id ~= sub_sid then return end
+				if ev.session_id ~= sub_sid then
+					return
+				end
 				local data = ev.data
 				if type(data) == "string" then
 					local ok2, parsed = pcall(vim.json.decode, data)
-					if ok2 then data = parsed end
+					if ok2 then
+						data = parsed
+					end
 				end
 				local options = data.options or {}
 
@@ -135,7 +155,9 @@ function M.run(config)
 							oid = opt.optionId
 						end
 					end
-					if oid then client.respond_permission(sub_sid, data.rpc_id, oid) end
+					if oid then
+						client.respond_permission(sub_sid, data.rpc_id, oid)
+					end
 				end
 			end)
 
@@ -154,8 +176,12 @@ function M.run(config)
 				end
 			end
 
-			if config.model_id then
-				client.set_model(sub_sid, config.model_id, function()
+			-- Without an explicit model, follow the main session's model. A new
+			-- opencode session otherwise starts on opencode's default, which
+			-- can be a rate-limited free model.
+			local model_id = config.model_id or require("lg.session.models").current_model()
+			if model_id then
+				client.set_model(sub_sid, model_id, function()
 					set_mode_then_prompt()
 				end)
 			else
@@ -180,7 +206,9 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 		track_tool_errors = false,
 		on_done = function()
 			svr.unregister_session(sid)
-			if on_done then on_done() end
+			if on_done then
+				on_done()
+			end
 		end,
 		on_fail = function()
 			svr.unregister_session(sid)
@@ -194,7 +222,9 @@ function M.send_shell(prompt, on_done)
 		prompt = { { type = "text", text = prompt } },
 		label = "Shell",
 		manual_permissions = true,
-		on_done = function(text) on_done(text) end,
+		on_done = function(text)
+			on_done(text)
+		end,
 		on_fail = function()
 			status.stop("Shell agent failed")
 			on_done("")
@@ -203,14 +233,16 @@ function M.send_shell(prompt, on_done)
 end
 
 function M.send_git(prompt, on_done)
-	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/gpt-4.1" }
+	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/auto" }
 	local model_id = cheap[M._opts().provider] or "claude-haiku-4.5"
 
 	M.run({
 		prompt = { { type = "text", text = prompt } },
 		model_id = model_id,
 		label = "Git analysis (" .. model_id .. ")",
-		on_done = function(text) on_done(text) end,
+		on_done = function(text)
+			on_done(text)
+		end,
 		on_fail = function()
 			status.stop("Git agent failed")
 			on_done("")
@@ -219,7 +251,7 @@ function M.send_git(prompt, on_done)
 end
 
 function M.send_devlens(prompt, on_done)
-	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/gpt-4.1" }
+	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/auto" }
 	local model_id = cheap[M._opts().provider] or "claude-haiku-4.5"
 
 	M.run({
@@ -227,7 +259,9 @@ function M.send_devlens(prompt, on_done)
 		prompt = { { type = "text", text = prompt } },
 		model_id = model_id,
 		label = "DevLens (" .. model_id .. ")",
-		on_done = function(text) on_done(text) end,
+		on_done = function(text)
+			on_done(text)
+		end,
 		on_fail = function()
 			status.stop("DevLens agent failed")
 			on_done("")
@@ -236,25 +270,29 @@ function M.send_devlens(prompt, on_done)
 end
 
 function M.send_quick_chat(prompt, on_done, set_override, clear_override)
-	local model_id = "github-copilot/gpt-4.1"
+	local model_id = "github-copilot/auto"
 	set_override({ provider = "opencode", model = model_id })
 
 	M.run({
 		prompt = { { type = "text", text = prompt } },
 		model_id = model_id,
-		label = "Quick chat (GPT-4.1)",
+		label = "Quick chat (Copilot auto)",
 		finish_subagent = false,
 		on_text = function(text)
 			require("lg.ui.window").append_agent_text(text)
 		end,
 		on_done = function()
 			clear_override()
-			if on_done then on_done() end
+			if on_done then
+				on_done()
+			end
 		end,
 		on_fail = function()
 			clear_override()
 			status.stop("Quick chat failed")
-			if on_done then on_done() end
+			if on_done then
+				on_done()
+			end
 		end,
 	})
 end
@@ -263,8 +301,12 @@ end
 --- @param config { mode_id: string, scope?: string, label: string, track_tool_errors?: boolean }
 function M.send_mode_subagent(config, prompt, regions, context_regions, on_done)
 	local all_ctx = {}
-	for _, r in ipairs(regions) do all_ctx[#all_ctx + 1] = r end
-	for _, r in ipairs(context_regions or {}) do all_ctx[#all_ctx + 1] = r end
+	for _, r in ipairs(regions) do
+		all_ctx[#all_ctx + 1] = r
+	end
+	for _, r in ipairs(context_regions or {}) do
+		all_ctx[#all_ctx + 1] = r
+	end
 	local has_scope = #regions > 0
 	local extra = (config.scope and has_scope) and { scope = config.scope } or nil
 	local messages = protocol.build_prompt({}, all_ctx, prompt, nil, nil, nil, extra)
@@ -275,7 +317,9 @@ function M.send_mode_subagent(config, prompt, regions, context_regions, on_done)
 		label = config.label,
 		track_tool_errors = config.track_tool_errors,
 		on_done = function(_, tool_error)
-			if on_done then on_done(tool_error) end
+			if on_done then
+				on_done(tool_error)
+			end
 		end,
 	})
 end

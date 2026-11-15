@@ -75,6 +75,7 @@ A `build.sh` script builds all Go binaries:
 ```
 
 This builds:
+
 - `acp/lg-acp` — ACP session manager (subprocess bridge)
 - `mcp/lg-mcp` — main MCP server
 - `git-mcp/lg-git-mcp` — git MCP server
@@ -115,32 +116,32 @@ talk to Neovim over it. Hints use a second socket at `/dev/shm/lg-hint.sock`.
 
 ### MCP servers
 
-| Server | Binary | Tools it exposes |
-|---|---|---|
-| `lg` | `mcp/lg-mcp` | `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat` |
-| `lg-git` | `git-mcp/lg-git-mcp` | `git_log`, `git_show`, `git_diff`, `git_blame` |
-| `lg-hint` | `hint-mcp/lg-hint-mcp` | `lg_hint`, `lg_suggest`, `get_hints` |
-| `devlens` | external devlens server (private, optional) | React component inspection |
+| Server    | Binary                                      | Tools it exposes                                                                                                              |
+| --------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `lg`      | `mcp/lg-mcp`                                | `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat` |
+| `lg-git`  | `git-mcp/lg-git-mcp`                        | `git_log`, `git_show`, `git_diff`, `git_blame`                                                                                |
+| `lg-hint` | `hint-mcp/lg-hint-mcp`                      | `lg_hint`, `lg_suggest`, `get_hints`                                                                                          |
+| `devlens` | external devlens server (private, optional) | React component inspection                                                                                                    |
 
 ### Agents
 
 Each mode below maps to one agent. The tool column is the canonical whitelist —
 configure the same set in whichever provider you use.
 
-| Agent | Role | Whitelisted tools |
-|---|---|---|
-| `lg` | Paint edit (default) | `grep`, `glob`, `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `get_hints` |
-| `lg-chat` | Chat edit via inline diff | `grep`, `glob`, `read_buffer`, `lg_write_file`, `get_diagnostics`, devlens |
-| `lg-plan` | Planning, no writes | `grep`, `glob`, `read_buffer`, `handoff_to_chat` |
-| `lg-oneshot` | Isolated quick edit | `grep`, `glob`, all `lg` tools, all `lg-git` tools |
-| `lg-info` | Info paint (highlight only) | `read`, `grep`, `glob`, `lg_paint_regions` |
-| `reviewer` | Hint diagnostics (read-only) | `read`, `grep`, `glob`, `lg_hint` |
-| `suggester` | Code suggestions (read-only) | `read`, `grep`, `glob`, `lg_suggest` |
-| `helper` | Highlight + suggest (read-only) | `read`, `grep`, `glob`, `lg_paint_regions`, `lg_hint`, `lg_suggest` |
-| `asker` | Read-only Q&A | `read`, `grep`, `glob`, `get_hints` |
-| `lg-shell` | Shell with manual approval | `read`, shell |
-| `devlens` | React component inspection | `read`, `grep`, `glob`, devlens |
-| `fullstack` | Full agentic mode | `read`, shell, `grep`, `glob`, all `lg` + `lg-git` tools, `get_hints` |
+| Agent        | Role                            | Whitelisted tools                                                                                  |
+| ------------ | ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `lg`         | Paint edit (default)            | `grep`, `glob`, `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `get_hints` |
+| `lg-chat`    | Chat edit via inline diff       | `grep`, `glob`, `read_buffer`, `lg_write_file`, `get_diagnostics`, devlens                         |
+| `lg-plan`    | Planning, no writes             | `grep`, `glob`, `read_buffer`, `handoff_to_chat`                                                   |
+| `lg-oneshot` | Isolated quick edit             | `grep`, `glob`, all `lg` tools, all `lg-git` tools                                                 |
+| `lg-info`    | Info paint (highlight only)     | `read`, `grep`, `glob`, `lg_paint_regions`                                                         |
+| `reviewer`   | Hint diagnostics (read-only)    | `read`, `grep`, `glob`, `lg_hint`                                                                  |
+| `suggester`  | Code suggestions (read-only)    | `read`, `grep`, `glob`, `lg_suggest`                                                               |
+| `helper`     | Highlight + suggest (read-only) | `read`, `grep`, `glob`, `lg_paint_regions`, `lg_hint`, `lg_suggest`                                |
+| `asker`      | Read-only Q&A                   | `read`, `grep`, `glob`, `get_hints`                                                                |
+| `lg-shell`   | Shell with manual approval      | `read`, shell                                                                                      |
+| `devlens`    | React component inspection      | `read`, `grep`, `glob`, devlens                                                                    |
+| `fullstack`  | Full agentic mode               | `read`, shell, `grep`, `glob`, all `lg` + `lg-git` tools, `get_hints`                              |
 
 The two providers name and restrict tools differently:
 
@@ -202,11 +203,11 @@ where its results show up.
 
 Use `#` shortcuts to quickly reference files in your prompt:
 
-| Shortcut | Expands to |
-|---|---|
-| `#buffer` | `@<current file path>` |
+| Shortcut   | Expands to                     |
+| ---------- | ------------------------------ |
+| `#buffer`  | `@<current file path>`         |
 | `#buffdir` | `@<current file's directory>/` |
-| `#./` | `@` (relative path prefix) |
+| `#./`      | `@` (relative path prefix)     |
 
 These are available as blink.cmp completions when typing `@` or `#` in the prompt.
 
@@ -260,6 +261,7 @@ Paint regions that were modified in specific git commits. Pick commits via fzf, 
 ## Add File
 
 Attach whole files as read-only context. Three methods available via `lg.add_file()`:
+
 - Paste a file path
 - Browse with mini.files
 - Search with fzf
@@ -300,7 +302,7 @@ Switch models or providers mid-session:
 `@GIT` spawns a separate ACP session on a cheap model to analyze git history:
 
 - **kiro**: uses `claude-haiku-4.5`
-- **opencode**: uses `github-copilot/gpt-4.1`
+- **opencode**: uses `github-copilot/auto`
 
 The subagent has access to `git_log`, `git_show`, `git_diff`, and `git_blame` via its own MCP server. Its analysis is automatically injected into the main session as context — you don't need to copy anything.
 
@@ -308,18 +310,18 @@ Example: `@GIT something broke in the last 3 commits, find what changed in auth.
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `:LgPaint` | Paint current visual selection |
-| `:LgClear` | Clear all painted regions |
-| `:LgClearLast` | Clear the last painted region |
-| `:LgSend [prompt]` | Send painted regions to kiro-cli |
-| `:LgClearSession` | Kill session, start fresh |
-| `:LgContext` | Paint visual selection as read-only context |
-| `:LgClearContext` | Clear all context regions |
-| `:LgClearAll` | Clear all paint + context |
-| `:LgQuickEdit` | Quick edit: paint + prompt + isolated session in one step |
-| `:LgToggle` | Toggle side panel |
+| Command            | Description                                               |
+| ------------------ | --------------------------------------------------------- |
+| `:LgPaint`         | Paint current visual selection                            |
+| `:LgClear`         | Clear all painted regions                                 |
+| `:LgClearLast`     | Clear the last painted region                             |
+| `:LgSend [prompt]` | Send painted regions to kiro-cli                          |
+| `:LgClearSession`  | Kill session, start fresh                                 |
+| `:LgContext`       | Paint visual selection as read-only context               |
+| `:LgClearContext`  | Clear all context regions                                 |
+| `:LgClearAll`      | Clear all paint + context                                 |
+| `:LgQuickEdit`     | Quick edit: paint + prompt + isolated session in one step |
+| `:LgToggle`        | Toggle side panel                                         |
 
 ## Config
 

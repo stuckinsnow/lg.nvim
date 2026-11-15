@@ -128,7 +128,7 @@ Example: `@HINT find potential null pointer issues in this code`
 `@GIT` spawns a separate ACP session on a cheap model:
 
   - kiro: claude-haiku-4.5
-  - opencode: github-copilot/gpt-4.1
+  - opencode: github-copilot/auto
 
 Tools: `git_log`, `git_show`, `git_diff`, `git_blame`
 

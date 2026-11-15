@@ -34,11 +34,6 @@ func SessionSetModeRequest(id int, sessionID, modeID string) Message {
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/set_mode", Params: params}
 }
 
-func SessionSetModelRequest(id int, sessionID, modelID string) Message {
-	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "modelId": modelID})
-	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/set_model", Params: params}
-}
-
 func SessionSetConfigOptionRequest(id int, sessionID, configID, value string) Message {
 	params, _ := json.Marshal(map[string]any{"sessionId": sessionID, "configId": configID, "value": value})
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/set_config_option", Params: params}
