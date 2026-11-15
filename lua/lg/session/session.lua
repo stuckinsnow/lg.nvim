@@ -19,6 +19,10 @@ local model_check = require("lg.session.model-check")
 local M = {}
 
 local _planner_active = false
+-- The ACP mode update is asynchronous. Keep the mode we most recently asked
+-- for so a delayed update from the previous switch cannot put the planner
+-- state back after it has been disabled.
+local _requested_mode = nil
 
 --- @type string? main session id on the Go side
 local main_session_id = nil
@@ -487,6 +491,12 @@ function M._setup_event_handlers()
 		end
 		local new_agent = data.agentName
 		local prev = data.previousAgentName
+		if _requested_mode and new_agent ~= _requested_mode then
+			return
+		end
+		if new_agent == _requested_mode then
+			_requested_mode = nil
+		end
 		_planner_active = (new_agent == "lg-plan")
 		local win = require("lg.ui.window")
 		if _planner_active then
@@ -934,6 +944,7 @@ function M._run_handoff(plan)
 		return
 	end
 	_planner_active = false
+	_requested_mode = resolve_mode("lg-chat")
 	local win = require("lg.ui.window")
 	win.add_status("◀ plan confirmed — handing off to lg-chat")
 	client.set_mode(main_session_id, resolve_mode("lg-chat"), function(resp)
@@ -956,16 +967,42 @@ end
 
 function M.set_planner(enabled, callback)
 	_planner_active = enabled
+	_requested_mode = resolve_mode(enabled and "lg-plan" or "lg-chat")
 	connect(function(sid)
 		if not sid then
+			_requested_mode = nil
 			if callback then
 				callback(false)
 			end
 			return
 		end
 		client.set_mode(sid, resolve_mode(enabled and "lg-plan" or "lg-chat"), function(resp)
+			if
+				not (resp and resp.ok == true)
+				and _requested_mode == resolve_mode(enabled and "lg-plan" or "lg-chat")
+			then
+				_requested_mode = nil
+			end
 			if callback then
 				callback(resp and resp.ok == true)
+			end
+			if resp and resp.ok == true and not enabled then
+				-- A plan agent may keep behaving as a planner until it receives a
+				-- turn in its new mode. Send that transition explicitly instead of
+				-- requiring the user to type "exit plan mode" manually.
+				local messages = protocol.build_prompt(
+					{},
+					{},
+					"Exit plan mode now. You are the chat agent. Confirm that plan mode has been exited and that you are ready to make changes directly."
+				)
+				_busy = true
+				status.start("Exiting plan mode...")
+				vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
+				M._on_done = function()
+					_busy = false
+					flush_send_queue()
+				end
+				client.prompt(sid, messages)
 			end
 		end)
 	end)
@@ -976,6 +1013,7 @@ function M.is_planner_active()
 end
 function M.kill_planner()
 	_planner_active = false
+	_requested_mode = nil
 end
 
 -- ── Mode sends (hint/suggest/help on main session) ────────────────
