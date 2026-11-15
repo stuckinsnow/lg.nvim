@@ -84,6 +84,35 @@ func (s *Session) Cancel() {
 	}
 }
 
+// agentError reports an error the agent logged on stderr without answering
+// the prompt. The turn may still finish (agents can retry), so Lua decides
+// whether to wait or abort.
+func (s *Session) agentError(msg string) {
+	s.mu.Lock()
+	inFlight := len(s.onDone) > 0
+	s.mu.Unlock()
+	if inFlight {
+		s.events <- Event{Type: "agent_error", SessionID: s.ID, Error: msg}
+	}
+}
+
+// AbortPrompt ends the in-flight turn as failed with reason, for agents that
+// errored without answering session/prompt. The session stays usable: a late
+// response to the aborted prompt is ignored.
+func (s *Session) AbortPrompt(reason string) {
+	s.mu.Lock()
+	if len(s.onDone) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	clear(s.onDone)
+	s.mu.Unlock()
+	if s.ID != "" {
+		s.proc.Write(protocol.SessionCancelNotification(s.ID))
+	}
+	s.events <- Event{Type: "prompt_error", SessionID: s.ID, Error: reason}
+}
+
 // --- internal message handling ---
 
 func (s *Session) handleMessage(msg *protocol.Message) {
@@ -298,6 +327,12 @@ func (s *Session) handleFSWrite(msg *protocol.Message) {
 }
 
 func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message) {
+	s.mu.Lock()
+	_, pending := s.onDone[rpcID]
+	s.mu.Unlock()
+	if !pending {
+		return // aborted turn; Lua already got prompt_error for it
+	}
 	if msg.Error != nil {
 		// Drop the pending onDone: the turn will never complete, and leaving it
 		// behind leaks the callback for the lifetime of the session.

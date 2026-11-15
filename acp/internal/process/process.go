@@ -37,9 +37,13 @@ type Process struct {
 // MessageHandler receives routed messages for a session.
 type MessageHandler func(msg *protocol.Message)
 
+// AgentErrorHandler receives errors the agent logged to stderr for a session.
+type AgentErrorHandler func(sessionID, msg string)
+
 // Spawn starts an ACP subprocess, performs the initialize handshake, and returns
-// a ready Process. Blocks until handshake completes or fails.
-func Spawn(args []string, clientName string) (*Process, error) {
+// a ready Process. Blocks until handshake completes or fails. onAgentError, if
+// set, is called for session errors the agent reports only on stderr.
+func Spawn(args []string, clientName string, onAgentError AgentErrorHandler) (*Process, error) {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -51,7 +55,10 @@ func Spawn(args []string, clientName string) (*Process, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
-	cmd.Stderr = io.Discard
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
 
 	p := &Process{
 		cmd:      cmd,
@@ -67,6 +74,7 @@ func Spawn(args []string, clientName string) (*Process, error) {
 	}
 
 	go p.readLoop(stdout)
+	go readStderr(stderr, onAgentError)
 
 	// Send initialize
 	id := p.NextID()
@@ -193,6 +201,23 @@ func (p *Process) readLoop(r io.Reader) {
 			continue
 		}
 		p.route(&msg)
+	}
+}
+
+// readStderr drains the agent's stderr so it never blocks on a full pipe, and
+// reports session errors that never reach the protocol stream.
+func readStderr(r io.Reader, onAgentError AgentErrorHandler) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		sid, msg, ok := protocol.ParseAgentError(scanner.Text())
+		if !ok {
+			continue
+		}
+		log.Printf("acp: agent error session=%s: %s", sid, msg)
+		if onAgentError != nil {
+			onAgentError(sid, msg)
+		}
 	}
 }
 

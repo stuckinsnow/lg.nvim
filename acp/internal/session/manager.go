@@ -34,12 +34,19 @@ func (m *Manager) ensureProcess() error {
 	if m.proc != nil {
 		return nil
 	}
-	proc, err := process.Spawn(m.cmd, m.clientName)
+	proc, err := process.Spawn(m.cmd, m.clientName, m.handleAgentError)
 	if err != nil {
 		return err
 	}
 	m.proc = proc
 	return nil
+}
+
+// handleAgentError forwards an error the agent logged on stderr to its session.
+func (m *Manager) handleAgentError(sessionID, msg string) {
+	if s := m.GetSession(sessionID); s != nil {
+		s.agentError(msg)
+	}
 }
 
 // CreateSession creates a new ACP session and returns it.

@@ -134,6 +134,12 @@ func (c *conn) handle(req Request) {
 		}
 		c.writeLine(Response{OK: true})
 
+	case "abort_prompt":
+		if sess := mgr.GetSession(req.SessionID); sess != nil {
+			sess.AbortPrompt(req.Reason)
+		}
+		c.writeLine(Response{OK: true})
+
 	case "destroy_session":
 		if sess := mgr.GetSession(req.SessionID); sess != nil {
 			sess.Cancel()

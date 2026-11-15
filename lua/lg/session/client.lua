@@ -219,6 +219,11 @@ function M.cancel(session_id)
 	M.send({ method = "cancel", session_id = session_id }, function() end)
 end
 
+--- End the in-flight turn as failed with `reason` (agent errored without replying).
+function M.abort_prompt(session_id, reason)
+	M.send({ method = "abort_prompt", session_id = session_id, reason = reason }, function() end)
+end
+
 function M.destroy_session(session_id)
 	M.send({ method = "destroy_session", session_id = session_id }, function() end)
 end

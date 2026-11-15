@@ -19,9 +19,11 @@ import (
 	"syscall"
 )
 
+// opencode gets --print-logs because it reports model call failures (usage
+// limits, auth) only in its logs; lg-acp reads them from stderr.
 var providers = map[string][]string{
 	"kiro":     {"kiro-cli", "acp", "--agent-engine=v3"},
-	"opencode": {"opencode", "acp"},
+	"opencode": {"opencode", "acp", "--print-logs"},
 }
 
 func main() {

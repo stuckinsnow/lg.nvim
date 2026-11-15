@@ -282,6 +282,34 @@ function M._setup_event_handlers()
 		status.flash("Tool failed: " .. (ev.text or "unknown"))
 	end)
 
+	-- The agent logged an error (e.g. usage limit) without ending the turn.
+	-- It may still recover, so let the user choose. Covers subagent sessions
+	-- too: aborting emits prompt_error, which their own handlers clean up.
+	local agent_errors = {} -- session_id → latest error, while the turn is live
+	client.on("agent_error", function(ev)
+		local sid = ev.session_id
+		local asking = agent_errors[sid] ~= nil
+		agent_errors[sid] = ev.error or "unknown error"
+		status.update("Agent error: " .. agent_errors[sid])
+		if asking then
+			return
+		end
+		vim.ui.select({ "Cancel request", "Keep waiting" }, {
+			prompt = "lg: agent error: " .. agent_errors[sid],
+		}, function(choice)
+			local err = agent_errors[sid]
+			-- nil when the turn already ended while the prompt was open
+			if err and choice == "Cancel request" then
+				client.abort_prompt(sid, err)
+			end
+		end)
+	end)
+	local function clear_agent_error(ev)
+		agent_errors[ev.session_id] = nil
+	end
+	client.on("prompt_done", clear_agent_error)
+	client.on("prompt_error", clear_agent_error)
+
 	client.on("prompt_done", function(ev)
 		if ev.session_id ~= main_session_id then
 			return

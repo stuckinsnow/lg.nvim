@@ -24,6 +24,7 @@ type Request struct {
 	MCPServers json.RawMessage `json:"mcp_servers,omitempty"`
 	Command    string          `json:"command,omitempty"`
 	Args       json.RawMessage `json:"args,omitempty"`
+	Reason     string          `json:"reason,omitempty"`
 }
 
 type Response struct {
