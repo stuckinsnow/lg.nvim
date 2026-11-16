@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 )
 
 // conn handles a single Lua client connection.
@@ -81,7 +82,31 @@ func (c *conn) handle(req Request) {
 			c.writeLine(Response{Error: ev.Error})
 			return
 		}
-		if mi := protocol.ParseModelsInfo(ev.Data); mi != nil && len(mi.AvailableModels) > 0 {
+		mi := protocol.ParseModelsInfo(ev.Data)
+		if mi == nil || len(mi.AvailableModels) == 0 {
+			// Providers can announce the mode config before the model config.
+			// Keep the initial response deterministic so the model picker does
+			// not race asynchronous config discovery during a provider switch.
+			deadline := time.NewTimer(5 * time.Second)
+			wait := true
+			for wait {
+				select {
+				case update := <-sess.Events():
+					if update.Type == "error" {
+						deadline.Stop()
+						c.writeLine(Response{Error: update.Error})
+						return
+					}
+					if candidate := protocol.ParseModelsInfo(update.Data); candidate != nil && len(candidate.AvailableModels) > 0 {
+						mi = candidate
+						wait = false
+					}
+				case <-deadline.C:
+					wait = false
+				}
+			}
+		}
+		if mi != nil && len(mi.AvailableModels) > 0 {
 			data, _ := json.Marshal(mi)
 			c.writeLine(Response{OK: true, SessionID: sess.ID, Models: data})
 		} else {

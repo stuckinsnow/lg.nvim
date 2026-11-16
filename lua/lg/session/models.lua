@@ -55,12 +55,14 @@ function M.pick_model(provider_filter)
 			if resp.models then
 				ctx.set_models(resp.models)
 			end
-			if not ctx.get_models() then
+			local provider = ctx.get_provider()
+			if not ctx.get_models() and provider ~= "opencode" then
 				vim.notify("lg: no models available", vim.log.levels.WARN)
 				return
 			end
 
-			vim.schedule(function()
+			local function show_picker()
+				vim.schedule(function()
 				-- Only include models under this provider prefix (e.g.
 				-- "github-copilot") when a filter is given.
 				local function matches(id)
@@ -70,6 +72,10 @@ function M.pick_model(provider_filter)
 				local labels = {}
 				local by_label = {}
 				local sm = ctx.get_models()
+				if not sm then
+					vim.notify("lg: no models available", vim.log.levels.WARN)
+					return
+				end
 				local current = sm.currentModelId
 				local default_model = sm.defaultModelId
 				local provider = ctx.get_provider()
@@ -208,7 +214,41 @@ function M.pick_model(provider_filter)
 						end
 					)
 				end)
+				end)
+			end
+
+			if provider ~= "opencode" then
+				show_picker()
+				return
+			end
+
+			-- OpenCode first exposes a broad configured list and then replaces it
+			-- with the entitlement-aware list. Do not render the first snapshot.
+			local settled = false
+			local unsubscribe
+			unsubscribe = client.on("models_updated", function(ev)
+				if settled or ev.session_id ~= sid then
+					return
+				end
+				settled = true
+				unsubscribe()
+				client.get_models(function(latest)
+					if latest.models then
+						ctx.set_models(latest.models)
+					end
+					show_picker()
+				end)
 			end)
+			-- A provider that never emits a refresh must not leave the picker
+			-- blocked forever; use the latest cache after one deadline.
+			vim.defer_fn(function()
+				if settled then
+					return
+				end
+				settled = true
+				unsubscribe()
+				show_picker()
+			end, 2000)
 		end)
 	end)
 end
@@ -293,11 +333,14 @@ function M.select_provider()
 			end
 			ctx.set_provider(picked)
 			ctx.clear()
-			ctx.save_state({ provider = picked, model = M.current_model() })
+			-- Model ids are provider-specific. Never carry the previous provider's
+			-- model into the new session; let the selected provider report its own
+			-- default instead.
+			ctx.save_state({ provider = picked, use_default_model = true })
 			vim.notify("lg: provider → " .. providers[picked].name, vim.log.levels.INFO)
-			vim.schedule(function()
-				M.select_model()
-			end)
+			-- Provider and model selection are separate operations. The new
+			-- provider owns model discovery and starts on its reported default;
+			-- open the model picker explicitly when a non-default is wanted.
 		end
 	)
 end
