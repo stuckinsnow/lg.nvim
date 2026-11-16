@@ -19,6 +19,17 @@ local function ensure_highlights()
 	vim.api.nvim_set_hl(0, "LgPaintSign", { fg = "#e5c07b", default = true })
 end
 
+local function highlight_range(bufnr, start_line, end_line)
+	vim.hl.range(
+		bufnr,
+		ns,
+		"LgPaintLine",
+		{ start_line - 1, 0 },
+		{ end_line - 1, 0 },
+		{ regtype = "V", inclusive = true, priority = 110 }
+	)
+end
+
 --- @param bufnr number
 --- @param start_line number 1-indexed
 --- @param end_line number 1-indexed
@@ -38,13 +49,8 @@ function M.add(bufnr, start_line, end_line)
 
 	local signs = require("lg.ui.signs")
 
+	highlight_range(bufnr, start_line, end_line)
 	for row = start_line - 1, end_line - 1 do
-		pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-			end_line = row + 1,
-			hl_group = "LgPaintLine",
-			hl_eol = true,
-			priority = 110,
-		})
 		pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
 			sign_text = signs.bracket(row, start_line, end_line),
 			sign_hl_group = "LgPaintSign",
@@ -117,13 +123,8 @@ function M.repaint(bufnr)
 			local max = vim.api.nvim_buf_line_count(bufnr)
 			local s = math.min(r.start_line, max)
 			local e = math.min(r.end_line, max)
+			highlight_range(bufnr, s, e)
 			for row = s - 1, e - 1 do
-				pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-					end_line = row + 1,
-					hl_group = "LgPaintLine",
-					hl_eol = true,
-					priority = 110,
-				})
 				pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
 					sign_text = signs.bracket(row, s, e),
 					sign_hl_group = "LgPaintSign",

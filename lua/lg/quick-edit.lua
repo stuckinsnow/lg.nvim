@@ -9,10 +9,15 @@ local paint_ns = vim.api.nvim_create_namespace("lg.ui.paint")
 
 local function highlight(bufnr, start_line, end_line)
 	local signs = require("lg.ui.signs")
+	vim.hl.range(
+		bufnr,
+		paint_ns,
+		"LgPaintLine",
+		{ start_line - 1, 0 },
+		{ end_line - 1, 0 },
+		{ regtype = "V", inclusive = true, priority = 110 }
+	)
 	for row = start_line - 1, end_line - 1 do
-		vim.api.nvim_buf_set_extmark(bufnr, paint_ns, row, 0, {
-			end_line = row + 1, hl_group = "LgPaintLine", hl_eol = true, priority = 110,
-		})
 		vim.api.nvim_buf_set_extmark(bufnr, paint_ns, row, 0, {
 			sign_text = signs.bracket(row, start_line, end_line),
 			sign_hl_group = "LgPaintSign",
