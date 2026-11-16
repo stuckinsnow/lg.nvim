@@ -31,7 +31,12 @@ func (c *conn) writeLine(v any) {
 	c.mu.Unlock()
 }
 
-func (c *conn) streamEvents(sess *session.Session) {
+func (c *conn) streamEvents(sess *session.Session, pending []session.Event) {
+	// Events can arrive while create_session waits for model discovery. Flush
+	// those first so updates are not lost before the streaming goroutine starts.
+	for _, ev := range pending {
+		c.writeLine(ev)
+	}
 	for ev := range sess.Events() {
 		c.writeLine(ev)
 	}
@@ -76,33 +81,42 @@ func (c *conn) handle(req Request) {
 			return
 		}
 		log.Printf("acp: waiting for session ready event...")
-		ev := <-sess.Events()
+		ev, ok := <-sess.Events()
+		if !ok {
+			c.writeLine(Response{Error: "session ended during creation"})
+			return
+		}
 		log.Printf("acp: got event type=%s", ev.Type)
 		if ev.Type == "error" {
 			c.writeLine(Response{Error: ev.Error})
 			return
 		}
 		mi := protocol.ParseModelsInfo(ev.Data)
+		pending := make([]session.Event, 0)
 		if mi == nil || len(mi.AvailableModels) == 0 {
 			// Providers can announce the mode config before the model config.
 			// Keep the initial response deterministic so the model picker does
 			// not race asynchronous config discovery during a provider switch.
 			deadline := time.NewTimer(5 * time.Second)
-			wait := true
-			for wait {
+			defer deadline.Stop()
+			waiting := true
+			for waiting && (mi == nil || len(mi.AvailableModels) == 0) {
 				select {
-				case update := <-sess.Events():
+				case update, open := <-sess.Events():
+					if !open {
+						waiting = false
+						continue
+					}
 					if update.Type == "error" {
-						deadline.Stop()
 						c.writeLine(Response{Error: update.Error})
 						return
 					}
+					pending = append(pending, update)
 					if candidate := protocol.ParseModelsInfo(update.Data); candidate != nil && len(candidate.AvailableModels) > 0 {
 						mi = candidate
-						wait = false
 					}
 				case <-deadline.C:
-					wait = false
+					waiting = false
 				}
 			}
 		}
@@ -115,7 +129,7 @@ func (c *conn) handle(req Request) {
 		c.mu.Lock()
 		c.sessions = append(c.sessions, sess)
 		c.mu.Unlock()
-		go c.streamEvents(sess)
+		go c.streamEvents(sess, pending)
 
 	case "prompt":
 		sess := mgr.GetSession(req.SessionID)
@@ -247,7 +261,7 @@ func (c *conn) handle(req Request) {
 		c.mu.Lock()
 		c.sessions = append(c.sessions, sess)
 		c.mu.Unlock()
-		go c.streamEvents(sess)
+		go c.streamEvents(sess, nil)
 
 	case "status":
 		c.writeLine(Response{OK: true, Active: len(mgr.Sessions())})
