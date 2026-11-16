@@ -53,9 +53,9 @@ func (s *Session) SetMode(modeID string) error {
 
 // SetModel switches the session model via the "model" config option. Kiro v3
 // and opencode 2.x only accept this; opencode 2.x removed session/set_model.
-func (s *Session) SetModel(modelID string) error {
+func (s *Session) SetModel(modelID string, onDone func(*protocol.Message)) error {
 	id := s.proc.NextID()
-	s.proc.TrackResponse(id, func(msg *protocol.Message) {})
+	s.proc.TrackResponse(id, onDone)
 	return s.proc.Write(protocol.SessionSetConfigOptionRequest(id, s.ID, "model", modelID))
 }
 
@@ -186,10 +186,25 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 	case "current_mode_update":
 		s.setMode(update.CurrentModeID)
 	case "config_option_update":
+		modelOption := false
 		for _, co := range update.ConfigOptions {
 			if co.ID == "mode" {
 				s.setMode(co.CurrentValue)
 			}
+		}
+		if modelID := changedModel(update); modelID != "" {
+			s.events <- Event{Type: "model_changed", SessionID: s.ID, Text: modelID}
+		}
+		for _, option := range update.ConfigOptions {
+			if option.ID == "model" {
+				modelOption = true
+				break
+			}
+		}
+		if modelOption {
+			// A provider can advertise a model after session/new. Forward the
+			// complete config update so clients can retry a pending selection.
+			s.emit("models_updated", params.Update)
 		}
 		if mi := protocol.ParseModelsInfo(params.Update); mi != nil && len(mi.AvailableModels) > 0 {
 			s.proc.ReplaceModels(mi)
@@ -205,6 +220,18 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 	default:
 		s.events <- Event{Type: "update", SessionID: s.ID, Data: params.Update}
 	}
+}
+
+// changedModel returns the model confirmed by a config update, if present.
+// Keeping this extraction separate makes the event contract easy to test
+// without starting a provider process.
+func changedModel(update protocol.SessionUpdate) string {
+	for _, option := range update.ConfigOptions {
+		if option.ID == "model" {
+			return option.CurrentValue
+		}
+	}
+	return ""
 }
 
 // handleInfoUpdate maps kiro's session_info_update kinds onto lg's events.

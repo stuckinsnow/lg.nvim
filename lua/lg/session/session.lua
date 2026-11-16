@@ -228,6 +228,9 @@ local function connect(on_ready)
 			main_session_id = resp.session_id
 			if resp.models then
 				session_models = resp.models
+				-- This is the provider's initial choice, before lg restores any
+				-- user-selected model. Keep it available as a distinct picker item.
+				session_models.defaultModelId = session_models.currentModelId
 				-- Surface stale pinned models now, rather than mid-turn when an
 				-- agent switch fails with an opaque error.
 				model_check.validate_agents(session_models, opts.provider)
@@ -239,7 +242,7 @@ local function connect(on_ready)
 			-- list: opencode only adds some models (github-copilot/auto) in a
 			-- later config_option_update.
 			local saved = load_state()
-			if saved.model and session_models then
+			if saved.model and not saved.use_default_model and session_models then
 				client.set_model(main_session_id, saved.model)
 				session_models.currentModelId = saved.model
 			end
@@ -534,6 +537,11 @@ function M.setup(user_opts)
 			return session_models
 		end,
 		set_models = function(m)
+			-- A later get_models response may reflect the restored model. Preserve
+			-- the provider default captured when this session was created.
+			m.defaultModelId = m.defaultModelId
+				or (session_models and session_models.defaultModelId)
+				or m.currentModelId
 			session_models = m
 		end,
 		set_current_model = function(id)

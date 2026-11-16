@@ -45,27 +45,42 @@ function M.quick_edit()
 		lines = lines,
 	}
 
-	require("lg.ui.prompt").open(function(prompt, flags)
-		if not prompt or prompt == "" then
-			clear_highlight(buf, start_line, end_line)
-			return
-		end
-
-		if flags.has_lsp then
-			local info = require("lg.tools.lsp").gather(buf, start_line, end_line)
-			if info ~= "" then prompt = prompt .. "\n\nLSP Information:\n" .. info end
-		end
-
-		local spin = spinners.start({ region })
-		session.send_oneshot(prompt, { region }, {}, function()
-			vim.schedule(function()
-				spin:stop()
+	local provider = session.current_provider() or "?"
+	local model = session.current_model()
+	local function info(model_id)
+		return "oneshot │ " .. provider .. "/" .. (model_id or "default")
+	end
+	local function open_prompt(model_id)
+		require("lg.ui.prompt").open(function(prompt, flags)
+			if not prompt or prompt == "" then
 				clear_highlight(buf, start_line, end_line)
+				return
+			end
+
+			if flags.has_lsp then
+				local lsp_info = require("lg.tools.lsp").gather(buf, start_line, end_line)
+				if lsp_info ~= "" then prompt = prompt .. "\n\nLSP Information:\n" .. lsp_info end
+			end
+
+			local spin = spinners.start({ region })
+			session.send_oneshot(prompt, { region }, {}, function()
+				vim.schedule(function()
+					spin:stop()
+					clear_highlight(buf, start_line, end_line)
+				end)
 			end)
-		end)
-	end, function()
-		clear_highlight(buf, start_line, end_line)
-	end)
+		end, function()
+			clear_highlight(buf, start_line, end_line)
+		end, info(model_id))
+	end
+
+	if model then
+		open_prompt(model)
+	else
+		session.fetch_model(vim.schedule_wrap(function(model_id)
+			open_prompt(model_id or "default")
+		end))
+	end
 end
 
 return M

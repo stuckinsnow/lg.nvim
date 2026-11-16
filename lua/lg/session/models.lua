@@ -71,6 +71,16 @@ function M.pick_model(provider_filter)
 				local by_label = {}
 				local sm = ctx.get_models()
 				local current = sm.currentModelId
+				local default_model = sm.defaultModelId
+				local provider = ctx.get_provider()
+
+				-- Keep the provider's default separate from the current model. The
+				-- current model may be lg's restored override.
+				if provider == "opencode" and default_model and matches(default_model) then
+					local label = "OpenCode default  →  " .. default_model
+					table.insert(labels, label)
+					by_label[label] = { id = default_model, use_default = true }
+				end
 
 				for _, m in ipairs(sm.availableModels or {}) do
 					if matches(m.modelId) then
@@ -82,7 +92,7 @@ function M.pick_model(provider_filter)
 							label = label .. "  (current)"
 						end
 						table.insert(labels, label)
-						by_label[label] = m.modelId
+						by_label[label] = { id = m.modelId, use_default = false }
 					end
 				end
 
@@ -101,15 +111,24 @@ function M.pick_model(provider_filter)
 					if not choice then
 						return
 					end
-					local model_id = by_label[choice]
-					if not model_id or model_id == current then
+					local selection = by_label[choice]
+					local model_id = selection and selection.id
+					local use_default = selection and selection.use_default
+					if not model_id or (model_id == current and not use_default) then
 						return
+					end
+					local function save_model_state()
+						ctx.save_state({
+							provider = ctx.get_provider(),
+							model = use_default and nil or model_id,
+							use_default_model = use_default or false,
+						})
 					end
 
 					local function apply_switch(strategy)
 						if strategy == "clear" then
 							ctx.reset()
-							ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+							save_model_state()
 							vim.notify("lg: model → " .. model_id .. " (session cleared)", vim.log.levels.INFO)
 						elseif strategy == "handoff" then
 							-- Ask old model to write a handoff prompt, then reset and send it
@@ -128,7 +147,7 @@ function M.pick_model(provider_filter)
 								vim.schedule(function()
 									status.stop("Handoff ready")
 									ctx.reset()
-									ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+									save_model_state()
 									-- Connect creates fresh session with new model
 									ctx.connect(function(new_sid)
 										if not new_sid then
@@ -163,7 +182,7 @@ function M.pick_model(provider_filter)
 
 					-- If no active session history, just switch directly
 					if not ctx.get_main_session_id() then
-						ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+						save_model_state()
 						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
 						return
 					end
@@ -172,7 +191,7 @@ function M.pick_model(provider_filter)
 					if not ctx.get_has_history() then
 						client.set_model(ctx.get_main_session_id(), model_id)
 						ctx.set_current_model(model_id)
-						ctx.save_state({ provider = ctx.get_provider(), model = model_id })
+						save_model_state()
 						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
 						return
 					end

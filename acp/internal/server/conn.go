@@ -122,11 +122,15 @@ func (c *conn) handle(req Request) {
 			c.writeLine(Response{Error: "unknown session"})
 			return
 		}
-		if err := sess.SetModel(req.ModelID); err != nil {
+		if err := sess.SetModel(req.ModelID, func(msg *protocol.Message) {
+			if msg.Error != nil {
+				c.writeLine(Response{Error: msg.Error.Detail()})
+				return
+			}
+			c.writeLine(Response{OK: true, Data: msg.Result})
+		}); err != nil {
 			c.writeLine(Response{Error: err.Error()})
-			return
 		}
-		c.writeLine(Response{OK: true})
 
 	case "cancel":
 		if sess := mgr.GetSession(req.SessionID); sess != nil {

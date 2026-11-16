@@ -67,6 +67,7 @@ function M.apply_all(regions, edits)
 	for _, entry in ipairs(sorted) do
 		M.apply(entry.region.bufnr, entry.region.start_line - 1, entry.region.end_line, entry.new_lines)
 	end
+	return #sorted
 end
 
 --- @param bufnr? number defaults to all tracked buffers

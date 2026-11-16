@@ -13,6 +13,108 @@ M._resolve_mode = nil
 --- @type fun(): table
 M._opts = nil
 
+--- Set a subagent's model and wait for the ACP confirmation event.
+---
+--- OpenCode can return an incomplete model/config list from the initial
+--- `session/new` response. For example, the provider may initially report
+--- `opencode/hy4-flash-free` as the current model and not yet include
+--- `github-copilot/auto` in its model options. A later
+--- `config_option_update` can then add `github-copilot/auto` to the list.
+---
+--- This matters because the lg-acp `set_model` acknowledgement only means
+--- that the request was accepted by lg-acp; it does not mean that OpenCode
+--- has applied the model or even finished discovering it. If we sent the
+--- prompt immediately, the request could run on the initial free model
+--- instead. That can produce a misleading provider.free-limit error even
+--- though the requested model was never used.
+---
+--- Therefore this helper waits for the later model-list update, retries the
+--- selection once the requested model is advertised, and then waits for the
+--- provider's confirmed current-model update before sending any prompt. A
+--- single deadline remains so a provider that never reports the model cannot
+--- leave the subagent hanging forever.
+---
+--- TODO: Make this more elegant. Replace this compatibility flow with a
+--- first-class ACP model-selection operation that atomically discovers,
+--- selects, and confirms the provider's default/model without requiring
+--- client-side retry coordination. Revisit this when a better model-selection
+--- API or model is available.
+--- @param session_id string
+--- @param model_id string
+--- @param on_done fun(ok: boolean)
+local function set_model_confirmed(session_id, model_id, on_done)
+	local finished = false
+	local request_pending = false
+	local unsubscribe
+	local unsubscribe_models
+
+	local function request_model()
+		if finished or request_pending then
+			return
+		end
+		request_pending = true
+		client.set_model(session_id, model_id, function(resp)
+			request_pending = false
+			if resp and resp.ok == true then
+				local current
+				for _, option in ipairs(resp.data and resp.data.configOptions or {}) do
+					if option.id == "model" then
+						current = option.currentValue
+						break
+					end
+				end
+				if current == model_id and not finished then
+					finished = true
+					unsubscribe_models()
+					unsubscribe()
+					on_done(true)
+				end
+			elseif resp and resp.error and not resp.error:find("model not found", 1, true) and not finished then
+				finished = true
+				unsubscribe_models()
+				unsubscribe()
+				on_done(false)
+			end
+		end)
+	end
+
+	unsubscribe = client.on("model_changed", function(ev)
+		if ev.session_id == session_id and ev.text == model_id then
+			finished = true
+			unsubscribe_models()
+			unsubscribe()
+			on_done(true)
+		end
+	end)
+	unsubscribe_models = client.on("models_updated", function(ev)
+		if ev.session_id ~= session_id or type(ev.data) ~= "table" then
+			return
+		end
+		for _, option in ipairs(ev.data.configOptions or {}) do
+			if option.id == "model" then
+				for _, candidate in ipairs(option.options or {}) do
+					if candidate.value == model_id then
+						request_model()
+						return
+					end
+				end
+			end
+		end
+	end)
+
+	request_model()
+	-- A broken provider must not leave the subagent waiting forever, but this
+	-- is a single deadline rather than a polling loop.
+	vim.defer_fn(function()
+		if not finished then
+			finished = true
+			unsubscribe_models()
+			unsubscribe()
+			on_done(false)
+		end
+	end, 5000)
+end
+
 --- Generic subagent: creates a new session on the Go side, runs lifecycle, cleans up.
 --- @param config { mode_id?: string, prompt: table, model_id?: string, label: string, on_text?: fun(text:string), on_done: fun(text:string, tool_error:string?), on_fail?: fun(), track_tool_errors?: boolean, finish_subagent?: boolean, fire_autocmds?: boolean, manual_permissions?: boolean }
 function M.run(config)
@@ -181,8 +283,24 @@ function M.run(config)
 			-- can be a rate-limited free model.
 			local model_id = config.model_id or require("lg.session.models").current_model()
 			if model_id then
-				client.set_model(sub_sid, model_id, function()
-					set_mode_then_prompt()
+				set_model_confirmed(sub_sid, model_id, function(ok)
+					if ok then
+						set_mode_then_prompt()
+					elseif config.on_fail then
+						for _, unsub in ipairs(unsubs) do
+							unsub()
+						end
+						client.destroy_session(sub_sid)
+						status.stop(config.label .. " failed")
+						config.on_fail()
+					else
+						for _, unsub in ipairs(unsubs) do
+							unsub()
+						end
+						client.destroy_session(sub_sid)
+						status.stop(config.label .. " failed")
+						config.on_done("", "model was not applied")
+					end
 				end)
 			else
 				set_mode_then_prompt()
@@ -195,23 +313,32 @@ end
 
 function M.send_oneshot(prompt, regions, context_regions, on_done)
 	local svr = require("lg.session.server")
-	local sid = svr.register_session(regions)
-	local messages = protocol.build_prompt(regions, context_regions or {}, prompt)
+	-- The MCP process does not reliably inherit a per-session LG_SESSION value.
+	-- Use an explicit token so get_painted_regions and paint_edit address this
+	-- temporary quick-edit region instead of falling back to global paint.
+	local edit_token = svr.create_token(regions)
+	local messages = protocol.build_prompt(regions, context_regions or {}, prompt, nil, nil, edit_token)
+	local provider = M._opts().provider
+	local model_id = provider == "opencode" and "github-copilot/auto" or "auto"
 
 	M.run({
 		mode_id = "lg-oneshot",
+		model_id = model_id,
 		prompt = messages,
-		label = "Quick edit",
+		label = "Quick edit (" .. model_id .. ")",
 		finish_subagent = false,
 		track_tool_errors = false,
 		on_done = function()
-			svr.unregister_session(sid)
+			svr.remove_token(edit_token)
 			if on_done then
 				on_done()
 			end
 		end,
 		on_fail = function()
-			svr.unregister_session(sid)
+			svr.remove_token(edit_token)
+			if on_done then
+				on_done()
+			end
 		end,
 	})
 end

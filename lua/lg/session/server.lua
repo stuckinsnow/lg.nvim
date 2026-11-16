@@ -73,6 +73,12 @@ end
 function M.clear_tokens()
 	tokens = {}
 end
+
+--- Remove one edit token after its session has finished.
+--- @param token string
+function M.remove_token(token)
+	tokens[token] = nil
+end
 --- @return string
 function M.encode_regions()
 	local regions = paint.get_all()
@@ -258,29 +264,30 @@ function M.handle_message(data)
 		return vim.json.encode({ ok = true })
 	elseif msg.method == "apply_edits" then
 		local edits = msg.edits or {}
+		local count
 		if msg.session and sessions[msg.session] then
 			-- Session-scoped: edit that session's regions
-			local count = apply_sorted_edits(sessions[msg.session], edits)
-			if count == 0 then
-				return vim.json.encode({ error = "no painted regions to edit" })
-			end
+			count = apply_sorted_edits(sessions[msg.session], edits)
 		elseif msg.edit_token and msg.edit_token ~= "" then
 			-- Token-scoped: edit only the snapshot regions
 			local regs = tokens[msg.edit_token]
 			if not regs then
 				return vim.json.encode({ error = "invalid edit_token" })
 			end
-			apply_sorted_edits(regs, edits)
+			count = apply_sorted_edits(regs, edits)
 		else
 			-- Global paint (only if no tokens exist)
 			if next(tokens) then
 				return vim.json.encode({ error = "edit_token required" })
 			end
 			local regions = paint.get_all()
-			diff.apply_all(regions, edits)
+			count = diff.apply_all(regions, edits)
+		end
+		if count == 0 then
+			return vim.json.encode({ error = "no matching painted regions to edit" })
 		end
 		vim.cmd("redraw")
-		return vim.json.encode({ ok = true, count = #edits })
+		return vim.json.encode({ ok = true, count = count })
 	elseif msg.method == "edit_file" then
 		local path = msg.path
 		local old_text = msg.old_text
