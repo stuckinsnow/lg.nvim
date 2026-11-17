@@ -242,14 +242,24 @@ local function connect(on_ready)
 			-- list: opencode only adds some models (github-copilot/auto) in a
 			-- later config_option_update.
 			local saved = load_state()
-			if saved.model and not saved.use_default_model and session_models then
-				client.set_model(main_session_id, saved.model)
-				session_models.currentModelId = saved.model
+			local function finish_connect()
+				client.set_mode(main_session_id, resolve_mode("lg"))
+				status.stop("Session ready")
+				flush(main_session_id)
 			end
 
-			client.set_mode(main_session_id, resolve_mode("lg"))
-			status.stop("Session ready")
-			flush(main_session_id)
+			if saved.model and not saved.use_default_model and session_models then
+				require("lg.session.model-select").set_confirmed(main_session_id, saved.model, {
+					on_done = function(ok)
+						if ok and session_models then
+							session_models.currentModelId = saved.model
+						end
+						finish_connect()
+					end,
+				})
+			else
+				finish_connect()
+			end
 		end)
 	end)
 end

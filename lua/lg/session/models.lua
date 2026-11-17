@@ -159,25 +159,32 @@ function M.pick_model(provider_filter)
 										if not new_sid then
 											return
 										end
-										client.set_model(new_sid, model_id)
-										ctx.set_current_model(model_id)
-										local messages = protocol.build_prompt(
-											{},
-											{},
-											"Context from previous session (different model):\n\n"
-												.. handoff_text
-												.. "\n\nAcknowledge briefly and wait for my next instruction."
-										)
-										status.start("Sending handoff…")
-										ctx.set_on_done(function()
-											ctx.set_busy(false)
-											status.stop("Model → " .. model_id)
-											require("lg.ui.window").add_status(
-												"Model switched → " .. model_id .. " (with handoff)"
-											)
-										end)
-										ctx.set_busy(true)
-										client.prompt(new_sid, messages)
+										require("lg.session.model-select").set_confirmed(new_sid, model_id, {
+											on_done = function(ok)
+												if not ok then
+													status.stop("Model switch failed")
+													return
+												end
+												ctx.set_current_model(model_id)
+												local messages = protocol.build_prompt(
+													{},
+													{},
+													"Context from previous session (different model):\n\n"
+														.. handoff_text
+														.. "\n\nAcknowledge briefly and wait for my next instruction."
+												)
+												status.start("Sending handoff…")
+												ctx.set_on_done(function()
+													ctx.set_busy(false)
+													status.stop("Model → " .. model_id)
+													require("lg.ui.window").add_status(
+														"Model switched → " .. model_id .. " (with handoff)"
+													)
+												end)
+												ctx.set_busy(true)
+												client.prompt(new_sid, messages)
+											end,
+										})
 									end)
 								end)
 							end)
@@ -193,12 +200,19 @@ function M.pick_model(provider_filter)
 						return
 					end
 
-					-- No conversation yet — just switch model in place
+					-- No conversation yet — switch only after ACP confirms the model.
 					if not ctx.get_has_history() then
-						client.set_model(ctx.get_main_session_id(), model_id)
-						ctx.set_current_model(model_id)
-						save_model_state()
-						vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+						require("lg.session.model-select").set_confirmed(ctx.get_main_session_id(), model_id, {
+							on_done = function(ok)
+								if ok then
+									ctx.set_current_model(model_id)
+									save_model_state()
+									vim.notify("lg: model → " .. model_id, vim.log.levels.INFO)
+								else
+									vim.notify("lg: model switch not confirmed: " .. model_id, vim.log.levels.ERROR)
+								end
+							end,
+						})
 						return
 					end
 
