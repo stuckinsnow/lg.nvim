@@ -21,8 +21,8 @@ the AI edits the painted regions directly.
 | `@SHELL`    | No                          | Chat panel (runs shell commands you approve)                        | No           |
 | `@GIT`      | Yes, after the git analysis | Chat panel, then the buffer                                         | No           |
 | `@DEVLENS`  | Yes                         | The buffer                                                          | No           |
-| `@LSP`      | Yes                         | The buffer                                                          | Yes          |
-| `@FILE_LSP` | Yes                         | The buffer                                                          | Yes          |
+| `#lsp`      | Yes                         | The buffer                                                          | Yes          |
+| `#file_lsp` | Yes                         | The buffer                                                          | Yes          |
 | `@DIAG`     | Yes                         | The buffer                                                          | Yes          |
 | `@TSC`      | Yes                         | The buffer                                                          | Yes          |
 | `@SUB`      | Modifier                    | Runs `@HINT`, `@SUGGEST` or `@HELP` in the background               | No           |
@@ -105,11 +105,12 @@ Needs a running DevLens server.
 ## Adding context to an edit
 
 These add information to a normal paint edit. You can combine them, for
-example `@DIAG @LSP fix the auth bug`.
+example `@DIAG #lsp fix the auth bug`.
 
-- `@LSP`: types and diagnostics from your language server for each painted
+- `#lsp`: types and diagnostics from your language server for each painted
   region.
-- `@FILE_LSP`: diagnostics for the whole current file instead.
+- `#file_lsp`: diagnostics for the whole current file instead.
+
 - `@DIAG`: tells the AI to check diagnostics in your open buffers before
   editing.
 - `@TSC`: runs `tsc --noEmit` and includes the type errors. The output also
@@ -119,5 +120,5 @@ example `@DIAG @LSP fix the auth bug`.
 
 Only one of these runs per prompt. lg checks them in this order and uses the
 first one it finds: `@DEVLENS`, `@SHELL`, `@GIT`, `@ASK`, `@HINT`, `@SUGGEST`,
-`@HELP`, `@INFO`. The context prefixes (`@LSP`, `@FILE_LSP`, `@DIAG`, `@TSC`)
+`@HELP`, `@INFO`. The context prefixes (`#lsp`, `#file_lsp`, `@DIAG`, `@TSC`)
 apply to the normal edit that runs when none of those are present.

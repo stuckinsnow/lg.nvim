@@ -201,13 +201,16 @@ where its results show up.
 
 ### Prompt Shortcuts
 
-Use `#` shortcuts to quickly reference files in your prompt:
+Use `#` shortcuts to reference files or gather local code context:
 
-| Shortcut   | Expands to                     |
-| ---------- | ------------------------------ |
-| `#buffer`  | `@<current file path>`         |
-| `#buffdir` | `@<current file's directory>/` |
-| `#./`      | `@` (relative path prefix)     |
+| Shortcut      | Does                                                                         |
+| ------------- | ---------------------------------------------------------------------------- |
+| `#buffer`     | Inserts `@<current file path>`                                               |
+| `#buffdir`    | Inserts `@<current file's directory>/`                                        |
+| `#./`         | Expands to `@` (relative path prefix)                                        |
+| `#lsp`        | Adds types and diagnostics for painted regions                               |
+| `#file_lsp`   | Adds diagnostics for the entire current file                                  |
+
 
 These are available as blink.cmp completions when typing `@` or `#` in the prompt.
 

@@ -22,7 +22,7 @@ local keywords = {
   ["declare"] = true, ["module"] = true, ["require"] = true,
 }
 
---- Diagnostics only (for @FILE_LSP)
+--- Diagnostics only (for #file_lsp)
 --- @param bufnr number
 --- @param start_line number 1-indexed
 --- @param end_line number 1-indexed
@@ -45,7 +45,7 @@ function M.gather_diagnostics(bufnr, start_line, end_line)
   return "", 0, 0
 end
 
---- Diagnostics + type info (for @LSP on painted regions)
+--- Diagnostics + type info (for #lsp on painted regions)
 --- Only includes symbols defined outside the painted region.
 --- @param bufnr number
 --- @param start_line number 1-indexed

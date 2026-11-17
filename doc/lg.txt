@@ -69,7 +69,7 @@ Providers: kiro-cli, opencode
 4. PROMPT PREFIXES                                              *lg-prefixes*
 
 Type these at the start of your prompt. Combine freely:
-`@DIAG @LSP fix the auth bug`
+`@DIAG #lsp fix the auth bug`
 
   `@INFO`       AI highlights regions and explains what to do — no code
               written. Use `<leader>aA` to convert to real paint.
@@ -85,17 +85,19 @@ Type these at the start of your prompt. Combine freely:
 
   `@DIAG`       Check LSP diagnostics in open buffers before editing.
 
-  `@LSP`        Gather LSP info (types, references) for painted regions
+  `#lsp`        Gather LSP info (types, references) for painted regions
               and include as context.
 
-  `@FILE_LSP`   Gather LSP info for the entire current file.
+  `#file_lsp`   Gather LSP diagnostics for the entire current file.
+
 
   `@TSC`        Run `tsc --noEmit` and include type errors as context.
 
   `@SUB`        Run next prefix as a subagent (e.g. `@SUB HINT`).
               Doesn't block the main session.
 
-Autocomplete: type `@` in the prompt and blink.cmp will suggest prefixes.
+Autocomplete: type `@` or `#` in the prompt and blink.cmp will suggest actions,
+context, and file shortcuts.
 
 ==============================================================================
 5. CHAT MODE                                                       *lg-chat*

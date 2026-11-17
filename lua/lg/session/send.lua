@@ -436,7 +436,7 @@ function M.send(opts)
 
 		local lsp_context = nil
 		if flags.has_file_lsp then
-			prompt = prompt:gsub("@FILE_LSP%s*", "")
+			prompt = prompt:gsub("#file_lsp%s*", "")
 			local lsp = require("lg.tools.lsp")
 			local bufnr = vim.api.nvim_get_current_buf()
 			local line_count = vim.api.nvim_buf_line_count(bufnr)
@@ -448,7 +448,7 @@ function M.send(opts)
 				window.add_tool(summary)
 			end
 		elseif flags.has_lsp then
-			prompt = prompt:gsub("@LSP%s*", "")
+			prompt = prompt:gsub("#lsp%s*", "")
 			local lsp = require("lg.tools.lsp")
 			local parts = {}
 			local total_errors, total_warns, total_types = 0, 0, 0
@@ -544,8 +544,10 @@ function M.send(opts)
 	if opts.prompt then
 		local text = opts.prompt
 		do_send(text, {
-			has_file_lsp = text and text:match("@FILE_LSP") ~= nil,
-			has_lsp = text and text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
+				has_file_lsp = text and text:match("#file_lsp") ~= nil,
+			has_lsp = text
+				and text:match("#lsp") ~= nil
+				and not text:match("#file_lsp"),
 			has_auto_paint = text and text:match("@INFO") ~= nil,
 			has_git = text and text:match("@GIT") ~= nil,
 			has_devlens = text and text:match("@DEVLENS") ~= nil,

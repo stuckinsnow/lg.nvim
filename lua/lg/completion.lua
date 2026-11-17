@@ -4,8 +4,6 @@
 local M = {}
 
 local at_items = {
-  { label = "@LSP", detail = "Gather type info and diagnostics from LSP for painted regions" },
-  { label = "@FILE_LSP", detail = "Gather LSP info for the entire current file" },
   { label = "@GIT", detail = "Spawn a cheap model to analyze git history, inject as context" },
   { label = "@DEVLENS", detail = "Inspect React components in the browser via DevLens, inject state as context" },
   { label = "@DIAG", detail = "Check LSP diagnostics in open buffers before editing" },
@@ -23,6 +21,8 @@ local hash_items = {
   { label = "#buffer", detail = "Insert current file path as @file reference" },
   { label = "#buffdir", detail = "Insert current file's directory as @dir/ reference" },
   { label = "#./", detail = "Shorthand — expands to @ (relative path prefix)" },
+  { label = "#lsp", detail = "Gather type info and diagnostics from LSP for painted regions" },
+  { label = "#file_lsp", detail = "Gather LSP diagnostics for the entire current file" },
 }
 
 function M.new()

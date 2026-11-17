@@ -70,8 +70,8 @@ function M.open(cb, on_cancel, info)
 		require("lg.kitty").clear()
 		if text ~= "" then
 			cb(text, {
-				has_file_lsp = text:match("@FILE_LSP") ~= nil,
-				has_lsp = text:match("@LSP") ~= nil and not text:match("@FILE_LSP"),
+				has_file_lsp = text:match("#file_lsp") ~= nil,
+				has_lsp = text:match("#lsp") ~= nil and not text:match("#file_lsp"),
 				has_tsc = text:match("@TSC") ~= nil,
 				has_diag = text:match("@DIAG") ~= nil,
 				has_auto_paint = text:match("@INFO") ~= nil,
