@@ -665,27 +665,34 @@ local function setup_prompt_keymaps(buf)
 	end, { buffer = buf, desc = "Approve/reject or newline" })
 end
 
+local _opening = false
+
 function M.open()
 	if win_valid(state.wins.status) then
 		return
 	end
 
+	_opening = true
+	local aug = vim.api.nvim_create_augroup("lg_window", { clear = true })
 	local prev_win = vim.api.nvim_get_current_win()
 	local cmd = opts.position == "left" and "topleft" or "botright"
 
 	vim.cmd(cmd .. " " .. opts.width .. "vsplit")
 	state.wins.status = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(state.wins.status, ensure_buf("status", "lg"))
+	local status_buf = ensure_buf("status", "lg")
+	vim.api.nvim_win_set_buf(state.wins.status, status_buf)
 	set_win_opts(state.wins.status)
 
 	vim.cmd("belowright 1split")
 	state.wins.regions = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(state.wins.regions, ensure_buf("regions", "lg"))
+	local regions_buf = ensure_buf("regions", "lg")
+	vim.api.nvim_win_set_buf(state.wins.regions, regions_buf)
 	set_win_opts(state.wins.regions)
 
 	vim.cmd("belowright 1split")
 	state.wins.context = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(state.wins.context, ensure_buf("context", "lg"))
+	local context_buf = ensure_buf("context", "lg")
+	vim.api.nvim_win_set_buf(state.wins.context, context_buf)
 	set_win_opts(state.wins.context)
 
 	vim.cmd("belowright split")
@@ -710,8 +717,44 @@ function M.open()
 
 	setup_prompt_keymaps(prompt_buf)
 
+	local function is_sidebar_win(w)
+		for _, key in ipairs({ "status", "regions", "context", "chat", "prompt" }) do
+			if state.wins[key] == w then
+				return true
+			end
+		end
+		return false
+	end
+
+	-- Entering the lg sidebar from outside (e.g. <C-l> from code) lands in the
+	-- prompt bar; moving inside the sidebar (<C-k>/<C-j>) stays unrestricted.
+	for _, b in ipairs({ status_buf, regions_buf, context_buf, chat_buf }) do
+		vim.api.nvim_create_autocmd("WinEnter", {
+			group = aug,
+			buffer = b,
+			callback = function()
+				if _opening then
+					return
+				end
+				local prev = vim.fn.win_getid(vim.fn.winnr("#"))
+				if is_sidebar_win(prev) then
+					return
+				end
+				local target = win_valid(state.wins.prompt) and state.wins.prompt
+				if target then
+					vim.schedule(function()
+						if win_valid(target) then
+							pcall(vim.api.nvim_set_current_win, target)
+						end
+					end)
+				end
+			end,
+		})
+	end
+
 	for _, b in ipairs({ chat_buf, prompt_buf }) do
 		vim.api.nvim_create_autocmd("BufEnter", {
+			group = aug,
 			buffer = b,
 			callback = function()
 				local pct = state.context_pct
@@ -719,11 +762,13 @@ function M.open()
 			end,
 		})
 		vim.api.nvim_create_autocmd("BufLeave", {
+			group = aug,
 			buffer = b,
 			callback = function() require("lg.kitty").clear() end,
 		})
 	end
 
+	_opening = false
 	M.refresh()
 
 	pcall(vim.api.nvim_set_current_win, state.wins.prompt)
