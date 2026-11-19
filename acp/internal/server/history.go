@@ -27,12 +27,7 @@ func listOpencodeSessions(cwd string) (json.RawMessage, error) {
 
 	query := fmt.Sprintf(`SELECT json_group_array(json_object(
 		'id', s.id, 'title', s.title,
-		'date', datetime(s.time_updated / 1000, 'unixepoch', 'localtime'),
-		'preview', (SELECT group_concat(json_extract(p.data, '$.text'), char(10)||'---'||char(10))
-		            FROM (SELECT p2.data FROM part p2
-		                  WHERE p2.session_id = s.id
-		                  AND json_extract(p2.data, '$.type') = 'text'
-		                  ORDER BY p2.time_created LIMIT 2) p)
+		'date', datetime(s.time_updated / 1000, 'unixepoch', 'localtime')
 	)) FROM (
 		SELECT * FROM session s WHERE s.directory = '%s'
 		AND s.title NOT LIKE 'ACP Session %%'

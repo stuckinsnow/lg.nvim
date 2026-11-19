@@ -12,6 +12,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"lg-acp/internal/server"
 	"lg-acp/internal/session"
 	"log"
@@ -31,7 +32,18 @@ var providers = map[string][]string{
 func main() {
 	provider := flag.String("provider", "kiro", "ACP provider (kiro, opencode or antigravity)")
 	sockPath := flag.String("sock", "/dev/shm/lg-acp.sock", "Unix socket path")
+	preview := flag.Bool("preview", false, "Print session preview markdown and exit")
+	sessionID := flag.String("session", "", "Session ID for --preview")
 	flag.Parse()
+
+	if *preview {
+		out := server.PreviewSession(*provider, *sessionID)
+		if out == "" {
+			out = "*No preview available*"
+		}
+		fmt.Print(out)
+		return
+	}
 
 	cmd, ok := providers[*provider]
 	if !ok {

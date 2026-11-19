@@ -637,6 +637,9 @@ function M.setup(user_opts)
 	restore._set_models = function(m)
 		session_models = m
 	end
+	restore._get_provider = function()
+		return opts.provider or "kiro"
+	end
 
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		group = vim.api.nvim_create_augroup("lg.session.session", { clear = true }),

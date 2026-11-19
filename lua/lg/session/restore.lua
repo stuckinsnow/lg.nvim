@@ -19,6 +19,8 @@ M._setup_event_handlers = nil
 M._refresh_count = nil
 --- @type fun(models: table)
 M._set_models = nil
+--- @type fun(): string
+M._get_provider = nil
 
 -- ── Session listing ────────────────────────────────────────────────
 
@@ -56,7 +58,6 @@ local function list_sessions_acp(on_done)
 						cwd = s.cwd or "",
 						date = s.date or (s.updatedAt or ""):sub(1, 16):gsub("T", " "),
 						title = title ~= "" and title or "(untitled)",
-						preview = s.preview or "",
 					})
 				end
 			end
@@ -75,44 +76,41 @@ local function show_picker(sessions)
 	end
 
 	local entries = {}
-	local has_preview = false
-	local preview_dir = "/dev/shm/lg-session-preview"
-	vim.fn.delete(preview_dir, "rf")
-	vim.fn.mkdir(preview_dir, "p")
 	for i, s in ipairs(sessions) do
-		if s.preview ~= "" then has_preview = true end
-		local pf = io.open(preview_dir .. "/" .. s.id, "w")
-		if pf then
-			pf:write(s.preview ~= "" and s.preview or s.title)
-			pf:close()
-		end
 		entries[i] = s.id .. "\t" .. string.format("\x1b[36m%s\x1b[0m  \x1b[33m%s\x1b[0m", s.date, s.title)
 	end
 
+	local bin = require("lg.bin").require("lg-acp")
+	local provider = M._get_provider and M._get_provider() or "kiro"
 	local fzf_opts = {
 		["--ansi"] = "",
 		["--delimiter"] = "\t",
 		["--with-nth"] = "2..",
+		["--preview"] = string.format(
+			"%s --preview --provider %s --session {1} | CLICOLOR_FORCE=1 glow -s dark -",
+			vim.fn.shellescape(bin),
+			vim.fn.shellescape(provider)
+		),
+		["--preview-window"] = "right:50%:wrap",
 	}
-	if has_preview then
-		fzf_opts["--preview"] = "CLICOLOR_FORCE=1 glow -s dark " .. preview_dir .. "/{1}"
-		fzf_opts["--preview-window"] = "right:50%:wrap"
-	else
-		fzf_opts["--preview-window"] = "hidden"
-	end
 
 	require("fzf-lua").fzf_exec(entries, {
 		prompt = "  ",
 		fzf_opts = fzf_opts,
+		keymap = {
+			fzf = {
+				["ctrl-d"] = "preview-half-page-down",
+				["ctrl-u"] = "preview-half-page-up",
+			},
+		},
 		winopts = {
 			title = " 󰋚 Restore Session ",
 			title_pos = "center",
 			height = 0.6,
-			width = has_preview and 0.75 or 0.6,
+			width = 0.75,
 		},
 		actions = {
 			["default"] = function(selected)
-				vim.fn.delete(preview_dir, "rf")
 				if not selected or #selected == 0 then return end
 				local sid = selected[1]:match("^([^\t]+)")
 				if sid then M.load(sid) end
@@ -126,7 +124,6 @@ local function show_picker(sessions)
 						vim.notify("lg: deleted session " .. sid:sub(1, 8), vim.log.levels.INFO)
 					end
 				end
-				vim.fn.delete(preview_dir, "rf")
 				M.pick()
 			end,
 		},
