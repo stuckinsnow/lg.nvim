@@ -12,6 +12,8 @@ M._ensure_acp = nil
 M._resolve_mode = nil
 --- @type fun(): table
 M._opts = nil
+--- @type (fun(): table)?
+M._mcp_servers = nil
 
 local model_select = require("lg.session.model-select")
 
@@ -37,7 +39,7 @@ function M.run(config)
 		local agent_text = ""
 		local tool_error = nil
 
-		client.create_session(vim.fn.getcwd(), {}, function(resp)
+		client.create_session(vim.fn.getcwd(), M._mcp_servers and M._mcp_servers() or {}, function(resp)
 			if resp.error then
 				status.stop(config.label .. " failed")
 				if config.on_fail then
@@ -218,8 +220,9 @@ function M.send_oneshot(prompt, regions, context_regions, on_done)
 	-- temporary quick-edit region instead of falling back to global paint.
 	local edit_token = svr.create_token(regions)
 	local messages = protocol.build_prompt(regions, context_regions or {}, prompt, nil, nil, edit_token)
+	local cheap = { kiro = "auto", opencode = "github-copilot/auto", antigravity = "gemini-3.8-flash-low" }
 	local provider = M._opts().provider
-	local model_id = provider == "opencode" and "github-copilot/auto" or "auto"
+	local model_id = cheap[provider] or "auto"
 
 	M.run({
 		mode_id = "lg-oneshot",
@@ -260,7 +263,7 @@ function M.send_shell(prompt, on_done)
 end
 
 function M.send_git(prompt, on_done)
-	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/auto" }
+	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/auto", antigravity = "gemini-3.8-flash-low" }
 	local model_id = cheap[M._opts().provider] or "claude-haiku-4.5"
 
 	M.run({
@@ -278,7 +281,7 @@ function M.send_git(prompt, on_done)
 end
 
 function M.send_devlens(prompt, on_done)
-	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/auto" }
+	local cheap = { kiro = "claude-haiku-4.5", opencode = "github-copilot/auto", antigravity = "gemini-3.8-flash-low" }
 	local model_id = cheap[M._opts().provider] or "claude-haiku-4.5"
 
 	M.run({

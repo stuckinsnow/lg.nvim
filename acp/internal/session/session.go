@@ -215,6 +215,18 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 			cmds = append(cmds, map[string]string{"name": c.Name})
 		}
 		s.emit("commands_available", map[string]any{"commands": cmds})
+	case "usage_update":
+		data := map[string]any{}
+		if update.Used != nil {
+			data["used"] = *update.Used
+		}
+		if update.Size != nil {
+			data["size"] = *update.Size
+			if *update.Size > 0 && update.Used != nil {
+				data["context_pct"] = float64(*update.Used) / float64(*update.Size) * 100
+			}
+		}
+		s.emit("context_usage", data)
 	case "session_info_update":
 		s.handleInfoUpdate(update.Meta.Kiro)
 	default:

@@ -36,10 +36,37 @@ local opts = {}
 local providers = {
 	kiro = { cmd = { "kiro-cli", "acp" }, name = "Kiro" },
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
+	antigravity = { cmd = { "agy", "acp" }, name = "Antigravity" },
 }
 
 local function resolve_mode(mode_id)
 	return modes.resolve_mode(opts.provider, mode_id)
+end
+
+--- MCP servers to attach to new sessions. Kiro and OpenCode load lg's tools
+--- from their own agent config. Antigravity has no agent files, so lg passes
+--- its servers through ACP session/new. User-configured servers take priority.
+local function mcp_servers()
+	local servers = vim.deepcopy(opts.mcp_servers or {})
+	if opts.provider ~= "antigravity" then
+		return servers
+	end
+	local bin = require("lg.bin")
+	local defaults = {
+		lg = { name = "lg-mcp", env = { LG_SOCK = "/dev/shm/lg.sock" } },
+		["lg-hint"] = {
+			name = "lg-hint-mcp",
+			env = { LG_HINT_SOCK = "/dev/shm/lg-hint.sock", LG_SOCK = "/dev/shm/lg.sock" },
+		},
+		["lg-git"] = { name = "lg-git-mcp", env = {} },
+	}
+	for server, d in pairs(defaults) do
+		local path = bin.find(d.name)
+		if path and servers[server] == nil then
+			servers[server] = { command = path, args = {}, env = d.env }
+		end
+	end
+	return servers
 end
 
 local state_path = "/dev/shm/lg-state.json"
@@ -199,7 +226,7 @@ local function connect(on_ready)
 
 		M._setup_event_handlers()
 
-		client.create_session(vim.fn.getcwd(), opts.mcp_servers, function(resp)
+		client.create_session(vim.fn.getcwd(), mcp_servers(), function(resp)
 			if resp.error then
 				if not _connect_retried then
 					_connect_retried = true
@@ -591,6 +618,7 @@ function M.setup(user_opts)
 	-- Wire up subagent module
 	subagent._ensure_acp = ensure_acp
 	subagent._resolve_mode = resolve_mode
+	subagent._mcp_servers = mcp_servers
 	subagent._opts = function()
 		return opts
 	end
@@ -872,6 +900,21 @@ function M.compact()
 		local win = require("lg.ui.window")
 		local spin = require("lg.spinner.spinners").start({})
 		_busy = true
+
+		-- Antigravity exposes compact as an advertised slash command, run by
+		-- sending it as prompt text. Kiro uses its extension method.
+		if opts.provider == "antigravity" then
+			M._on_done = function()
+				spin:stop()
+				_busy = false
+				status.stop("Compacted")
+				win.add_status("Context compacted")
+				flush_send_queue()
+			end
+			client.prompt(sid, { { type = "text", text = "/compact" } })
+			return
+		end
+
 		M.rpc("_kiro/session/compact", function(resp)
 			spin:stop()
 			_busy = false
@@ -898,6 +941,9 @@ function M.execute_command(command)
 		M.compact()
 	elseif name == "usage" then
 		require("lg.usage").show()
+	elseif opts.provider == "antigravity" then
+		-- Antigravity runs its advertised slash commands from prompt text.
+		M.send_chat("/" .. name)
 	else
 		vim.notify("lg: /" .. name .. " isn't available through Kiro v3 ACP", vim.log.levels.WARN)
 	end

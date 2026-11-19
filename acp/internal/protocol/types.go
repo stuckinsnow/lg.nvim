@@ -140,6 +140,9 @@ type SessionUpdate struct {
 	AvailableCommands []struct {
 		Name string `json:"name"`
 	} `json:"availableCommands,omitempty"`
+	// usage_update (antigravity)
+	Used *int64 `json:"used,omitempty"`
+	Size *int64 `json:"size,omitempty"`
 
 	Meta struct {
 		Kiro KiroUpdateMeta `json:"kiro"`

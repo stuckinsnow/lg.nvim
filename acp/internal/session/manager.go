@@ -27,6 +27,19 @@ func (m *Manager) SetMCPServers(servers map[string]any) {
 	m.mu.Unlock()
 }
 
+// sessionMCPServers returns MCP servers in the shape the agent expects.
+// Antigravity follows the ACP spec (an array); kiro and opencode keep the map
+// lg has always sent them.
+func (m *Manager) sessionMCPServers() any {
+	m.mu.Lock()
+	servers := m.mcpServers
+	m.mu.Unlock()
+	if m.proc != nil && m.proc.IsAntigravity() {
+		return protocol.ACPMCPServers(servers)
+	}
+	return servers
+}
+
 // ensureProcess spawns the ACP subprocess if not already running.
 func (m *Manager) ensureProcess() error {
 	m.mu.Lock()
@@ -125,9 +138,7 @@ func (m *Manager) CreateSession(cwd string) (*Session, error) {
 		}
 	})
 
-	m.mu.Lock()
-	servers := m.mcpServers
-	m.mu.Unlock()
+	servers := m.sessionMCPServers()
 
 	log.Printf("acp: sending session/new id=%d cwd=%s", id, cwd)
 	req := protocol.SessionNewRequest(id, cwd, servers)
@@ -176,6 +187,12 @@ func (m *Manager) ListSessions(cwd string) (json.RawMessage, error) {
 
 // DeleteSession deletes a saved session through kiro's _kiro/session/delete.
 func (m *Manager) DeleteSession(sessionID string) error {
+	if err := m.ensureProcess(); err != nil {
+		return err
+	}
+	if !m.proc.IsKiro() {
+		return fmt.Errorf("deleting sessions isn't supported by this provider")
+	}
 	_, err := m.call("_kiro/session/delete", map[string]any{"sessionId": sessionID})
 	return err
 }
@@ -226,9 +243,7 @@ func (m *Manager) LoadSession(sessionID, cwd string) (*Session, error) {
 		}
 	})
 
-	m.mu.Lock()
-	servers := m.mcpServers
-	m.mu.Unlock()
+	servers := m.sessionMCPServers()
 
 	if err := m.proc.Write(protocol.SessionLoadRequest(id, sessionID, cwd, servers)); err != nil {
 		return nil, err
@@ -262,9 +277,7 @@ func (m *Manager) fetchModels(cwd string) {
 		}
 	})
 
-	m.mu.Lock()
-	servers := m.mcpServers
-	m.mu.Unlock()
+	servers := m.sessionMCPServers()
 
 	m.proc.Write(protocol.SessionNewRequest(id, cwd, servers))
 

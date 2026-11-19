@@ -29,13 +29,19 @@ function M.set_confirmed(session_id, model_id, opts)
     if opts.on_done then opts.on_done(ok) end
   end
 
+  -- Antigravity accepts variant ids such as "gemini-3.8-flash-low" and reports
+  -- them split into model = "gemini-3.8-flash" plus thought_level = "low".
   local function config_confirms_model(config_options)
+    local model, thought
     for _, option in ipairs(config_options or {}) do
       if option.id == "model" then
-        return option.currentValue == model_id
+        model = option.currentValue
+      elseif option.id == "thought_level" then
+        thought = option.currentValue
       end
     end
-    return false
+    if model == nil then return false end
+    return model == model_id or (thought ~= nil and (model .. "-" .. thought) == model_id)
   end
 
   local function request_model()

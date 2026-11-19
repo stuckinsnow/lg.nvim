@@ -5,8 +5,9 @@
 // events.
 //
 // Usage:
-//   lg-acp --provider kiro --sock /dev/shm/lg-acp.sock
-//   lg-acp --provider opencode --sock /dev/shm/lg-acp.sock
+//
+//	lg-acp --provider kiro --sock /dev/shm/lg-acp.sock
+//	lg-acp --provider opencode --sock /dev/shm/lg-acp.sock
 package main
 
 import (
@@ -22,12 +23,13 @@ import (
 // opencode gets --print-logs because it reports model call failures (usage
 // limits, auth) only in its logs; lg-acp reads them from stderr.
 var providers = map[string][]string{
-	"kiro":     {"kiro-cli", "acp", "--agent-engine=v3"},
-	"opencode": {"opencode", "acp", "--print-logs"},
+	"kiro":        {"kiro-cli", "acp", "--agent-engine=v3"},
+	"opencode":    {"opencode", "acp", "--print-logs"},
+	"antigravity": {"agy", "acp"},
 }
 
 func main() {
-	provider := flag.String("provider", "kiro", "ACP provider (kiro or opencode)")
+	provider := flag.String("provider", "kiro", "ACP provider (kiro, opencode or antigravity)")
 	sockPath := flag.String("sock", "/dev/shm/lg-acp.sock", "Unix socket path")
 	flag.Parse()
 

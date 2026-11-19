@@ -1,6 +1,10 @@
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+)
 
 // --- Builders ---
 
@@ -13,13 +17,13 @@ func InitializeRequest(id int, clientName string) Message {
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "initialize", Params: params}
 }
 
-func SessionNewRequest(id int, cwd string, mcpServers map[string]any) Message {
-	params := map[string]any{"cwd": cwd}
-	if len(mcpServers) > 0 {
-		params["mcpServers"] = mcpServers
-	} else {
-		params["mcpServers"] = []any{}
-	}
+func AuthenticateRequest(id int, methodID string) Message {
+	params, _ := json.Marshal(map[string]any{"methodId": methodID})
+	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "authenticate", Params: params}
+}
+
+func SessionNewRequest(id int, cwd string, mcpServers any) Message {
+	params := map[string]any{"cwd": cwd, "mcpServers": mcpServersParam(mcpServers)}
 	data, _ := json.Marshal(params)
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/new", Params: data}
 }
@@ -49,13 +53,8 @@ func SessionListRequest(id int, cwd string) Message {
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/list", Params: params}
 }
 
-func SessionLoadRequest(id int, sessionID, cwd string, mcpServers map[string]any) Message {
-	params := map[string]any{"sessionId": sessionID, "cwd": cwd}
-	if len(mcpServers) > 0 {
-		params["mcpServers"] = mcpServers
-	} else {
-		params["mcpServers"] = []any{}
-	}
+func SessionLoadRequest(id int, sessionID, cwd string, mcpServers any) Message {
+	params := map[string]any{"sessionId": sessionID, "cwd": cwd, "mcpServers": mcpServersParam(mcpServers)}
 	data, _ := json.Marshal(params)
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: "session/load", Params: data}
 }
@@ -87,4 +86,56 @@ func GenericRequest(id int, method string, params map[string]any) Message {
 	}
 	p, _ := json.Marshal(params)
 	return Message{JSONRPC: "2.0", ID: NewID(id), Method: method, Params: p}
+}
+
+// mcpServersParam sends an empty list when no servers are configured.
+func mcpServersParam(servers any) any {
+	switch v := servers.(type) {
+	case nil:
+		return []any{}
+	case map[string]any:
+		if len(v) == 0 {
+			return []any{}
+		}
+	case []any:
+		if len(v) == 0 {
+			return []any{}
+		}
+	}
+	return servers
+}
+
+// ACPMCPServers converts lg's {name: {command, args, env}} map into the ACP
+// session/new format: [{name, command, args, env: [{name, value}]}]. Sorted
+// by name so requests are deterministic.
+func ACPMCPServers(servers map[string]any) []any {
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]any, 0, len(servers))
+	for _, name := range names {
+		cfg, _ := servers[name].(map[string]any)
+		command, _ := cfg["command"].(string)
+		if command == "" {
+			continue
+		}
+		args := []any{}
+		if a, ok := cfg["args"].([]any); ok {
+			args = a
+		}
+		envMap, _ := cfg["env"].(map[string]any)
+		envKeys := make([]string, 0, len(envMap))
+		for k := range envMap {
+			envKeys = append(envKeys, k)
+		}
+		sort.Strings(envKeys)
+		env := make([]any, 0, len(envMap))
+		for _, k := range envKeys {
+			env = append(env, map[string]any{"name": k, "value": fmt.Sprint(envMap[k])})
+		}
+		out = append(out, map[string]any{"name": name, "command": command, "args": args, "env": env})
+	}
+	return out
 }

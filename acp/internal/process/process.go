@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // Process wraps a single ACP subprocess.
@@ -28,11 +29,13 @@ type Process struct {
 	sessionsMu sync.RWMutex
 	pendingMu  sync.Mutex
 
-	ready    chan struct{} // closed when initialize handshake completes
-	initErr  error
-	models   *protocol.ModelsInfo
-	modelsMu sync.RWMutex
-	kiro     bool // agent advertised _meta.kiro capabilities (kiro v3)
+	ready       chan struct{} // closed when initialize handshake completes
+	initErr     error
+	models      *protocol.ModelsInfo
+	modelsMu    sync.RWMutex
+	kiro        bool     // agent advertised _meta.kiro capabilities (kiro v3)
+	antigravity bool     // agent advertised _meta.antigravity
+	authMethods []string // auth method IDs from initialize (e.g. "oauth-personal")
 }
 
 // MessageHandler receives routed messages for a session.
@@ -87,15 +90,23 @@ func Spawn(args []string, clientName string, onAgentError AgentErrorHandler) (*P
 			var res struct {
 				AgentCapabilities struct {
 					Meta struct {
-						Kiro json.RawMessage `json:"kiro"`
+						Kiro        json.RawMessage `json:"kiro"`
+						Antigravity json.RawMessage `json:"antigravity"`
 					} `json:"_meta"`
 				} `json:"agentCapabilities"`
+				AuthMethods []struct {
+					ID string `json:"id"`
+				} `json:"authMethods"`
 			}
 			if json.Unmarshal(msg.Result, &res) == nil {
 				p.kiro = len(res.AgentCapabilities.Meta.Kiro) > 0
+				p.antigravity = len(res.AgentCapabilities.Meta.Antigravity) > 0
+				for _, m := range res.AuthMethods {
+					p.authMethods = append(p.authMethods, m.ID)
+				}
 			}
 		}
-		log.Printf("acp: initialize response received (kiro=%v)", p.kiro)
+		log.Printf("acp: initialize response received (kiro=%v antigravity=%v authMethods=%v)", p.kiro, p.antigravity, p.authMethods)
 		close(p.ready)
 	}
 	p.pendingMu.Unlock()
@@ -114,6 +125,14 @@ func Spawn(args []string, clientName string, onAgentError AgentErrorHandler) (*P
 	if p.initErr != nil {
 		cmd.Process.Kill()
 		return nil, p.initErr
+	}
+
+	// Antigravity requires authentication before session/new.
+	if p.antigravity && len(p.authMethods) > 0 {
+		if err := p.authenticate(p.authMethods[0]); err != nil {
+			cmd.Process.Kill()
+			return nil, fmt.Errorf("authenticate: %w", err)
+		}
 	}
 
 	return p, nil
@@ -165,6 +184,37 @@ func (p *Process) UnregisterSession(sessionID string) {
 // methods (_kiro/*).
 func (p *Process) IsKiro() bool {
 	return p.kiro
+}
+
+// IsAntigravity reports whether the agent is Antigravity.
+func (p *Process) IsAntigravity() bool {
+	return p.antigravity
+}
+
+// authenticate sends the ACP authenticate request and blocks until the response
+// arrives. Antigravity reuses the existing agy CLI login state.
+func (p *Process) authenticate(methodID string) error {
+	done := make(chan error, 1)
+	id := p.NextID()
+	p.TrackResponse(id, func(msg *protocol.Message) {
+		if msg.Error != nil {
+			done <- fmt.Errorf("%s", msg.Error.Detail())
+		} else {
+			done <- nil
+		}
+	})
+	log.Printf("acp: sending authenticate methodId=%s", methodID)
+	if err := p.Write(protocol.AuthenticateRequest(id, methodID)); err != nil {
+		return err
+	}
+	// A cached login answers immediately; a fresh OAuth sign-in may need the
+	// browser. Never block lg forever on it.
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(2 * time.Minute):
+		return fmt.Errorf("timed out waiting for sign-in (run `agy` once to log in)")
+	}
 }
 
 // Models returns the latest models info reported by the agent, if any.
