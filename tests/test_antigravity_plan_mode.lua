@@ -69,6 +69,28 @@ vim.notify = function() end
 local session = require("lg.session.session")
 session.setup({ provider = "antigravity" })
 
+-- ── Toggle planner on then right back off without typing ───────────
+session.set_planner(true)
+vim.wait(50)
+client._dispatch({
+	type = "agent_switched",
+	session_id = SID,
+	data = { agentName = "plan", previousAgentName = "default" },
+})
+vim.wait(50)
+session.set_planner(false)
+vim.wait(50)
+client._dispatch({
+	type = "agent_switched",
+	session_id = SID,
+	data = { agentName = "default", previousAgentName = "plan" },
+})
+vim.wait(50)
+
+check("idle exit switched to default", modes_set[#modes_set], "default")
+check("idle exit skipped exit-plan-mode prompt", #prompts, 0)
+check("planner inactive after idle exit", session.is_planner_active(), false)
+
 -- ── Toggle planner on ──────────────────────────────────────────────
 local enable_ok = nil
 session.set_planner(true, function(ok)

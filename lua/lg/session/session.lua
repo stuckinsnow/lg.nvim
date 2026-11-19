@@ -19,6 +19,7 @@ local model_check = require("lg.session.model-check")
 local M = {}
 
 local _planner_active = false
+local _planner_used = false
 -- The ACP mode update is asynchronous. Keep the mode we most recently asked
 -- for so a delayed update from the previous switch cannot put the planner
 -- state back after it has been disabled.
@@ -675,6 +676,9 @@ function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_cont
 				flush_send_queue()
 			end
 
+			if _planner_active then
+				_planner_used = true
+			end
 			client.prompt(sid, messages)
 		end
 
@@ -722,6 +726,9 @@ function M.send_chat(prompt, on_done)
 			end
 
 			_busy = true
+			if _planner_active then
+				_planner_used = true
+			end
 			client.prompt(sid, messages)
 		end
 
@@ -1014,6 +1021,7 @@ function M._run_handoff(plan)
 		return
 	end
 	_planner_active = false
+	_planner_used = false
 	_requested_mode = resolve_mode("lg-chat")
 	local win = require("lg.ui.window")
 	win.add_status("◀ plan confirmed — handing off to lg-chat")
@@ -1038,7 +1046,9 @@ function M._run_handoff(plan)
 end
 
 function M.set_planner(enabled, callback)
+	local had_plan_turn = not enabled and _planner_used
 	_planner_active = enabled
+	_planner_used = false
 	_requested_mode = resolve_mode(enabled and "lg-plan" or "lg-chat")
 	connect(function(sid)
 		if not sid then
@@ -1058,7 +1068,7 @@ function M.set_planner(enabled, callback)
 			if callback then
 				callback(resp and resp.ok == true)
 			end
-			if resp and resp.ok == true and not enabled then
+			if resp and resp.ok == true and not enabled and had_plan_turn then
 				-- A plan agent may keep behaving as a planner until it receives a
 				-- turn in its new mode. Send that transition explicitly instead of
 				-- requiring the user to type "exit plan mode" manually.
@@ -1085,6 +1095,7 @@ function M.is_planner_active()
 end
 function M.kill_planner()
 	_planner_active = false
+	_planner_used = false
 	_requested_mode = nil
 end
 
