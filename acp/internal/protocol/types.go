@@ -179,8 +179,17 @@ type ContentBlock struct {
 	Text string `json:"text,omitempty"`
 }
 
+type PromptUsage struct {
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
+	CachedReadTokens int64 `json:"cachedReadTokens"`
+	ThoughtTokens    int64 `json:"thoughtTokens"`
+	TotalTokens      int64 `json:"totalTokens"`
+}
+
 type PromptResult struct {
-	StopReason string `json:"stopReason"`
+	StopReason string       `json:"stopReason"`
+	Usage      *PromptUsage `json:"usage,omitempty"`
 }
 
 // PermissionParams wraps session/request_permission params.

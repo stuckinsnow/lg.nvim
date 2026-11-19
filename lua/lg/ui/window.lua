@@ -297,6 +297,15 @@ function M.get_context_pct()
 	return state.context_pct
 end
 
+local function fmt_tokens(n)
+	if n >= 1000000 then
+		return string.format("%.2fM", n / 1000000)
+	elseif n >= 1000 then
+		return string.format("%.1fk", n / 1000)
+	end
+	return tostring(math.floor(n))
+end
+
 function M.add_metering(data)
 	local val = tonumber(data.total) or 0
 	local unit = data.unit or "credits"
@@ -305,23 +314,40 @@ function M.add_metering(data)
 	state.metering_unit = unit
 	state.last_turn_ms = ms
 
-	-- Severity thresholds; unit isn't checked since kiro reports "credits" for all models.
+	local parts = {}
 	local severity = "normal"
-	if val > 10 then
-		severity = "alarm"
-	elseif val > 5 then
-		severity = "warn"
+	if unit == "tokens" then
+		if val > 0 then
+			local detail = ""
+			local inp = tonumber(data.input_tokens)
+			local out = tonumber(data.output_tokens)
+			if inp and out then
+				detail = string.format(" (%s in, %s out)", fmt_tokens(inp), fmt_tokens(out))
+			end
+			table.insert(parts, fmt_tokens(val) .. " tokens" .. detail)
+		end
+		if ms > 0 then
+			table.insert(parts, string.format("%.1fs", ms / 1000))
+		end
+		table.insert(parts, "total " .. fmt_tokens(state.metering_total))
+	else
+		-- Severity thresholds; unit isn't checked since kiro reports "credits" for all models.
+		if val > 10 then
+			severity = "alarm"
+		elseif val > 5 then
+			severity = "warn"
+		end
+
+		-- Format: "0.077 credits · 8.1s · total 0.234"
+		if val > 0 then
+			table.insert(parts, string.format("%.3f %s", val, unit))
+		end
+		if ms > 0 then
+			table.insert(parts, string.format("%.1fs", ms / 1000))
+		end
+		table.insert(parts, string.format("total %.3f", state.metering_total))
 	end
 
-	-- Format: "0.077 credits · 8.1s · total 0.234"
-	local parts = {}
-	if val > 0 then
-		table.insert(parts, string.format("%.3f %s", val, unit))
-	end
-	if ms > 0 then
-		table.insert(parts, string.format("%.1fs", ms / 1000))
-	end
-	table.insert(parts, string.format("total %.3f", state.metering_total))
 	table.insert(state.history, {
 		type = "cost",
 		severity = severity,

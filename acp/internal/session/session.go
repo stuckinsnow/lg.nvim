@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 func newSession(proc *process.Process, state State, id, cwd string) *Session {
@@ -38,8 +39,9 @@ func (s *Session) Prompt(prompt json.RawMessage, onDone func()) error {
 	s.onDone[id] = onDone
 	s.mu.Unlock()
 
+	started := time.Now()
 	s.proc.TrackResponse(id, func(msg *protocol.Message) {
-		s.handlePromptResponse(id, msg)
+		s.handlePromptResponse(id, msg, started)
 	})
 	return s.proc.Write(protocol.SessionPromptRequest(id, s.ID, prompt))
 }
@@ -365,7 +367,7 @@ func (s *Session) handleFSWrite(msg *protocol.Message) {
 	s.events <- Event{Type: "fs_write", SessionID: s.ID, Text: params.Path}
 }
 
-func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message) {
+func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message, started time.Time) {
 	s.mu.Lock()
 	_, pending := s.onDone[rpcID]
 	s.mu.Unlock()
@@ -382,6 +384,18 @@ func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message) {
 		log.Printf("acp: prompt error: %s", detail)
 		s.events <- Event{Type: "prompt_error", SessionID: s.ID, Error: detail}
 		return
+	}
+
+	var res protocol.PromptResult
+	if len(msg.Result) > 0 && json.Unmarshal(msg.Result, &res) == nil && res.Usage != nil && res.Usage.TotalTokens > 0 {
+		s.emit("metering", map[string]any{
+			"total":            res.Usage.TotalTokens,
+			"unit":             "tokens",
+			"turn_duration_ms": time.Since(started).Milliseconds(),
+			"input_tokens":     res.Usage.InputTokens,
+			"output_tokens":    res.Usage.OutputTokens,
+			"cached_tokens":    res.Usage.CachedReadTokens,
+		})
 	}
 
 	s.events <- Event{Type: "prompt_done", SessionID: s.ID}
