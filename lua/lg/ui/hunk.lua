@@ -7,11 +7,29 @@ local api = vim.api
 local dns = api.nvim_create_namespace("lg.ui.hunk")
 
 local hunks = {}
+local opts = {
+	diff_view = false,
+}
 
 local function hl()
-	api.nvim_set_hl(0, "LgHunkOld", { default = true })
-	api.nvim_set_hl(0, "LgHunkNew", { default = true })
-	api.nvim_set_hl(0, "LgHunkChange", { default = true })
+	if opts.diff_view then
+		api.nvim_set_hl(0, "LgHunkOld", { link = "DiffDelete", default = true })
+		api.nvim_set_hl(0, "LgHunkNew", { link = "DiffAdd", default = true })
+		api.nvim_set_hl(0, "LgHunkChange", { link = "DiffText", default = true })
+		api.nvim_set_hl(0, "LgHunkOldSign", { link = "DiagnosticError", default = true })
+		api.nvim_set_hl(0, "LgHunkNewSign", { link = "DiagnosticOk", default = true })
+	else
+		api.nvim_set_hl(0, "LgHunkOld", { default = true })
+		api.nvim_set_hl(0, "LgHunkNew", { default = true })
+		api.nvim_set_hl(0, "LgHunkChange", { default = true })
+	end
+end
+
+function M.setup(user_opts)
+	opts = vim.tbl_deep_extend("force", opts, user_opts or {})
+	if opts.diff_view then
+		hl()
+	end
 end
 
 -- Find common prefix/suffix lengths between two strings
@@ -30,9 +48,12 @@ local function render(h)
 	for i = 0, #h.old_lines - 1 do
 		local row = h.row + i
 		if row < api.nvim_buf_line_count(h.bufnr) then
-			h.extmark_ids[#h.extmark_ids + 1] = api.nvim_buf_set_extmark(h.bufnr, dns, row, 0, {
-				line_hl_group = "LgHunkOld", priority = 100,
-			})
+			local mark_opts = { line_hl_group = "LgHunkOld", priority = 100 }
+			if opts.diff_view then
+				mark_opts.sign_text = "-"
+				mark_opts.sign_hl_group = "LgHunkOldSign"
+			end
+			h.extmark_ids[#h.extmark_ids + 1] = api.nvim_buf_set_extmark(h.bufnr, dns, row, 0, mark_opts)
 		end
 	end
 
@@ -42,23 +63,26 @@ local function render(h)
 		local virt = {}
 		for i, line in ipairs(h.new_lines) do
 			local padded = line .. pad_str
+			local chunks = {}
+			if opts.diff_view then
+				chunks[#chunks + 1] = { "+ ", "LgHunkNewSign" }
+			end
 			-- Inline yellow on changed portion
 			if h.old_lines[i] and h.old_lines[i] ~= line then
 				local pre, suf = diff_spans(h.old_lines[i], line)
 				local end_ch = #line - suf
 				local changed = end_ch - pre
 				if pre > 0 and changed > 0 and changed < #line / 2 and end_ch > pre then
-					local chunks = {}
 					if pre > 0 then chunks[#chunks + 1] = { padded:sub(1, pre), "LgHunkNew" } end
 					chunks[#chunks + 1] = { padded:sub(pre + 1, end_ch), "LgHunkChange" }
 					chunks[#chunks + 1] = { padded:sub(end_ch + 1), "LgHunkNew" }
-					virt[#virt + 1] = chunks
 				else
-					virt[#virt + 1] = { { padded, "LgHunkNew" } }
+					chunks[#chunks + 1] = { padded, "LgHunkNew" }
 				end
 			else
-				virt[#virt + 1] = { { padded, "LgHunkNew" } }
+				chunks[#chunks + 1] = { padded, "LgHunkNew" }
 			end
+			virt[#virt + 1] = chunks
 		end
 		local anchor = math.min(h.row + math.max(#h.old_lines - 1, 0), api.nvim_buf_line_count(h.bufnr) - 1)
 		h.extmark_ids[#h.extmark_ids + 1] = api.nvim_buf_set_extmark(h.bufnr, dns, anchor, 0, {

@@ -18,6 +18,7 @@ function M.setup(opts)
 	paint.setup(opts.paint or {})
 	session.setup(opts.session or {})
 	window.setup(opts.window or {})
+	require("lg.ui.hunk").setup(opts.hunk or {})
 
 	server.start()
 
