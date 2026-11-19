@@ -136,7 +136,6 @@ local ANNOTATE_INSTRUCTIONS = table.concat({
 	"(inspect existing changes, e.g. with git diff, if needed). Do not finish without calling lg_annotate.",
 }, "\n")
 
-
 local sent_region_count = 0
 
 function M.reset_region_count()
@@ -198,7 +197,9 @@ function M.send(opts)
 			local devlens_prompt = prompt:gsub("@DEVLENS%s*", ""):gsub("%[Current file:[^\n]*%]\n?", "")
 			window.add_prompt(prompt)
 			vim.ui.input({ prompt = "DevLens tokens (comma-separated): " }, function(input)
-				if not input or input == "" then return end
+				if not input or input == "" then
+					return
+				end
 				status.start("DevLens fetching...")
 				local tokens = {}
 				for tok in input:gmatch("%S+") do
@@ -234,7 +235,9 @@ function M.send(opts)
 									.. devlens_prompt
 								if opts.from_chat then
 									session.send_chat(full_prompt, function()
-										vim.schedule(function() spinners.stop() end)
+										vim.schedule(function()
+											spinners.stop()
+										end)
 									end)
 								else
 									session.send(full_prompt, regions, context.get_all(), function()
@@ -370,66 +373,6 @@ function M.send(opts)
 					run_hint(session.send_hint_subagent)
 				end)
 			end
-			return
-		end
-
-		if flags.has_annotate then
-			prompt = prompt:gsub("@ANNOTATE%s*", "")
-			window.add_prompt("@ANNOTATE " .. prompt)
-			local use_chat = opts.from_chat or #regions == 0
-			local target_win = code_window()
-			local before_keys = {}
-			for _, d in ipairs(ai_diagnostics()) do
-				before_keys[diag_key(d)] = true
-			end
-			local function new_count()
-				local n = 0
-				for _, d in ipairs(ai_diagnostics()) do
-					if not before_keys[diag_key(d)] then
-						n = n + 1
-					end
-				end
-				return n
-			end
-			local spin = spinners.start(regions)
-			local function dispatch(text, cb)
-				if use_chat then
-					session.send_chat(text, cb)
-				else
-					session.send(text, regions, context.get_all(), cb)
-				end
-			end
-			local function finish()
-				spin:stop()
-				window.refresh()
-				local n = annotations_to_loclist(before_keys, target_win)
-				if n > 0 then
-					status.stop("Annotated — " .. n .. " annotation(s) in location list (:lopen)")
-				else
-					status.flash("No annotations published")
-				end
-			end
-			dispatch(ANNOTATE_INSTRUCTIONS .. "\n\nUser request:\n" .. prompt, function()
-				vim.defer_fn(function()
-					if new_count() > 0 then
-						finish()
-						return
-					end
-					status.flash("No annotations published — asking again")
-					local retry = "You did not call lg_annotate. Do NOT redo or change any edits. "
-						.. "Call lg_annotate now with an annotation for each change you just made "
-						.. "(line numbers in the files as they are now). If it errors, fix the arguments and re-call."
-					if use_chat then
-						session.send_chat(retry, function()
-							vim.defer_fn(finish, 500)
-						end)
-					else
-						session.send(retry, {}, {}, function()
-							vim.defer_fn(finish, 500)
-						end)
-					end
-				end, 500)
-			end)
 			return
 		end
 
@@ -621,6 +564,94 @@ function M.send(opts)
 			pending_lsp_context = nil
 		end
 
+		local function dispatch_edit(final_prompt, lsp_ctx, tsc_ctx)
+			if flags.has_annotate then
+				local display_prompt = final_prompt:gsub("@ANNOTATE%s*", "")
+				window.add_prompt("@ANNOTATE " .. display_prompt)
+				local use_chat = opts.from_chat or #regions == 0
+				local target_win = code_window()
+				local before_keys = {}
+				for _, d in ipairs(ai_diagnostics()) do
+					before_keys[diag_key(d)] = true
+				end
+				local function new_count()
+					local n = 0
+					for _, d in ipairs(ai_diagnostics()) do
+						if not before_keys[diag_key(d)] then
+							n = n + 1
+						end
+					end
+					return n
+				end
+				local spin = spinners.start(regions)
+				local body = ANNOTATE_INSTRUCTIONS .. "\n\nUser request:\n" .. display_prompt
+				local function send_one(text, cb)
+					if use_chat then
+						local chat_text = text
+						if lsp_ctx then
+							chat_text = "### LSP diagnostics (from open buffers):\n" .. lsp_ctx .. "\n\n" .. chat_text
+						end
+						if tsc_ctx then
+							chat_text = "### tsc --noEmit:\n" .. tsc_ctx .. "\n\n" .. chat_text
+						end
+						session.send_chat(chat_text, cb)
+					else
+						session.send(text, regions, context.get_all(), cb, lsp_ctx, tsc_ctx)
+					end
+				end
+				local function finish()
+					spin:stop()
+					window.refresh()
+					local n = annotations_to_loclist(before_keys, target_win)
+					if n > 0 then
+						status.stop("Annotated — " .. n .. " annotation(s) in location list (:lopen)")
+					else
+						status.flash("No annotations published")
+					end
+				end
+				send_one(body, function()
+					vim.defer_fn(function()
+						if new_count() > 0 then
+							finish()
+							return
+						end
+						status.flash("No annotations published — asking again")
+						local retry = "You did not call lg_annotate. Do NOT redo or change any edits. "
+							.. "Call lg_annotate now with an annotation for each change you just made "
+							.. "(line numbers in the files as they are now). If it errors, fix the arguments and re-call."
+						if use_chat then
+							session.send_chat(retry, function()
+								vim.defer_fn(finish, 500)
+							end)
+						else
+							session.send(retry, {}, {}, function()
+								vim.defer_fn(finish, 500)
+							end)
+						end
+					end, 500)
+				end)
+				return
+			end
+
+			window.add_prompt(final_prompt)
+			local send_regions = opts.from_chat and {} or regions
+			local spin = spinners.start(regions)
+			if opts.from_chat then
+				session.send_chat(final_prompt, function()
+					vim.schedule(function()
+						spin:stop()
+					end)
+				end)
+			else
+				session.send(final_prompt, send_regions, context.get_all(), function()
+					vim.schedule(function()
+						spin:stop()
+						window.refresh()
+					end)
+				end, lsp_ctx, tsc_ctx)
+			end
+		end
+
 		local tsc_context = nil
 		if flags.has_tsc then
 			prompt = prompt:gsub("@TSC%s*", "")
@@ -637,54 +668,22 @@ function M.send(opts)
 					end
 					window.refresh()
 					status.stop("tsc done")
-
-					window.add_prompt(prompt)
-					local spin = spinners.start(regions)
-					if opts.from_chat then
-						session.send_chat(prompt, function()
-							vim.schedule(function()
-								spin:stop()
-							end)
-						end)
-					else
-						session.send(prompt, regions, context.get_all(), function()
-							vim.schedule(function()
-								spin:stop()
-								window.refresh()
-							end)
-						end, lsp_context, tsc_context)
-					end
+					dispatch_edit(prompt, lsp_context, tsc_context)
 				end)
 			)
 			return
 		end
 
-		window.add_prompt(prompt)
-		local send_regions = opts.from_chat and {} or regions
-		local spin = spinners.start(regions)
-		if opts.from_chat then
-			session.send_chat(prompt, function()
-				vim.schedule(function()
-					spin:stop()
-				end)
-			end)
-		else
-			session.send(prompt, send_regions, context.get_all(), function()
-				vim.schedule(function()
-					spin:stop()
-					window.refresh()
-				end)
-			end, lsp_context, tsc_context)
-		end
+		dispatch_edit(prompt, lsp_context, tsc_context)
 	end
 
 	if opts.prompt then
 		local text = opts.prompt
 		do_send(text, {
-				has_file_lsp = text and text:match("#file_lsp") ~= nil,
-			has_lsp = text
-				and text:match("#lsp") ~= nil
-				and not text:match("#file_lsp"),
+			has_file_lsp = text and text:match("#file_lsp") ~= nil,
+			has_lsp = text and text:match("#lsp") ~= nil and not text:match("#file_lsp"),
+			has_tsc = text and text:match("@TSC") ~= nil,
+			has_diag = text and text:match("@DIAG") ~= nil,
 			has_auto_paint = text and text:match("@INFO") ~= nil,
 			has_git = text and text:match("@GIT") ~= nil,
 			has_devlens = text and text:match("@DEVLENS") ~= nil,

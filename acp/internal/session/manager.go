@@ -34,7 +34,7 @@ func (m *Manager) sessionMCPServers() any {
 	m.mu.Lock()
 	servers := m.mcpServers
 	m.mu.Unlock()
-	if m.proc != nil && m.proc.Isantigravity() {
+	if m.proc != nil && m.proc.IsAntigravity() {
 		return protocol.ACPMCPServers(servers)
 	}
 	return servers

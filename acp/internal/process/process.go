@@ -188,8 +188,8 @@ func (p *Process) IsKiro() bool {
 	return p.kiro
 }
 
-// Isantigravity reports whether the agent is antigravity.
-func (p *Process) Isantigravity() bool {
+// IsAntigravity reports whether the agent is antigravity.
+func (p *Process) IsAntigravity() bool {
 	return p.antigravity
 }
 

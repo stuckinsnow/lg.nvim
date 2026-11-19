@@ -61,8 +61,8 @@ func formatPreview(turns []previewTurn) string {
 			fmt.Fprintf(&b, "**%s:**\n", t.Role)
 		}
 		text := strings.TrimSpace(t.Text)
-		if len(text) > maxTurnChars {
-			text = text[:maxTurnChars] + "..."
+		if runes := []rune(text); len(runes) > maxTurnChars {
+			text = string(runes[:maxTurnChars]) + "..."
 		}
 		b.WriteString(text)
 	}
