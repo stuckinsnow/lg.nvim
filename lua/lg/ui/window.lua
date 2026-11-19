@@ -9,7 +9,7 @@ local state = {
 	bufs = {},
 	wins = {},
 	history = {},
-	input_line = nil, -- line number where user input starts
+	pending_approval = nil, -- { prompt: string, resolve: fun(allowed: boolean), tag?: any }
 	context_pct = nil,
 	metering_total = 0,
 	metering_unit = "credits",
@@ -58,6 +58,16 @@ local function set_win_opts(w)
 	vim.wo[w].foldcolumn = "1"
 end
 
+local function darken_bg(bg, factor)
+	if not bg then
+		return nil
+	end
+	local r = math.floor(math.floor(bg / 65536) % 256 * factor)
+	local g = math.floor(math.floor(bg / 256) % 256 * factor)
+	local b = math.floor((bg % 256) * factor)
+	return string.format("#%02x%02x%02x", r, g, b)
+end
+
 local function ensure_highlights()
 	vim.api.nvim_set_hl(0, "LgTitle", { link = "Title", default = true })
 	vim.api.nvim_set_hl(0, "LgSeparator", { link = "Comment", default = true })
@@ -67,6 +77,10 @@ local function ensure_highlights()
 	vim.api.nvim_set_hl(0, "LgCostNormal", { link = "DiagnosticHint", default = true })
 	vim.api.nvim_set_hl(0, "LgCostWarn", { link = "DiagnosticWarn", default = true })
 	vim.api.nvim_set_hl(0, "LgCostAlarm", { link = "DiagnosticError", default = true })
+	vim.api.nvim_set_hl(0, "LgApproval", { link = "DiagnosticWarn", default = true })
+	local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
+	local prompt_bg = darken_bg(normal and normal.bg, 0.82) or "#181822"
+	vim.api.nvim_set_hl(0, "LgPromptNormal", { bg = prompt_bg, default = true })
 end
 
 local function set_buf_content(buf, lines, hls)
@@ -233,12 +247,9 @@ local function render_chat()
 			tool_lines[#lines] = true
 		end
 	end
-	-- Input area
-	table.insert(lines, "")
-	table.insert(lines, "# Me")
-	table.insert(lines, "")
-	state.input_line = #lines -- 0-indexed line where input starts
-	table.insert(lines, "")
+	if #lines == 0 then
+		table.insert(lines, "")
+	end
 	return lines, tool_lines, cost_lines
 end
 
@@ -439,17 +450,90 @@ function M.close_subagent()
 	state.sub_active = nil
 end
 
---- Get user input from the chat buffer and send it
+function M.is_open()
+	return win_valid(state.wins.chat) and win_valid(state.wins.prompt)
+end
+
+--- True when the user is actively in Insert mode inside the prompt bar.
+function M.is_prompt_insert()
+	return win_valid(state.wins.prompt)
+		and vim.api.nvim_get_current_win() == state.wins.prompt
+		and vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
+end
+
+local function update_prompt_winbar()
+	if not win_valid(state.wins.prompt) then
+		return
+	end
+	if state.pending_approval then
+		local escaped = state.pending_approval.prompt:gsub("%%", "%%%%")
+		vim.wo[state.wins.prompt].winbar = "%#LgApproval# ⚠ " .. escaped .. " [y/n] %*"
+	else
+		vim.wo[state.wins.prompt].winbar = ""
+	end
+end
+
+--- Show a pending approval prompt directly above the prompt bar.
+--- @param prompt string
+--- @param on_resolve fun(allowed: boolean)
+--- @param tag? any optional identifier so external resolvers can clear it
+function M.show_approval(prompt, on_resolve, tag)
+	state.pending_approval = { prompt = prompt, resolve = on_resolve, tag = tag }
+	update_prompt_winbar()
+end
+
+--- Check if a pending approval with the given tag is currently shown.
+--- @param tag any
+--- @return boolean
+function M.has_approval(tag)
+	return state.pending_approval ~= nil and state.pending_approval.tag == tag
+end
+
+--- Resolve the currently displayed approval prompt (if any).
+--- @param allowed boolean
+--- @return boolean resolved
+function M.resolve_approval(allowed)
+	local pending = state.pending_approval
+	if not pending then
+		return false
+	end
+	state.pending_approval = nil
+	update_prompt_winbar()
+	pcall(pending.resolve, allowed)
+	return true
+end
+
+local function parse_yn(text)
+	local lower = vim.trim(text):lower()
+	if lower == "y" or lower == "yes" then
+		return true
+	elseif lower == "n" or lower == "no" then
+		return false
+	end
+	return nil
+end
+
+--- Get user input from the prompt bar buffer and send it
 function M.submit()
-	local buf = state.bufs.chat
-	if not buf_valid(buf) or not state.input_line then
+	local buf = state.bufs.prompt
+	if not buf_valid(buf) then
 		return
 	end
 
-	local lines = vim.api.nvim_buf_get_lines(buf, state.input_line, -1, false)
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	local text = vim.trim(table.concat(lines, "\n"))
 	if text == "" then
 		return
+	end
+
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+
+	if state.pending_approval then
+		local decision = parse_yn(text)
+		if decision ~= nil then
+			M.resolve_approval(decision)
+			return
+		end
 	end
 
 	-- Include the active file name so the AI knows what the user is looking at
@@ -468,17 +552,17 @@ function M.submit()
 	require("lg").send({ prompt = text, from_chat = true })
 end
 
---- Focus the chat window input area
+--- Focus the prompt bar input area
 function M.focus_input()
-	if not win_valid(state.wins.chat) then
+	if not win_valid(state.wins.prompt) then
 		M.open()
 	end
-	if win_valid(state.wins.chat) then
-		vim.api.nvim_set_current_win(state.wins.chat)
-		local buf = state.bufs.chat
+	if win_valid(state.wins.prompt) then
+		vim.api.nvim_set_current_win(state.wins.prompt)
+		local buf = state.bufs.prompt
 		if buf_valid(buf) then
 			local lc = vim.api.nvim_buf_line_count(buf)
-			vim.api.nvim_win_set_cursor(state.wins.chat, { lc, 0 })
+			vim.api.nvim_win_set_cursor(state.wins.prompt, { lc, 0 })
 			vim.cmd("startinsert!")
 		end
 	end
@@ -501,9 +585,16 @@ function M.refresh()
 
 	if win_valid(state.wins.chat) then
 		local buf = ensure_buf("chat", "markdown")
+		local prev_lc = vim.api.nvim_buf_line_count(buf)
+		local cur_win = vim.api.nvim_get_current_win()
+		local cursor_row = cur_win == state.wins.chat and vim.api.nvim_win_get_cursor(state.wins.chat)[1] or prev_lc
+		local was_at_bottom = cursor_row >= prev_lc
+
 		local lines, tool_lines, cost_lines = render_chat()
 		vim.bo[buf].modifiable = true
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		vim.bo[buf].modifiable = false
+
 		local ns = vim.api.nvim_create_namespace("lg_chat")
 		vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 		for ln in pairs(tool_lines) do
@@ -529,21 +620,49 @@ function M.refresh()
 				})
 			end
 		end
-		local lc = vim.api.nvim_buf_line_count(buf)
-		pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, 0 })
+		if was_at_bottom then
+			local lc = vim.api.nvim_buf_line_count(buf)
+			pcall(vim.api.nvim_win_set_cursor, state.wins.chat, { lc, 0 })
+		end
 	end
+	update_prompt_winbar()
 end
 
 local function setup_chat_keymaps(buf)
+	vim.keymap.set("n", "<CR>", function()
+		M.focus_input()
+	end, { buffer = buf, desc = "Focus prompt bar" })
+	vim.keymap.set("n", "i", function()
+		M.focus_input()
+	end, { buffer = buf, desc = "Focus prompt bar" })
+	vim.keymap.set("n", "a", function()
+		M.focus_input()
+	end, { buffer = buf, desc = "Focus prompt bar" })
+	vim.keymap.set("n", "q", function()
+		M.close_subagent()
+	end, { buffer = buf, desc = "Close subagent" })
+end
+
+local function setup_prompt_keymaps(buf)
 	vim.keymap.set({ "n", "i" }, "<C-s>", function()
 		M.submit()
 	end, { buffer = buf, desc = "Send prompt" })
 	vim.keymap.set("n", "<CR>", function()
 		M.submit()
 	end, { buffer = buf, desc = "Send prompt" })
-	vim.keymap.set("n", "q", function()
-		M.close_subagent()
-	end, { buffer = buf, desc = "Close subagent" })
+	vim.keymap.set("i", "<CR>", function()
+		if state.pending_approval then
+			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+			local decision = parse_yn(table.concat(lines, "\n"))
+			if decision ~= nil then
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+				M.resolve_approval(decision)
+				return
+			end
+		end
+		local cr = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
+		vim.api.nvim_feedkeys(cr, "n", false)
+	end, { buffer = buf, desc = "Approve/reject or newline" })
 end
 
 function M.open()
@@ -576,30 +695,43 @@ function M.open()
 	set_win_opts(state.wins.chat)
 	vim.wo[state.wins.chat].winfixheight = false
 	vim.wo[state.wins.chat].conceallevel = 2
-	vim.bo[chat_buf].modifiable = true
+	vim.bo[chat_buf].modifiable = false
 
 	setup_chat_keymaps(chat_buf)
 
-	vim.api.nvim_create_autocmd("BufEnter", {
-		buffer = chat_buf,
-		callback = function()
-			local pct = state.context_pct
-			if pct then require("lg.kitty").set(pct) end
-		end,
-	})
-	vim.api.nvim_create_autocmd("BufLeave", {
-		buffer = chat_buf,
-		callback = function() require("lg.kitty").clear() end,
-	})
+	vim.cmd("belowright 3split")
+	state.wins.prompt = vim.api.nvim_get_current_win()
+	local prompt_buf = ensure_buf("prompt", "markdown")
+	vim.api.nvim_win_set_buf(state.wins.prompt, prompt_buf)
+	set_win_opts(state.wins.prompt)
+	vim.wo[state.wins.prompt].winfixheight = true
+	vim.wo[state.wins.prompt].winhighlight = "Normal:LgPromptNormal,NormalNC:LgPromptNormal"
+	vim.bo[prompt_buf].modifiable = true
+
+	setup_prompt_keymaps(prompt_buf)
+
+	for _, b in ipairs({ chat_buf, prompt_buf }) do
+		vim.api.nvim_create_autocmd("BufEnter", {
+			buffer = b,
+			callback = function()
+				local pct = state.context_pct
+				if pct then require("lg.kitty").set(pct) end
+			end,
+		})
+		vim.api.nvim_create_autocmd("BufLeave", {
+			buffer = b,
+			callback = function() require("lg.kitty").clear() end,
+		})
+	end
 
 	M.refresh()
 
-	pcall(vim.api.nvim_set_current_win, state.wins.chat)
+	pcall(vim.api.nvim_set_current_win, state.wins.prompt)
 end
 
 function M.close()
 	M.close_subagent()
-	for _, key in ipairs({ "chat", "context", "regions", "status" }) do
+	for _, key in ipairs({ "prompt", "chat", "context", "regions", "status" }) do
 		if win_valid(state.wins[key]) then
 			vim.api.nvim_win_close(state.wins[key], true)
 		end

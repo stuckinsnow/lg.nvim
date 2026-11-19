@@ -141,7 +141,14 @@ local function nearest()
 	return best
 end
 
+local function in_chat_mode()
+	local ok, window = pcall(require, "lg.ui.window")
+	return ok and window.is_prompt_insert()
+end
+
 -- ── Public ────────────────────────────────────────────────────────
+
+local accept_hunk, reject_hunk
 
 --- Propose a file write for review. Calls on_resolve(accepted) when user decides.
 function M.propose_write(path, old_content, new_content, on_resolve)
@@ -151,7 +158,25 @@ function M.propose_write(path, old_content, new_content, on_resolve)
 		on_resolve(true)
 		return
 	end
-	hunks[#hunks].on_resolve = on_resolve
+	local h = hunks[#hunks]
+	h.on_resolve = on_resolve
+	if in_chat_mode() then
+		local short = vim.fn.fnamemodify(h.path or path, ":~:.")
+		require("lg.ui.approval").select(
+			{ "Accept", "Reject" },
+			{ prompt = string.format("Apply edit: %s:%d", short, h.row + 1), tag = h },
+			function(_, idx)
+				if h.accepted ~= nil then
+					return
+				end
+				if idx == 1 then
+					accept_hunk(h)
+				else
+					reject_hunk(h, nil)
+				end
+			end
+		)
+	end
 end
 
 function M.propose_edit(path, old_text, new_text)
@@ -176,7 +201,10 @@ function M.propose_edit(path, old_text, new_text)
 		end
 	end
 
-	api.nvim_set_current_win(target_win)
+	local chat_mode = in_chat_mode()
+	if not chat_mode then
+		api.nvim_set_current_win(target_win)
+	end
 
 	-- Find or open buffer
 	local bufnr
@@ -236,7 +264,15 @@ function M.propose_edit(path, old_text, new_text)
 	hunks[#hunks + 1] = h
 	render(h)
 
-	jump(#hunks)
+	if chat_mode then
+		api.nvim_win_call(target_win, function()
+			api.nvim_win_set_buf(target_win, bufnr)
+			pcall(api.nvim_win_set_cursor, target_win, { math.min(h.row + 1, api.nvim_buf_line_count(bufnr)), 0 })
+			vim.cmd("normal! zz")
+		end)
+	else
+		jump(#hunks)
+	end
 
 	-- Clear watcher marks on this buffer so they don't overlap
 	pcall(api.nvim_buf_clear_namespace, bufnr, api.nvim_create_namespace("lg_auto_paint"), 0, -1)
@@ -263,27 +299,45 @@ function M.prev_hunk()
 	jump(pi[#pi])
 end
 
+accept_hunk = function(h)
+	if not h or h.accepted ~= nil then return end
+	h.accepted = true
+	clear_extmarks(h)
+	api.nvim_buf_clear_namespace(h.bufnr, dns, 0, -1)
+	resolve(h, true)
+	local changes_ns = api.nvim_create_namespace("lg_auto_paint")
+	pcall(api.nvim_buf_clear_namespace, h.bufnr, changes_ns, 0, -1)
+	local ok, window = pcall(require, "lg.ui.window")
+	if ok and window.has_approval(h) then
+		window.resolve_approval(true)
+	end
+end
+
+reject_hunk = function(h, reason)
+	if not h or h.accepted ~= nil then return end
+	h.accepted = false
+	clear_extmarks(h)
+	api.nvim_buf_clear_namespace(h.bufnr, dns, 0, -1)
+	resolve(h, false, reason)
+	local changes_ns = api.nvim_create_namespace("lg_auto_paint")
+	pcall(api.nvim_buf_clear_namespace, h.bufnr, changes_ns, 0, -1)
+	local ok, window = pcall(require, "lg.ui.window")
+	if ok and window.has_approval(h) then
+		window.resolve_approval(false)
+	end
+end
+
 function M.accept()
 	local idx = nearest()
 	if not idx then return end
-	hunks[idx].accepted = true
-	clear_extmarks(hunks[idx])
-	api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
-	resolve(hunks[idx], true)
-	local changes_ns = api.nvim_create_namespace("lg_auto_paint")
-	pcall(api.nvim_buf_clear_namespace, hunks[idx].bufnr, changes_ns, 0, -1)
+	accept_hunk(hunks[idx])
 end
 
 function M.reject()
 	local idx = nearest()
 	if not idx then return end
 	vim.ui.input({ prompt = "Rejection reason: " }, function(reason)
-		hunks[idx].accepted = false
-		clear_extmarks(hunks[idx])
-		api.nvim_buf_clear_namespace(hunks[idx].bufnr, dns, 0, -1)
-		resolve(hunks[idx], false, reason)
-		local changes_ns = api.nvim_create_namespace("lg_auto_paint")
-		pcall(api.nvim_buf_clear_namespace, hunks[idx].bufnr, changes_ns, 0, -1)
+		reject_hunk(hunks[idx], reason)
 	end)
 end
 

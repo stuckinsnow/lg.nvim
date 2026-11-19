@@ -25,7 +25,7 @@ local function next_prompt()
 	if #queue > 0 then
 		opts = vim.tbl_extend("force", opts, { prompt = (opts.prompt or "") .. " (+" .. #queue .. " queued)" })
 	end
-	vim.ui.select(item.items, opts, function(choice, idx)
+	local function finish(choice, idx)
 		if done then
 			return
 		end
@@ -34,7 +34,21 @@ local function next_prompt()
 		-- Run the callback, then show the next prompt once the picker has closed.
 		pcall(item.on_choice, choice, idx)
 		vim.schedule(next_prompt)
-	end)
+	end
+
+	local win_ok, window = pcall(require, "lg.ui.window")
+	if win_ok and window.is_prompt_insert() then
+		window.show_approval(opts.prompt or "Approve?", function(allowed)
+			if allowed then
+				finish(item.items[1], 1)
+			else
+				finish(item.items[2], 2)
+			end
+		end, opts.tag)
+		return
+	end
+
+	vim.ui.select(item.items, opts, finish)
 end
 
 --- Queued drop-in for vim.ui.select.

@@ -184,8 +184,10 @@ function M.do_read_buffer(path, start_line, end_line)
 			end
 			if b ~= -1 then
 				vim.api.nvim_win_set_buf(target_win, b)
-				pcall(vim.api.nvim_win_set_cursor, target_win, { start_line, 0 })
-				vim.api.nvim_win_call(target_win, function() vim.cmd("normal! zz") end)
+				if not require("lg.ui.window").is_prompt_insert() then
+					pcall(vim.api.nvim_win_set_cursor, target_win, { start_line, 0 })
+					vim.api.nvim_win_call(target_win, function() vim.cmd("normal! zz") end)
+				end
 				for row = start_line - 1, end_line - 1 do
 					local signs = require("lg.ui.signs")
 					vim.api.nvim_buf_set_extmark(b, ns, row, 0, {
@@ -477,8 +479,10 @@ function M.handle_message(data)
 				local bufnr = vim.fn.bufnr(first_file)
 				if bufnr ~= -1 then
 					vim.api.nvim_win_set_buf(target_win, bufnr)
-					pcall(vim.api.nvim_win_set_cursor, target_win, { first_line, 0 })
-					vim.api.nvim_win_call(target_win, function() vim.cmd("normal! zz") end)
+					if not require("lg.ui.window").is_prompt_insert() then
+						pcall(vim.api.nvim_win_set_cursor, target_win, { first_line, 0 })
+						vim.api.nvim_win_call(target_win, function() vim.cmd("normal! zz") end)
+					end
 				end
 			end
 		end
