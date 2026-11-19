@@ -240,7 +240,7 @@ func handleToolsList() any {
 		Tools: []protocol.ToolDef{
 			{
 				Name:        "paint_edit",
-				Description: "Replace code in painted regions. Call get_painted_regions first. Send ALL edits in one call. If the user rejects an edit via the permission prompt, do NOT retry the same edit with this or any other tool.",
+				Description: "Replace code in painted regions. Region code is already provided in the prompt; call paint_edit directly unless you need extra context from get_painted_regions or read_buffer. Send ALL edits in one call. If the user rejects an edit via the permission prompt, do NOT retry the same edit with this or any other tool.",
 				InputSchema: protocol.ToolSchema{
 					Type: "object",
 					Properties: map[string]any{

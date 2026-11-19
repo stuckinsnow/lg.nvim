@@ -1,8 +1,0 @@
-ERR 2026-11-19T18:43:09.841 ?.38       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T18:43:09.846 ?.40       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T18:43:09.856 ?.42       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T18:43:09.865 ?.44       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T18:48:49.288 ?.40       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T18:48:49.293 ?.41       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T18:48:49.299 ?.42       vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip
-ERR 2026-11-19T19:04:59.921 ?.398      vim_mktempdir:3449: tempdir root has invalid permissions (40777): /tmp/nvim.philip

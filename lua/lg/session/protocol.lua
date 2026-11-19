@@ -34,7 +34,7 @@ function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_
   -- Editable regions
   if #regions > 0 then
     local max_id = #regions - 1
-    local header = "You have " .. #regions .. " painted region(s) (region_id 0" .. (max_id > 0 and ("–" .. max_id) or "") .. "). Edit ONLY these regions. Do NOT edit any other regions. Use the paint_edit tool with ALL edits in one call."
+    local header = "You have " .. #regions .. " painted region(s) (region_id 0" .. (max_id > 0 and ("–" .. max_id) or "") .. "). Edit ONLY these regions. Do NOT edit any other regions. The full code of each region is shown below — call paint_edit directly with ALL edits in one call unless you actually need to read surrounding context first."
     if edit_token then
       header = header .. "\n\nEdit token: `" .. edit_token .. "` — pass this as edit_token in every paint_edit and get_painted_regions call."
     end
