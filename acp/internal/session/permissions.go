@@ -158,9 +158,10 @@ func (s *Session) handleConsent(id *protocol.RPCID, params protocol.PermissionPa
 // handleTitlePermission decides permission requests that carry no consent
 // metadata (opencode), based on the tool title.
 func (s *Session) handleTitlePermission(id *protocol.RPCID, params protocol.PermissionParams) {
-	title := ""
+	title, kind := "", ""
 	if params.ToolCall != nil {
 		title = params.ToolCall.Title
+		kind = params.ToolCall.Kind
 	}
 	opts := params.Options
 
@@ -191,7 +192,8 @@ func (s *Session) handleTitlePermission(id *protocol.RPCID, params protocol.Perm
 	}
 
 	// Dangerous operations need approval from Lua side
-	needsApproval := strings.HasPrefix(title, "Creating ") ||
+	needsApproval := kind == "execute" || kind == "edit" || kind == "delete" || kind == "move" ||
+		strings.HasPrefix(title, "Creating ") ||
 		strings.HasPrefix(title, "Deleting ") ||
 		(strings.HasPrefix(title, "Running") && !strings.Contains(title, "@lg/") && !strings.Contains(title, "@lg-hint/")) ||
 		strings.Contains(strings.ToLower(title), "devlens")

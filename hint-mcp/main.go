@@ -229,6 +229,9 @@ func main() {
 				}
 			}
 		default:
+			if req.ID == nil {
+				continue
+			}
 			resp.Error = map[string]any{"code": -32601, "message": "method not found: " + req.Method}
 		}
 

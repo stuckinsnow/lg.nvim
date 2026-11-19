@@ -13,7 +13,7 @@ An AI coding client for Neovim, driven over ACP. Two ways to work:
 Both share one session, so you can scope an edit tightly, then open the chat and
 keep the same conversation going.
 
-Supports **kiro-cli** and **opencode** as providers.
+Supports **kiro-cli**, **opencode**, and **Antigravity (`agy`)** as providers.
 
 ## How it works
 
@@ -143,7 +143,7 @@ configure the same set in whichever provider you use.
 | `devlens`    | React component inspection      | `read`, `grep`, `glob`, devlens                                                                    |
 | `fullstack`  | Full agentic mode               | `read`, shell, `grep`, `glob`, all `lg` + `lg-git` tools, `get_hints`                              |
 
-The two providers name and restrict tools differently:
+The providers name and restrict tools differently:
 
 - **kiro-cli** — one JSON file per agent in `~/.kiro/agents/`, with an explicit
   `tools` allow-list. MCP tools are referenced as `@server/tool` (e.g.
@@ -153,6 +153,10 @@ The two providers name and restrict tools differently:
   denies everything (`"*": "deny"`) and then allows what it needs. MCP tools are
   named `server_tool` (e.g. `lg_paint_edit`, `lg-hint_lg_hint`) and permission
   keys accept wildcards (`lg-hint_*`, `lg_*`).
+- **antigravity (`agy`)** — no agent or MCP config files needed (`lg.nvim`
+  passes `lg-mcp` in `session/new`). Uses `examples/antigravity/hooks.json` in
+  `~/.gemini/config/hooks.json` to deny `write_file`, `edit_file`, and
+  `run_command` when `LG_ACP=1` is set by `lg-acp`.
 
 ### Setup
 

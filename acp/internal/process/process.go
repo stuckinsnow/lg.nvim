@@ -10,6 +10,7 @@ import (
 	"io"
 	"lg-acp/internal/protocol"
 	"log"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -49,6 +50,7 @@ type AgentErrorHandler func(sessionID, msg string)
 // set, is called for session errors the agent reports only on stderr.
 func Spawn(args []string, clientName string, onAgentError AgentErrorHandler) (*Process, error) {
 	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Env = append(os.Environ(), "LG_ACP=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdin, err := cmd.StdinPipe()

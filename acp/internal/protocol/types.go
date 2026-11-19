@@ -206,6 +206,7 @@ type PermissionMeta struct {
 
 type PermissionTool struct {
 	Title string `json:"title"`
+	Kind  string `json:"kind,omitempty"`
 }
 
 type PermissionOption struct {

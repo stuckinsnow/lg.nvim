@@ -399,6 +399,10 @@ func main() {
 				resp.Result = result
 			}
 		default:
+			// JSON-RPC notifications have no id and must never receive a response.
+			if req.ID == nil {
+				continue
+			}
 			resp.Error = protocol.MCPError{Code: -32601, Message: "method not found: " + req.Method}
 		}
 

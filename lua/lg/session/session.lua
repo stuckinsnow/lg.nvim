@@ -52,19 +52,12 @@ local function mcp_servers()
 		return servers
 	end
 	local bin = require("lg.bin")
-	local defaults = {
-		lg = { name = "lg-mcp", env = { LG_SOCK = "/dev/shm/lg.sock" } },
-		["lg-hint"] = {
-			name = "lg-hint-mcp",
-			env = { LG_HINT_SOCK = "/dev/shm/lg-hint.sock", LG_SOCK = "/dev/shm/lg.sock" },
-		},
-		["lg-git"] = { name = "lg-git-mcp", env = {} },
-	}
-	for server, d in pairs(defaults) do
-		local path = bin.find(d.name)
-		if path and servers[server] == nil then
-			servers[server] = { command = path, args = {}, env = d.env }
-		end
+	-- agy acp has a preload race when multiple MCP servers are sent in
+	-- session/new, dropping servers unpredictably. Attach only lg so paint_edit
+	-- and lg_write_file have the best chance of loading.
+	local path = bin.find("lg-mcp")
+	if path and servers.lg == nil then
+		servers.lg = { command = path, args = {}, env = { LG_SOCK = "/dev/shm/lg.sock" } }
 	end
 	return servers
 end
