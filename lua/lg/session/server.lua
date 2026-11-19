@@ -289,6 +289,9 @@ function M.handle_message(data)
 		vim.cmd("redraw")
 		return vim.json.encode({ ok = true, count = count })
 	elseif msg.method == "edit_file" then
+		if not require("lg.session.session").allows_write_file() then
+			return vim.json.encode({ error = "lg_write_file is only allowed in chat mode; use paint_edit for painted regions" })
+		end
 		local path = msg.path
 		local old_text = msg.old_text
 		local new_text = msg.new_text

@@ -174,6 +174,7 @@ end
 local _send_queue = {}
 local _busy = false
 local _has_history = false
+local _chat_active = false
 
 local function flush_send_queue()
 	if #_send_queue == 0 then
@@ -703,7 +704,9 @@ function M.send_chat(prompt, on_done)
 			status.start("Thinking...")
 			vim.api.nvim_exec_autocmds("User", { pattern = "LgRequestStarted" })
 
+			_chat_active = not _planner_active
 			M._on_done = function()
+				_chat_active = false
 				if not _planner_active then
 					require("lg.ui.window").add_status("Switching to paint mode")
 				end
@@ -778,6 +781,7 @@ function M.reset()
 	_send_queue = {}
 	_busy = false
 	_has_history = false
+	_chat_active = false
 	M._on_done = nil
 	M._session_count = 0
 	require("lg.session.server").clear_tokens()
@@ -794,6 +798,7 @@ function M.clear()
 	_send_queue = {}
 	_busy = false
 	_has_history = false
+	_chat_active = false
 	M._on_done = nil
 	M._session_count = 0
 	require("lg.session.server").clear_tokens()
@@ -819,7 +824,12 @@ function M.kill()
 	end
 	client.cancel(main_session_id)
 	_busy = false
+	_chat_active = false
 	M._on_done = nil
+end
+
+function M.allows_write_file()
+	return _chat_active
 end
 
 function M.is_active()
@@ -1012,7 +1022,9 @@ function M._run_handoff(plan)
 		local prompt = "Execute this plan now using lg_write_file. Read the file first if you need to verify old_text matches, but do not re-plan or re-ask for confirmation — the user already approved.\n\n--- PLAN ---\n"
 			.. plan
 		status.start("Executing plan...")
+		_chat_active = true
 		M._on_done = function()
+			_chat_active = false
 			_busy = false
 			status.stop("Plan executed")
 			flush_send_queue()
