@@ -531,12 +531,15 @@ function M._setup_event_handlers()
 		if new_agent == _requested_mode then
 			_requested_mode = nil
 		end
-		_planner_active = (new_agent == "lg-plan")
+		local plan_mode = resolve_mode("lg-plan")
+		local chat_mode = resolve_mode("lg-chat")
+		_planner_active = (new_agent == plan_mode)
 		local win = require("lg.ui.window")
 		if _planner_active then
-			win.add_status("▶ plan mode (" .. (prev or "?") .. " → lg-plan)")
-		elseif new_agent == "lg-chat" and prev == "lg-plan" then
+			win.add_status("▶ plan mode (" .. (prev or "?") .. " → " .. plan_mode .. ")")
+		elseif new_agent == chat_mode and prev == plan_mode then
 			-- handoff landing (message already printed by _run_handoff)
+			win.refresh()
 		else
 			win.add_status("agent: " .. (new_agent or "?"))
 		end

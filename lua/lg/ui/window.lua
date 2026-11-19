@@ -10,7 +10,6 @@ local state = {
 	wins = {},
 	history = {},
 	input_line = nil, -- line number where user input starts
-	planner = false,
 	context_pct = nil,
 	metering_total = 0,
 	metering_unit = "credits",
@@ -115,7 +114,7 @@ local function render_status()
 
 	local devlens = devlens_up and ok_icon or fail_icon
 
-	local plan = state.planner and ok_icon or fail_icon
+	local plan = session.is_planner_active() and ok_icon or fail_icon
 	local line =
 		string.format("acp %s  mcp %s  hint-mcp %s  lsp %s  lens %s  plan %s", acp, mcp, hint, lsp, devlens, plan)
 
@@ -624,8 +623,7 @@ function M.clear_history()
 end
 
 function M.toggle_planner()
-	state.planner = not state.planner
-	session.set_planner(state.planner, function(ok)
+	session.set_planner(not session.is_planner_active(), function(ok)
 		if ok then
 			vim.schedule(function()
 				M.refresh()
