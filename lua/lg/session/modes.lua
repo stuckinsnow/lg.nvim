@@ -18,10 +18,10 @@ local opencode_modes = {
 	fullstack = "fullstack",
 }
 
---- Antigravity exposes permission policy modes (default, accept-edits, auto,
+--- antigravity exposes permission policy modes (default, accept-edits, auto,
 --- plan), not named agents. Everything stays on "default" so edits and shell
 --- commands still go through lg's permission flow; only the planner maps to
---- Antigravity's own plan mode.
+--- antigravity's own plan mode.
 local antigravity_modes = {
 	["lg-plan"] = "plan",
 	kiro_planner = "plan",

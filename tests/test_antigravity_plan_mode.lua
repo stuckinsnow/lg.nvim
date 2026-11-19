@@ -1,4 +1,4 @@
--- Verifies that Antigravity's native "plan" mode stays active across
+-- Verifies that antigravity's native "plan" mode stays active across
 -- agent_switched events and send_chat turns, and exits cleanly to "default".
 --
 -- Run: nvim --headless -u NONE -l tests/test_antigravity_plan_mode.lua

@@ -13,7 +13,7 @@ An AI coding client for Neovim, driven over ACP. Two ways to work:
 Both share one session, so you can scope an edit tightly, then open the chat and
 keep the same conversation going.
 
-Supports **kiro-cli**, **opencode**, and **Antigravity (`agy`)** as providers.
+Supports **kiro-cli**, **opencode**, and **antigravity (`agy`)** as providers.
 
 ## How it works
 
@@ -207,14 +207,13 @@ where its results show up.
 
 Use `#` shortcuts to reference files or gather local code context:
 
-| Shortcut      | Does                                                                         |
-| ------------- | ---------------------------------------------------------------------------- |
-| `#buffer`     | Inserts `@<current file path>`                                               |
-| `#buffdir`    | Inserts `@<current file's directory>/`                                        |
-| `#./`         | Expands to `@` (relative path prefix)                                        |
-| `#lsp`        | Adds types and diagnostics for painted regions                               |
-| `#file_lsp`   | Adds diagnostics for the entire current file                                  |
-
+| Shortcut    | Does                                           |
+| ----------- | ---------------------------------------------- |
+| `#buffer`   | Inserts `@<current file path>`                 |
+| `#buffdir`  | Inserts `@<current file's directory>/`         |
+| `#./`       | Expands to `@` (relative path prefix)          |
+| `#lsp`      | Adds types and diagnostics for painted regions |
+| `#file_lsp` | Adds diagnostics for the entire current file   |
 
 These are available as blink.cmp completions when typing `@` or `#` in the prompt.
 

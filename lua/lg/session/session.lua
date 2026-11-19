@@ -37,7 +37,7 @@ local opts = {}
 local providers = {
 	kiro = { cmd = { "kiro-cli", "acp" }, name = "Kiro" },
 	opencode = { cmd = { "opencode", "acp" }, name = "OpenCode" },
-	antigravity = { cmd = { "agy", "acp" }, name = "Antigravity" },
+	antigravity = { cmd = { "agy", "acp" }, name = "antigravity" },
 }
 
 local function resolve_mode(mode_id)
@@ -45,7 +45,7 @@ local function resolve_mode(mode_id)
 end
 
 --- MCP servers to attach to new sessions. Kiro and OpenCode load lg's tools
---- from their own agent config. Antigravity has no agent files, so lg passes
+--- from their own agent config. antigravity has no agent files, so lg passes
 --- its servers through ACP session/new. User-configured servers take priority.
 local function mcp_servers()
 	local servers = vim.deepcopy(opts.mcp_servers or {})
@@ -914,7 +914,7 @@ function M.compact()
 		local spin = require("lg.spinner.spinners").start({})
 		_busy = true
 
-		-- Antigravity exposes compact as an advertised slash command, run by
+		-- antigravity exposes compact as an advertised slash command, run by
 		-- sending it as prompt text. Kiro uses its extension method.
 		if opts.provider == "antigravity" then
 			M._on_done = function()
@@ -955,7 +955,7 @@ function M.execute_command(command)
 	elseif name == "usage" then
 		require("lg.usage").show()
 	elseif opts.provider == "antigravity" then
-		-- Antigravity runs its advertised slash commands from prompt text.
+		-- antigravity runs its advertised slash commands from prompt text.
 		M.send_chat("/" .. name)
 	else
 		vim.notify("lg: /" .. name .. " isn't available through Kiro v3 ACP", vim.log.levels.WARN)

@@ -29,7 +29,7 @@ function M.set_confirmed(session_id, model_id, opts)
     if opts.on_done then opts.on_done(ok) end
   end
 
-  -- Antigravity accepts variant ids such as "gemini-3.8-flash-low" and reports
+  -- antigravity accepts variant ids such as "gemini-3.8-flash-low" and reports
   -- them split into model = "gemini-3.8-flash" plus thought_level = "low".
   local function config_confirms_model(config_options)
     local model, thought

@@ -28,13 +28,13 @@ func (m *Manager) SetMCPServers(servers map[string]any) {
 }
 
 // sessionMCPServers returns MCP servers in the shape the agent expects.
-// Antigravity follows the ACP spec (an array); kiro and opencode keep the map
+// antigravity follows the ACP spec (an array); kiro and opencode keep the map
 // lg has always sent them.
 func (m *Manager) sessionMCPServers() any {
 	m.mu.Lock()
 	servers := m.mcpServers
 	m.mu.Unlock()
-	if m.proc != nil && m.proc.IsAntigravity() {
+	if m.proc != nil && m.proc.Isantigravity() {
 		return protocol.ACPMCPServers(servers)
 	}
 	return servers

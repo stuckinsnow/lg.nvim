@@ -129,7 +129,7 @@ func Spawn(args []string, clientName string, onAgentError AgentErrorHandler) (*P
 		return nil, p.initErr
 	}
 
-	// Antigravity requires authentication before session/new.
+	// antigravity requires authentication before session/new.
 	if p.antigravity && len(p.authMethods) > 0 {
 		if err := p.authenticate(p.authMethods[0]); err != nil {
 			cmd.Process.Kill()
@@ -188,13 +188,13 @@ func (p *Process) IsKiro() bool {
 	return p.kiro
 }
 
-// IsAntigravity reports whether the agent is Antigravity.
-func (p *Process) IsAntigravity() bool {
+// Isantigravity reports whether the agent is antigravity.
+func (p *Process) Isantigravity() bool {
 	return p.antigravity
 }
 
 // authenticate sends the ACP authenticate request and blocks until the response
-// arrives. Antigravity reuses the existing agy CLI login state.
+// arrives. antigravity reuses the existing agy CLI login state.
 func (p *Process) authenticate(methodID string) error {
 	done := make(chan error, 1)
 	id := p.NextID()
