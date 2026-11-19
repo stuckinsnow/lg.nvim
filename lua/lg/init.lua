@@ -152,6 +152,22 @@ function M.clear_marks()
 	require("lg.ui.hunk").clear()
 end
 
+local function send_hint_socket(payload, on_fallback)
+	local pipe = vim.uv.new_pipe(false)
+	pipe:connect("/dev/shm/lg-hint.sock", function(err)
+		if err then
+			pipe:close()
+			if on_fallback then
+				vim.schedule(on_fallback)
+			end
+			return
+		end
+		pipe:write(vim.json.encode(payload) .. "\n", function()
+			pipe:close()
+		end)
+	end)
+end
+
 function M.clear_hints()
 	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
 		local diag_ns = vim.lsp.diagnostic.get_namespace(client.id, false)
@@ -159,6 +175,32 @@ function M.clear_hints()
 			vim.diagnostic.reset(diag_ns)
 		end
 	end
+	send_hint_socket({ method = "clear" })
+end
+
+function M.clear_hint_line()
+	local buf = vim.api.nvim_get_current_buf()
+	local file = vim.api.nvim_buf_get_name(buf)
+	local line = vim.api.nvim_win_get_cursor(0)[1]
+	if file == "" then
+		return
+	end
+	send_hint_socket({ method = "clear_line", file = file, line = line }, function()
+		local line0 = line - 1
+		for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
+			local diag_ns = vim.lsp.diagnostic.get_namespace(client.id, false)
+			if diag_ns then
+				local kept = {}
+				for _, d in ipairs(vim.diagnostic.get(buf, { namespace = diag_ns })) do
+					local end_l = d.end_lnum or d.lnum
+					if not (d.lnum <= line0 and end_l >= line0) then
+						kept[#kept + 1] = d
+					end
+				end
+				vim.diagnostic.set(diag_ns, buf, kept)
+			end
+		end
+	end)
 end
 
 -- ── Diff hunks (chat mode) ────────────────────────────────────────

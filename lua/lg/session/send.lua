@@ -61,6 +61,82 @@ local function count_ai_diagnostics()
 	return n
 end
 
+--- Snapshot all lg-hint diagnostics as a list of { bufnr, diag }.
+local function ai_diagnostics()
+	local out = {}
+	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
+		local ns = vim.lsp.diagnostic.get_namespace(client.id, false)
+		if ns then
+			for _, d in ipairs(vim.diagnostic.get(nil, { namespace = ns })) do
+				out[#out + 1] = d
+			end
+		end
+	end
+	return out
+end
+
+local function diag_key(d)
+	return table.concat({ d.bufnr, d.lnum, d.col, d.message }, "\0")
+end
+
+--- First normal file window in the current tab (target for the location list).
+local function code_window()
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		local b = vim.api.nvim_win_get_buf(win)
+		if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
+			return win
+		end
+	end
+	return vim.api.nvim_get_current_win()
+end
+
+local annotate_severity = { "E", "W", "I", "N" }
+
+--- Put the diagnostics published since `before_keys` into the location list.
+--- @return integer count
+local function annotations_to_loclist(before_keys, win)
+	local items = {}
+	for _, d in ipairs(ai_diagnostics()) do
+		if not before_keys[diag_key(d)] then
+			items[#items + 1] = {
+				bufnr = d.bufnr,
+				lnum = d.lnum + 1,
+				col = d.col + 1,
+				end_lnum = d.end_lnum and (d.end_lnum + 1) or nil,
+				end_col = d.end_col and (d.end_col + 1) or nil,
+				text = "AI - " .. d.message,
+				type = annotate_severity[d.severity] or "I",
+			}
+		end
+	end
+	table.sort(items, function(a, b)
+		local fa, fb = vim.api.nvim_buf_get_name(a.bufnr), vim.api.nvim_buf_get_name(b.bufnr)
+		if fa ~= fb then
+			return fa < fb
+		end
+		return a.lnum < b.lnum
+	end)
+	if #items > 0 then
+		if not vim.api.nvim_win_is_valid(win) then
+			win = code_window()
+		end
+		vim.fn.setloclist(win, {}, " ", { title = "lg annotations", items = items })
+	end
+	return #items
+end
+
+local ANNOTATE_INSTRUCTIONS = table.concat({
+	"ANNOTATE: do the user's request as normal (make the edits it asks for). Then call the lg_annotate tool ONCE",
+	"with an annotation for each meaningful change you made, so the user can review your changes in the editor:",
+	"- file / line / end_line: location in the file AFTER your edits (1-based)",
+	"- match: exact text on the changed line to underline",
+	"- message: one short line saying what changed and why",
+	"- detail: optional longer explanation (markdown)",
+	"If the request asks to annotate existing code or changes without editing, skip the edits and only annotate",
+	"(inspect existing changes, e.g. with git diff, if needed). Do not finish without calling lg_annotate.",
+}, "\n")
+
+
 local sent_region_count = 0
 
 function M.reset_region_count()
@@ -106,6 +182,7 @@ function M.send(opts)
 			and not flags.has_shell
 			and not flags.has_devlens
 			and not flags.has_hint
+			and not flags.has_annotate
 			and not flags.has_suggest
 			and not flags.has_help
 			and not flags.has_ask
@@ -293,6 +370,66 @@ function M.send(opts)
 					run_hint(session.send_hint_subagent)
 				end)
 			end
+			return
+		end
+
+		if flags.has_annotate then
+			prompt = prompt:gsub("@ANNOTATE%s*", "")
+			window.add_prompt("@ANNOTATE " .. prompt)
+			local use_chat = opts.from_chat or #regions == 0
+			local target_win = code_window()
+			local before_keys = {}
+			for _, d in ipairs(ai_diagnostics()) do
+				before_keys[diag_key(d)] = true
+			end
+			local function new_count()
+				local n = 0
+				for _, d in ipairs(ai_diagnostics()) do
+					if not before_keys[diag_key(d)] then
+						n = n + 1
+					end
+				end
+				return n
+			end
+			local spin = spinners.start(regions)
+			local function dispatch(text, cb)
+				if use_chat then
+					session.send_chat(text, cb)
+				else
+					session.send(text, regions, context.get_all(), cb)
+				end
+			end
+			local function finish()
+				spin:stop()
+				window.refresh()
+				local n = annotations_to_loclist(before_keys, target_win)
+				if n > 0 then
+					status.stop("Annotated — " .. n .. " annotation(s) in location list (:lopen)")
+				else
+					status.flash("No annotations published")
+				end
+			end
+			dispatch(ANNOTATE_INSTRUCTIONS .. "\n\nUser request:\n" .. prompt, function()
+				vim.defer_fn(function()
+					if new_count() > 0 then
+						finish()
+						return
+					end
+					status.flash("No annotations published — asking again")
+					local retry = "You did not call lg_annotate. Do NOT redo or change any edits. "
+						.. "Call lg_annotate now with an annotation for each change you just made "
+						.. "(line numbers in the files as they are now). If it errors, fix the arguments and re-call."
+					if use_chat then
+						session.send_chat(retry, function()
+							vim.defer_fn(finish, 500)
+						end)
+					else
+						session.send(retry, {}, {}, function()
+							vim.defer_fn(finish, 500)
+						end)
+					end
+				end, 500)
+			end)
 			return
 		end
 
@@ -552,6 +689,7 @@ function M.send(opts)
 			has_git = text and text:match("@GIT") ~= nil,
 			has_devlens = text and text:match("@DEVLENS") ~= nil,
 			has_hint = text and text:match("@HINT") ~= nil,
+			has_annotate = text and text:match("@ANNOTATE") ~= nil,
 			has_suggest = text and text:match("@SUGGEST") ~= nil,
 			has_shell = text and text:match("@SHELL") ~= nil,
 			has_sub = text and text:match("@SUB") ~= nil,

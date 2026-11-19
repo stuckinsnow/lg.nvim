@@ -102,28 +102,43 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 			col = 0
 		}
 		if endCol < 0 {
-			// No end column — expand to word at col position
-			lines := readFile(h.File)
-			if lines != nil && line < len(lines) && col < len(lines[line]) {
-				l := lines[line]
-				start, end_ := col, col
-				for start > 0 && isWordChar(l[start-1]) {
-					start--
-				}
-				for end_ < len(l) && isWordChar(l[end_]) {
-					end_++
-				}
-				if end_ > start {
-					col = start
-					endCol = end_
-					endLine = line
+			if endLine > line {
+				lines := readFile(h.File)
+				if lines != nil && endLine < len(lines) {
+					endCol = len(lines[endLine])
 				} else {
-					endLine = line + 1
+					endLine = endLine + 1
 					endCol = 0
 				}
 			} else {
-				endLine = endLine + 1
-				endCol = 0
+				// No end column — expand to word at col position
+				lines := readFile(h.File)
+				if lines != nil && line < len(lines) && col < len(lines[line]) {
+					l := lines[line]
+					start, end_ := col, col
+					for start > 0 && isWordChar(l[start-1]) {
+						start--
+					}
+					for end_ < len(l) && isWordChar(l[end_]) {
+						end_++
+					}
+					if end_ > start {
+						col = start
+						endCol = end_
+						endLine = line
+					} else {
+						endCol = len(l)
+					}
+				} else {
+					endLine = endLine + 1
+					endCol = 0
+				}
+			}
+		}
+		if endLine == line && endCol-col <= 1 {
+			lines := readFile(h.File)
+			if lines != nil && line < len(lines) && len(lines[line]) > col {
+				endCol = len(lines[line])
 			}
 		}
 

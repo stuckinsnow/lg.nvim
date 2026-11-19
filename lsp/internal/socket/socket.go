@@ -48,6 +48,43 @@ func Start(sockPath string) {
 						got := hints.Get(req.File)
 						out, _ := json.Marshal(map[string]any{"ok": true, "hints": got})
 						c.Write(append(out, '\n'))
+					case "clear_line":
+						if req.File != "" && req.Line > 0 {
+							uri := hints.FileToURI(req.File)
+							line0 := req.Line - 1
+							hints.Mu.Lock()
+							diags := hints.Diags[uri]
+							details := hints.Details[uri]
+							kept := make([]lsptype.Diagnostic, 0, len(diags))
+							keptDetails := make([]string, 0, len(details))
+							removed := 0
+							for i, d := range diags {
+								if d.Range.Start.Line <= line0 && d.Range.End.Line >= line0 {
+									removed++
+									continue
+								}
+								kept = append(kept, d)
+								if i < len(details) {
+									keptDetails = append(keptDetails, details[i])
+								}
+							}
+							if removed > 0 {
+								if len(kept) == 0 {
+									delete(hints.Diags, uri)
+									delete(hints.Details, uri)
+								} else {
+									hints.Diags[uri] = kept
+									hints.Details[uri] = keptDetails
+								}
+								params, _ := json.Marshal(lsptype.PublishDiagnosticsParams{URI: uri, Diagnostics: kept})
+								transport.Send(lsptype.Message{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
+							}
+							hints.Mu.Unlock()
+							out, _ := json.Marshal(map[string]any{"ok": true, "removed": removed})
+							c.Write(append(out, '\n'))
+						} else {
+							c.Write([]byte(`{"ok":true,"removed":0}` + "\n"))
+						}
 					case "clear":
 						hints.Mu.Lock()
 						if len(req.Hints) > 0 {

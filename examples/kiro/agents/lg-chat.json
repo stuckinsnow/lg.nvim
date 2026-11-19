@@ -20,6 +20,7 @@
     "@lg/read_buffer",
     "@lg/lg_write_file",
     "@lg/get_diagnostics",
+    "@lg/lg_annotate",
     "@devlens"
   ],
   "useLegacyMcpJson": false,

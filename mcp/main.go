@@ -224,6 +224,9 @@ func handleToolCall(params json.RawMessage) (any, error) {
 			Content: []protocol.TextContent{{Type: "text", Text: string(resp)}},
 		}, nil
 
+	case "lg_annotate":
+		return handleAnnotate(call.Arguments), nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", call.Name)
 	}
@@ -346,6 +349,7 @@ func handleToolsList() any {
 					AdditionalProperties: &f,
 				},
 			},
+			annotateToolDef(),
 		},
 	}
 }

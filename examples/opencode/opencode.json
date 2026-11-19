@@ -34,6 +34,7 @@
         "glob": "allow",
         "lg_read_buffer": "allow",
         "lg_paint_edit": "allow",
+        "lg_lg_annotate": "allow",
         "lg_get_painted_regions": "allow",
         "lg_get_diagnostics": "allow",
         "lg-hint_get_hints": "allow"
@@ -48,6 +49,7 @@
         "glob": "allow",
         "lg_read_buffer": "allow",
         "lg_lg_write_file": "allow",
+        "lg_lg_annotate": "allow",
         "lg_get_diagnostics": "allow",
         "devlens_*": "allow"
       }

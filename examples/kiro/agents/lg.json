@@ -22,6 +22,7 @@
     "@lg/paint_edit",
     "@lg/get_painted_regions",
     "@lg/get_diagnostics",
+    "@lg/lg_annotate",
     "@lg-hint/get_hints"
   ],
   "useLegacyMcpJson": false,

@@ -82,9 +82,7 @@ func main() {
 			diags := hints.Diags[p.TextDocument.URI]
 			details := hints.Details[p.TextDocument.URI]
 			for i, d := range diags {
-				if d.Range.Start.Line <= p.Position.Line && d.Range.End.Line >= p.Position.Line &&
-					(d.Range.Start.Line < p.Position.Line || d.Range.Start.Character <= p.Position.Character) &&
-					(d.Range.End.Line > p.Position.Line || d.Range.End.Character >= p.Position.Character) {
+				if d.Range.Start.Line <= p.Position.Line && d.Range.End.Line >= p.Position.Line {
 					if hoverRange == nil {
 						hoverRange = &d.Range
 					}

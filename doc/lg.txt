@@ -77,6 +77,9 @@ Type these at the start of your prompt. Combine freely:
   `@HINT`       AI reviews code and publishes findings as native Neovim
               diagnostics (squiggly underlines + hover). Read-only.
 
+  `@ANNOTATE`   AI makes the edit, then annotates each change as a
+              diagnostic and fills the location list (`:lopen`).
+
   `@SUGGEST`    AI publishes code suggestions as diagnostics — hover to
               see recommended code.
 

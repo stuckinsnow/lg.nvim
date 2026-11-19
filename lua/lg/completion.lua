@@ -10,6 +10,7 @@ local at_items = {
   { label = "@INFO", detail = "AI highlights, and explains in chat only" },
   { label = "@TSC", detail = "Run tsc --noEmit and include type errors as context" },
   { label = "@HINT", detail = "AI reviews code and publishes findings as editor diagnostics" },
+  { label = "@ANNOTATE", detail = "AI makes the edit, then annotates its changes as diagnostics + location list" },
   { label = "@SUGGEST", detail = "AI publishes code suggestions as diagnostics — hover to see recommended code" },
   { label = "@HELP", detail = "AI highlights regions + publishes code suggestions for each" },
   { label = "@SUB", detail = "Run next prefix as a subagent (e.g. @SUB HINT) — doesn't block main session" },

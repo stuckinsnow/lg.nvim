@@ -16,6 +16,7 @@ the AI edits the painted regions directly.
 | `@ASK`      | No                          | Chat panel                                                          | No           |
 | `@INFO`     | No                          | Highlighted regions, quickfix list, chat panel                      | No           |
 | `@HINT`     | No                          | Diagnostics in the buffer                                           | No           |
+| `@ANNOTATE` | Yes                         | The buffer, plus annotation diagnostics and the location list       | No           |
 | `@SUGGEST`  | No                          | Diagnostics with suggested code on hover                            | No           |
 | `@HELP`     | No                          | Highlighted regions, quickfix list, diagnostics with suggested code | No           |
 | `@SHELL`    | No                          | Chat panel (runs shell commands you approve)                        | No           |
@@ -62,6 +63,24 @@ lists. Use the "Dismiss" code action to drop one, or "AI hints" in the clear
 menu to drop all of them.
 
 If the AI finishes without publishing anything, lg retries once.
+
+### `@ANNOTATE`
+
+A normal edit that also explains itself. The AI makes the edits you ask for,
+then calls `lg_annotate` (part of `lg-mcp`, so it works on every provider) to
+publish an annotation for each change as a diagnostic: what changed and why,
+with more detail on hover.
+
+With painted regions it runs as a paint edit. Without paint (or from the chat
+panel) it runs in chat mode. If you only ask it to annotate ("annotate my
+uncommitted changes"), it skips editing and only annotates.
+
+When it finishes, the new annotations go into the current window's
+**location list** (title `lg annotations`), so `:lopen` / `:lnext` walk
+through them. If the AI forgets to annotate, lg asks it once more (without
+redoing the edits).
+
+Example: `@ANNOTATE comment out the debug logging`
 
 ### `@SUGGEST`
 
@@ -119,6 +138,6 @@ example `@DIAG #lsp fix the auth bug`.
 ## When prefixes are combined
 
 Only one of these runs per prompt. lg checks them in this order and uses the
-first one it finds: `@DEVLENS`, `@SHELL`, `@GIT`, `@ASK`, `@HINT`, `@SUGGEST`,
+first one it finds: `@DEVLENS`, `@SHELL`, `@GIT`, `@ASK`, `@HINT`, `@ANNOTATE`, `@SUGGEST`,
 `@HELP`, `@INFO`. The context prefixes (`#lsp`, `#file_lsp`, `@DIAG`, `@TSC`)
 apply to the normal edit that runs when none of those are present.
