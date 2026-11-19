@@ -2,11 +2,11 @@
   "lg-deny-direct-edits": {
     "PreToolUse": [
       {
-        "matcher": "write_file|edit_file|run_command",
+        "matcher": "read_file|write_file|edit_file|run_command",
         "hooks": [
           {
             "type": "command",
-            "command": "if [ \"$LG_ACP\" = 1 ]; then printf '{\"decision\":\"deny\",\"reason\":\"Direct file edits and shell commands are disabled in lg; use paint_edit or lg_write_file.\"}'; else printf '{\"decision\":\"allow\"}'; fi"
+            "command": "if [ \"$LG_ACP\" = 1 ]; then printf '{\"decision\":\"deny\",\"reason\":\"Direct file reads, edits, and shell commands are disabled in lg; use read_buffer, paint_edit, or lg_write_file.\"}'; else printf '{\"decision\":\"allow\"}'; fi"
           }
         ]
       }

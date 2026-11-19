@@ -43,9 +43,10 @@ automatically in `session/new` and maps modes onto Antigravity's `default` /
 
 Copy `examples/antigravity/hooks.json` to `~/.gemini/config/hooks.json` (or
 merge the `lg-deny-direct-edits` entry into your existing `hooks.json`) so
-Antigravity blocks `write_file`, `edit_file`, and `run_command` when `LG_ACP=1`
-is set by `lg-acp`, forcing edits through `paint_edit` / `lg_write_file` while
-leaving normal `agy` CLI sessions unaffected.
+Antigravity blocks `read_file`, `write_file`, `edit_file`, and `run_command`
+when `LG_ACP=1` is set by `lg-acp`, forcing reads/edits through `read_buffer` /
+`paint_edit` / `lg_write_file` while leaving normal `agy` CLI sessions
+unaffected.
 
 See the [Agents table](../README.md#agents) in the main README for what each
 agent is allowed to do.
