@@ -584,6 +584,7 @@ function M.send(opts)
 					return n
 				end
 				local spin = spinners.start(regions)
+				session.set_annotate_active(true)
 				local body = ANNOTATE_INSTRUCTIONS .. "\n\nUser request:\n" .. display_prompt
 				local function send_one(text, cb)
 					if use_chat then
@@ -600,6 +601,7 @@ function M.send(opts)
 					end
 				end
 				local function finish()
+					session.set_annotate_active(false)
 					spin:stop()
 					window.refresh()
 					local n = annotations_to_loclist(before_keys, target_win)

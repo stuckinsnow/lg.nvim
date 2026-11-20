@@ -380,6 +380,12 @@ function M.handle_message(data)
 			end
 		end)
 		return nil, function() return result end
+	elseif msg.method == "allows_annotate" then
+		local allowed = require("lg.session.session").allows_annotate()
+		if not allowed then
+			require("lg.ui.window").add_status("lg_annotate blocked (use @ANNOTATE)")
+		end
+		return vim.json.encode({ allowed = allowed })
 	elseif msg.method == "handoff_to_chat" then
 		local plan = msg.plan or ""
 		if plan == "" then

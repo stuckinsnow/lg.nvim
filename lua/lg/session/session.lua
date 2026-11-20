@@ -181,6 +181,7 @@ local _send_queue = {}
 local _busy = false
 local _has_history = false
 local _chat_active = false
+local _annotate_active = false
 
 local _tool_hint_sent = false
 local ANTIGRAVITY_TOOL_HINT = "[Use read_buffer, lg_grep, lg_glob, lg_write_file, paint_edit, and lg_run instead of built-in file/shell tools.]\n\n"
@@ -803,6 +804,7 @@ function M.reset()
 	_has_history = false
 	_tool_hint_sent = false
 	_chat_active = false
+	_annotate_active = false
 	M._on_done = nil
 	M._session_count = 0
 	require("lg.session.server").clear_tokens()
@@ -821,6 +823,7 @@ function M.clear()
 	_has_history = false
 	_tool_hint_sent = false
 	_chat_active = false
+	_annotate_active = false
 	M._on_done = nil
 	M._session_count = 0
 	require("lg.session.server").clear_tokens()
@@ -847,11 +850,20 @@ function M.kill()
 	client.cancel(main_session_id)
 	_busy = false
 	_chat_active = false
+	_annotate_active = false
 	M._on_done = nil
 end
 
 function M.allows_write_file()
 	return _chat_active
+end
+
+function M.set_annotate_active(active)
+	_annotate_active = active and true or false
+end
+
+function M.allows_annotate()
+	return _annotate_active
 end
 
 function M.is_active()

@@ -71,7 +71,21 @@ type annotation struct {
 	Severity  string `json:"severity"`
 }
 
+func annotateAllowed() bool {
+	resp, err := nvim.SendToNeovim(map[string]any{"method": "allows_annotate"})
+	if err != nil {
+		return false
+	}
+	var r struct {
+		Allowed bool `json:"allowed"`
+	}
+	return json.Unmarshal(resp, &r) == nil && r.Allowed
+}
+
 func handleAnnotate(raw json.RawMessage) protocol.ToolResult {
+	if !annotateAllowed() {
+		return toolErr("lg_annotate is only allowed when the user explicitly requests annotations with @ANNOTATE")
+	}
 	var args struct {
 		Annotations []annotation `json:"annotations"`
 	}
@@ -167,8 +181,8 @@ func annotateToolDef() protocol.ToolDef {
 	f := false
 	return protocol.ToolDef{
 		Name: "lg_annotate",
-		Description: "Annotate code changes in the editor. Each annotation shows as an inline diagnostic (hover for detail) and is added to the user's location list. " +
-			"Use AFTER making edits to explain each change. Line numbers refer to the file AFTER your edits. Send ALL annotations in one call.",
+		Description: "Only use when explicitly requested (e.g. @ANNOTATE). Annotate code changes in the editor as inline diagnostics (hover for detail) and location-list entries. " +
+			"Line numbers refer to the file AFTER your edits. Send ALL annotations in one call.",
 		InputSchema: protocol.ToolSchema{
 			Type: "object",
 			Properties: map[string]any{

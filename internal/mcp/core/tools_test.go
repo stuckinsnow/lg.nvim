@@ -420,3 +420,32 @@ func TestWriteFileSchemaOptionalOldText(t *testing.T) {
 	}
 	t.Fatal("lg_write_file tool definition not found")
 }
+
+func TestAnnotateBlockedWhenNotAllowed(t *testing.T) {
+	var gotMethod string
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		gotMethod, _ = req["method"].(string)
+		return map[string]any{"allowed": false}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name": "lg_annotate",
+		"arguments": map[string]any{
+			"annotations": []map[string]any{
+				{"file": "/tmp/a.go", "line": 1, "message": "commented out"},
+			},
+		},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != "allows_annotate" {
+		t.Fatalf("expected allows_annotate check, got %q", gotMethod)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "@ANNOTATE") || !strings.Contains(string(data), `"isError":true`) {
+		t.Errorf("expected blocked error result, got: %s", data)
+	}
+}
