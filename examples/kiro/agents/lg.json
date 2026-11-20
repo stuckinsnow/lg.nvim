@@ -4,14 +4,25 @@
   "prompt": "When the user rejects an edit (permission denied), acknowledge it and move on. Do not retry the rejected edit using a different tool or approach. Do not use npm or npx.",
   "mcpServers": {
     "lg": {
-      "command": "/path/to/lg/mcp/lg-mcp",
-      "args": [],
-      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+      "command": "/path/to/lg/lg",
+      "args": [
+        "mcp",
+        "--tools=core"
+      ],
+      "env": {
+        "LG_SOCK": "/dev/shm/lg.sock"
+      }
     },
     "lg-hint": {
-      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
-      "args": [],
-      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" }
+      "command": "/path/to/lg/lg",
+      "args": [
+        "mcp",
+        "--tools=hint"
+      ],
+      "env": {
+        "LG_HINT_SOCK": "/dev/shm/lg-hint.sock",
+        "LG_SOCK": "/dev/shm/lg.sock"
+      }
     }
   },
   "tools": [
@@ -28,7 +39,13 @@
   "useLegacyMcpJson": false,
   "permissions": {
     "rules": [
-      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
     ]
   }
 }

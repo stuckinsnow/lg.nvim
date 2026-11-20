@@ -3,18 +3,18 @@
   "mcp": {
     "lg": {
       "type": "local",
-      "command": ["/path/to/lg/mcp/lg-mcp"],
+      "command": ["/path/to/lg/lg", "mcp", "--tools=core"],
       "environment": { "LG_SOCK": "/dev/shm/lg.sock" },
       "enabled": true
     },
     "lg-git": {
       "type": "local",
-      "command": ["/path/to/lg/git-mcp/lg-git-mcp"],
+      "command": ["/path/to/lg/lg", "mcp", "--tools=git"],
       "enabled": true
     },
     "lg-hint": {
       "type": "local",
-      "command": ["/path/to/lg/hint-mcp/lg-hint-mcp"],
+      "command": ["/path/to/lg/lg", "mcp", "--tools=hint"],
       "environment": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" },
       "enabled": true
     },

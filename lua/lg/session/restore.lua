@@ -80,14 +80,14 @@ local function show_picker(sessions)
 		entries[i] = s.id .. "\t" .. string.format("\x1b[36m%s\x1b[0m  \x1b[33m%s\x1b[0m", s.date, s.title)
 	end
 
-	local bin = require("lg.bin").require("lg-acp")
+	local bin = require("lg.bin").require("lg")
 	local provider = M._get_provider and M._get_provider() or "kiro"
 	local fzf_opts = {
 		["--ansi"] = "",
 		["--delimiter"] = "\t",
 		["--with-nth"] = "2..",
 		["--preview"] = string.format(
-			"%s --preview --provider %s --session {1} | CLICOLOR_FORCE=1 glow -s dark -",
+			"%s acp --preview --provider %s --session {1} | CLICOLOR_FORCE=1 glow -s dark -",
 			vim.fn.shellescape(bin),
 			vim.fn.shellescape(provider)
 		),

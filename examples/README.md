@@ -37,14 +37,15 @@ Copy `examples/opencode/opencode.json` to `~/.config/opencode/opencode.json`
 ~/.gemini/config/hooks.json        ← examples/antigravity/hooks.json
 ```
 
-antigravity needs no agent or MCP config files — `lg.nvim` attaches `lg-mcp`
-automatically in `session/new` and maps modes onto antigravity's `default` /
-`plan` modes. Log in with `agy` once beforehand.
+antigravity needs no agent or MCP config files — `lg.nvim` attaches `lg mcp`
+automatically in `session/new` (exposing core, hint, and git tools in one
+server) and maps modes onto antigravity's `default` / `plan` modes. Log in with
+`agy` once beforehand.
 
 Copy `examples/antigravity/hooks.json` to `~/.gemini/config/hooks.json` (or
 merge the `lg-deny-direct-edits` entry into your existing `hooks.json`) so
 antigravity blocks `read_file`, `write_file`, `edit_file`, and `run_command`
-when `LG_ACP=1` is set by `lg-acp`, forcing reads/searches/edits/commands
+when `LG_ACP=1` is set by `lg acp`, forcing reads/searches/edits/commands
 through `read_buffer` / `lg_grep` / `lg_glob` / `paint_edit` / `lg_write_file` /
 `lg_run` (approval-gated) while leaving normal `agy` CLI sessions unaffected.
 

@@ -4,9 +4,15 @@
   "prompt": "You are in READ-ONLY CHAT MODE. You MUST NOT edit, create, or delete any files. You have no write tools.\n\nAnswer the user's question about the code. Be concise and specific. If the user asks you to make changes, explain what you would change but do NOT attempt to edit anything.",
   "mcpServers": {
     "lg-hint": {
-      "command": "/path/to/lg/hint-mcp/lg-hint-mcp",
-      "args": [],
-      "env": { "LG_HINT_SOCK": "/dev/shm/lg-hint.sock", "LG_SOCK": "/dev/shm/lg.sock" }
+      "command": "/path/to/lg/lg",
+      "args": [
+        "mcp",
+        "--tools=hint"
+      ],
+      "env": {
+        "LG_HINT_SOCK": "/dev/shm/lg-hint.sock",
+        "LG_SOCK": "/dev/shm/lg.sock"
+      }
     }
   },
   "tools": [
@@ -19,7 +25,13 @@
   "useLegacyMcpJson": false,
   "permissions": {
     "rules": [
-      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
     ]
   }
 }

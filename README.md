@@ -68,27 +68,22 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## Building
 
-A `build.sh` script builds all Go binaries:
+A `build.sh` script builds the unified Go binary (`lg`):
 
 ```bash
 ./build.sh
 ```
 
-This builds:
+This builds `./lg` (and installs it to `${XDG_DATA_HOME:-~/.local/share}/nvim/lg/bin/lg`) with three subcommands:
 
-- `acp/lg-acp` — ACP session manager (subprocess bridge)
-- `mcp/lg-mcp` — main MCP server
-- `git-mcp/lg-git-mcp` — git MCP server
-- `hint-mcp/lg-hint-mcp` — hint MCP server
-- `lsp/lg-lsp` — hint LSP display server
+- `lg acp` — ACP session manager (subprocess bridge)
+- `lg lsp` — hint LSP display server
+- `lg mcp [--tools=core,hint,git]` — MCP tool server (defaults to all tool groups)
 
 To run tests:
 
 ```bash
-cd lsp && go test -v
-cd mcp && go test -v
-cd git-mcp && go test -v
-cd acp && go test ./... -v
+go test ./... -v
 ```
 
 Lua tests run under headless Neovim:
@@ -116,11 +111,11 @@ talk to Neovim over it. Hints use a second socket at `/dev/shm/lg-hint.sock`.
 
 ### MCP servers
 
-| Server    | Binary                                      | Tools it exposes                                                                                                              |
+| Server    | Command                                     | Tools it exposes                                                                                                              |
 | --------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `lg`      | `mcp/lg-mcp`                                | `read_buffer`, `lg_grep`, `lg_glob`, `lg_run`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat`, `lg_annotate` |
-| `lg-git`  | `git-mcp/lg-git-mcp`                        | `git_log`, `git_show`, `git_diff`, `git_blame`                                                                                |
-| `lg-hint` | `hint-mcp/lg-hint-mcp`                      | `lg_hint`, `lg_suggest`, `get_hints`                                                                                          |
+| `lg`      | `lg mcp --tools=core`                       | `read_buffer`, `lg_grep`, `lg_glob`, `lg_run`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat`, `lg_annotate` |
+| `lg-git`  | `lg mcp --tools=git`                        | `git_log`, `git_show`, `git_diff`, `git_blame`                                                                                |
+| `lg-hint` | `lg mcp --tools=hint`                       | `lg_hint`, `lg_suggest`, `get_hints`                                                                                          |
 | `devlens` | external devlens server (private, optional) | React component inspection                                                                                                    |
 
 ### Agents
@@ -154,9 +149,10 @@ The providers name and restrict tools differently:
   named `server_tool` (e.g. `lg_paint_edit`, `lg-hint_lg_hint`) and permission
   keys accept wildcards (`lg-hint_*`, `lg_*`).
 - **antigravity (`agy`)** — no agent or MCP config files needed (`lg.nvim`
-  passes `lg-mcp` in `session/new`). Uses `examples/antigravity/hooks.json` in
-  `~/.gemini/config/hooks.json` to deny `write_file`, `edit_file`, and
-  `run_command` when `LG_ACP=1` is set by `lg-acp`.
+  passes `lg mcp` with all tool groups in `session/new`). Uses
+  `examples/antigravity/hooks.json` in `~/.gemini/config/hooks.json` to deny
+  `write_file`, `edit_file`, and `run_command` when `LG_ACP=1` is set by
+  `lg acp`.
 
 ### Setup
 

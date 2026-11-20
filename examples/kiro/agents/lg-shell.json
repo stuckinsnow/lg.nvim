@@ -4,9 +4,14 @@
   "prompt": "Use lg_run to run the shell commands the user asked for. Be concise — just show what you ran and the result.",
   "mcpServers": {
     "lg": {
-      "command": "/path/to/lg/mcp/lg-mcp",
-      "args": [],
-      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+      "command": "/path/to/lg/lg",
+      "args": [
+        "mcp",
+        "--tools=core"
+      ],
+      "env": {
+        "LG_SOCK": "/dev/shm/lg.sock"
+      }
     }
   },
   "tools": [
@@ -17,7 +22,13 @@
   "useLegacyMcpJson": false,
   "permissions": {
     "rules": [
-      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
     ]
   }
 }

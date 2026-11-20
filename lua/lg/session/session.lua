@@ -54,11 +54,15 @@ local function mcp_servers()
 	end
 	local bin = require("lg.bin")
 	-- agy acp has a preload race when multiple MCP servers are sent in
-	-- session/new, dropping servers unpredictably. Attach only lg so paint_edit
-	-- and lg_write_file have the best chance of loading.
-	local path = bin.find("lg-mcp")
+	-- session/new, dropping servers unpredictably. Attach the unified lg mcp
+	-- server (core + hint + git) as a single server.
+	local path = bin.find("lg")
 	if path and servers.lg == nil then
-		servers.lg = { command = path, args = {}, env = { LG_SOCK = "/dev/shm/lg.sock" } }
+		servers.lg = {
+			command = path,
+			args = { "mcp" },
+			env = { LG_SOCK = "/dev/shm/lg.sock", LG_HINT_SOCK = "/dev/shm/lg-hint.sock" },
+		}
 	end
 	return servers
 end
@@ -108,7 +112,7 @@ local function ensure_acp(on_ready)
 			acp_proc = nil
 		end
 
-		local stale = vim.fn.systemlist("pgrep -f 'lg-acp.*--sock' 2>/dev/null")
+		local stale = vim.fn.systemlist("pgrep -f 'lg acp.*--sock' 2>/dev/null")
 		for _, p in ipairs(stale) do
 			p = vim.trim(p)
 			if p ~= "" then
@@ -118,7 +122,7 @@ local function ensure_acp(on_ready)
 
 		vim.fn.delete(acp_sock)
 
-		local bin = require("lg.bin").require("lg-acp")
+		local bin = require("lg.bin").require("lg")
 		if not bin then
 			on_ready(false)
 			return
@@ -126,7 +130,7 @@ local function ensure_acp(on_ready)
 
 		local logfile = "/dev/shm/lg-acp.log"
 		acp_proc = vim.system(
-			{ "sh", "-c", bin .. " --provider " .. opts.provider .. " --sock " .. acp_sock .. " 2>" .. logfile },
+			{ "sh", "-c", bin .. " acp --provider " .. opts.provider .. " --sock " .. acp_sock .. " 2>" .. logfile },
 			{ detach = true },
 			function()
 				acp_proc = nil

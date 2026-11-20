@@ -4,9 +4,14 @@
   "prompt": "Use the lg_paint_regions tool to highlight the code regions that need editing. Do NOT write any code — explain what changes are needed in technical terms only. Paint every region that would need modification.",
   "mcpServers": {
     "lg": {
-      "command": "/path/to/lg/mcp/lg-mcp",
-      "args": [],
-      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+      "command": "/path/to/lg/lg",
+      "args": [
+        "mcp",
+        "--tools=core"
+      ],
+      "env": {
+        "LG_SOCK": "/dev/shm/lg.sock"
+      }
     }
   },
   "tools": [
@@ -19,7 +24,13 @@
   "useLegacyMcpJson": false,
   "permissions": {
     "rules": [
-      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
     ]
   }
 }

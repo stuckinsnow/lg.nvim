@@ -27,8 +27,8 @@ function M.setup(opts)
 	server.start()
 
 	-- Start hint LSP
-	local lsp_bin = require("lg.bin").find("lg-lsp")
-	if lsp_bin then
+	local lg_bin = require("lg.bin").find("lg")
+	if lg_bin then
 		vim.api.nvim_create_autocmd("FileType", {
 			group = vim.api.nvim_create_augroup("lg_hint_lsp", { clear = true }),
 			callback = function(ev)
@@ -37,7 +37,7 @@ function M.setup(opts)
 				end
 				vim.lsp.start({
 					name = "lg-hint",
-					cmd = { lsp_bin },
+					cmd = { lg_bin, "lsp" },
 					root_dir = vim.fn.getcwd(),
 				}, { bufnr = ev.buf })
 			end,
@@ -51,7 +51,7 @@ function M.setup(opts)
 			then
 				vim.lsp.start({
 					name = "lg-hint",
-					cmd = { lsp_bin },
+					cmd = { lg_bin, "lsp" },
 					root_dir = vim.fn.getcwd(),
 				}, { bufnr = buf })
 			end

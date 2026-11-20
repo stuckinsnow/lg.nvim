@@ -5,7 +5,9 @@
   "mcpServers": {
     "devlens": {
       "command": "/path/to/devlens/server/devlens-server",
-      "args": ["--mcp"]
+      "args": [
+        "--mcp"
+      ]
     }
   },
   "tools": [
@@ -18,7 +20,13 @@
   "useLegacyMcpJson": false,
   "permissions": {
     "rules": [
-      { "capability": "fs_read", "match": ["./**"], "effect": "allow" }
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
     ]
   }
 }
