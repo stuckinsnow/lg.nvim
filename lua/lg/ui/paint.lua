@@ -11,15 +11,57 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("lg.ui.paint")
 
+local config = {
+	signs = true,
+	custom_hl = false,
+	fg = nil,
+	bg = nil,
+	hl = nil,
+}
+
 --- @type Lg.Region[]
 local regions = {}
 
+local function resolve_color(val, attr)
+	if type(val) ~= "string" or val:sub(1, 1) == "#" or val:upper() == "NONE" then
+		return val
+	end
+	local ok, group = pcall(vim.api.nvim_get_hl, 0, { name = val, link = false })
+	if ok and group and group[attr] ~= nil then
+		return group[attr]
+	end
+	return val
+end
+
 local function ensure_highlights()
-	vim.api.nvim_set_hl(0, "LgPaintLine", { link = "Visual", default = true })
+	if config.custom_hl then
+		local hl = config.hl and vim.tbl_extend("force", {}, config.hl) or {}
+		if config.fg ~= nil then
+			hl.fg = resolve_color(config.fg, "fg")
+		end
+		if config.bg ~= nil then
+			hl.bg = resolve_color(config.bg, "bg")
+		end
+		vim.api.nvim_set_hl(0, "LgPaintLine", hl)
+	else
+		vim.api.nvim_set_hl(0, "LgPaintLine", { link = "Visual", default = true })
+	end
 	vim.api.nvim_set_hl(0, "LgPaintSign", { fg = "#e5c07b", default = true })
 end
 
 local function highlight_range(bufnr, start_line, end_line)
+	if config.custom_hl then
+		for row = start_line - 1, end_line - 1 do
+			pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
+				end_row = row + 1,
+				end_col = 0,
+				hl_group = "LgPaintLine",
+				hl_eol = true,
+				priority = 1000,
+			})
+		end
+		return
+	end
 	vim.hl.range(
 		bufnr,
 		ns,
@@ -28,6 +70,20 @@ local function highlight_range(bufnr, start_line, end_line)
 		{ end_line - 1, 0 },
 		{ regtype = "V", inclusive = true, priority = 110 }
 	)
+end
+
+local function redraw(bufnr)
+	if config.signs then
+		require("lg.ui.signs").redraw(bufnr)
+	elseif vim.api.nvim__redraw then
+		local opts = { valid = false, flush = true }
+		if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+			opts.buf = bufnr
+		end
+		pcall(vim.api.nvim__redraw, opts)
+	else
+		vim.cmd("redraw")
+	end
 end
 
 --- @param bufnr number
@@ -47,21 +103,22 @@ function M.add(bufnr, start_line, end_line)
 		end_line = max
 	end
 
-	local signs = require("lg.ui.signs")
-
 	highlight_range(bufnr, start_line, end_line)
-	for row = start_line - 1, end_line - 1 do
-		pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-			sign_text = signs.bracket(row, start_line, end_line),
-			sign_hl_group = "LgPaintSign",
-			priority = 110,
-		})
+	if config.signs then
+		local signs = require("lg.ui.signs")
+		for row = start_line - 1, end_line - 1 do
+			pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
+				sign_text = signs.bracket(row, start_line, end_line),
+				sign_hl_group = "LgPaintSign",
+				priority = 110,
+			})
+		end
 	end
 
 	-- Dedup: skip if exact same region already exists
 	for _, r in ipairs(regions) do
 		if r.bufnr == bufnr and r.start_line == start_line and r.end_line == end_line then
-			signs.redraw(bufnr)
+			redraw(bufnr)
 			return
 		end
 	end
@@ -71,7 +128,7 @@ function M.add(bufnr, start_line, end_line)
 		start_line = start_line,
 		end_line = end_line,
 	})
-	signs.redraw(bufnr)
+	redraw(bufnr)
 end
 
 --- Get all regions with their current line content
@@ -126,16 +183,18 @@ function M.repaint(bufnr)
 			local s = math.min(r.start_line, max)
 			local e = math.min(r.end_line, max)
 			highlight_range(bufnr, s, e)
-			for row = s - 1, e - 1 do
-				pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-					sign_text = signs.bracket(row, s, e),
-					sign_hl_group = "LgPaintSign",
-					priority = 110,
-				})
+			if config.signs then
+				for row = s - 1, e - 1 do
+					pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
+						sign_text = signs.bracket(row, s, e),
+						sign_hl_group = "LgPaintSign",
+						priority = 110,
+					})
+				end
 			end
 		end
 	end
-	signs.redraw(bufnr)
+	redraw(bufnr)
 end
 
 --- Remove a specific region from the table
@@ -150,11 +209,10 @@ function M.remove(region)
 end
 
 function M.clear()
-	local signs = require("lg.ui.signs")
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			vim.api.nvim_buf_clear_namespace(r.bufnr, ns, 0, -1)
-			signs.redraw(r.bufnr)
+			redraw(r.bufnr)
 		end
 	end
 	regions = {}
@@ -170,10 +228,27 @@ function M.clear_last()
 		for _, mark in ipairs(marks) do
 			vim.api.nvim_buf_del_extmark(r.bufnr, ns, mark[1])
 		end
-		require("lg.ui.signs").redraw(r.bufnr)
+		redraw(r.bufnr)
 	end
 end
 
-function M.setup(_) end
+function M.setup(opts)
+	opts = opts or {}
+	if opts.signs ~= nil then
+		config.signs = opts.signs
+	end
+	if opts.custom_hl ~= nil then
+		config.custom_hl = opts.custom_hl
+	end
+	if opts.fg ~= nil then
+		config.fg = opts.fg
+	end
+	if opts.bg ~= nil then
+		config.bg = opts.bg
+	end
+	if opts.hl ~= nil then
+		config.hl = opts.hl
+	end
+end
 
 return M

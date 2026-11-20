@@ -42,7 +42,7 @@ function WaveSpinner:start()
         end_row = i + 1,
         hl_group = hi,
         hl_eol = true,
-        priority = 200,
+        priority = 1100,
       })
     end
   end))
@@ -60,7 +60,7 @@ function M.render_region(bufnr, ns_id, start_line, end_line, tick)
   for i = start_line - 1, end_line - 1 do
     local hi = palette[((tick + i) % #palette) + 1]
     pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, i, 0, {
-      end_row = i + 1, hl_group = hi, hl_eol = true, priority = 200,
+      end_row = i + 1, hl_group = hi, hl_eol = true, priority = 1100,
     })
   end
 end

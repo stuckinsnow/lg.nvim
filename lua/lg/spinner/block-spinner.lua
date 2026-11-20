@@ -126,4 +126,41 @@ function BlockSpinner:stop()
 	self.ids = {}
 end
 
+function M.render_region(bufnr, ns_id, start_line, end_line, tick)
+	pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_id, start_line - 1, end_line)
+	local lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
+	local width = 0
+	for _, l in ipairs(lines) do
+		width = math.max(width, vim.fn.strdisplaywidth(l))
+	end
+	local pat_width = vim.fn.strdisplaywidth(default_opts.patterns[1])
+	local reps = pat_width > 0 and math.max(1, math.ceil(width / pat_width)) or math.max(1, width)
+	width = reps * pat_width
+	local patterns = {}
+	for _, p in ipairs(default_opts.patterns) do
+		patterns[#patterns + 1] = string.rep(p, reps)
+	end
+	local s0, e0 = start_line - 1, end_line - 1
+	local height = e0 - s0 + 1
+	local border_top = "╭" .. string.rep("─", width) .. "╮"
+	local border_bottom = "╰" .. string.rep("─", width) .. "╯"
+	for row = s0, e0 do
+		local text
+		if height <= 2 then
+			text = patterns[((row + tick - 1) % #patterns) + 1]
+		elseif row == s0 then
+			text = border_top
+		elseif row == e0 then
+			text = border_bottom
+		else
+			text = "│" .. patterns[((row + tick - 1) % #patterns) + 1] .. "│"
+		end
+		pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, {
+			virt_text = { { text, default_opts.hl_group } },
+			virt_text_pos = default_opts.extmark.virt_text_pos,
+			priority = default_opts.extmark.priority,
+		})
+	end
+end
+
 return M

@@ -88,4 +88,23 @@ function Spinner:stop()
 	end
 end
 
+function M.render_region(bufnr, ns_id, start_line, end_line, tick)
+	pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns_id, start_line - 1, end_line)
+	local mid = math.floor((start_line + end_line) / 2) - 1
+	local lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
+	local width = 0
+	for _, l in ipairs(lines) do
+		width = math.max(width, vim.fn.strdisplaywidth(l))
+	end
+	local frame = default_opts.spinner_frames[(tick % #default_opts.spinner_frames) + 1]
+	local label = default_opts.spinner_text .. " " .. frame .. " "
+	local col = math.max(0, math.floor((width - vim.fn.strdisplaywidth(label)) / 2))
+	pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, mid, 0, {
+		virt_text = { { label, default_opts.hl_group } },
+		virt_text_pos = default_opts.extmark.virt_text_pos,
+		virt_text_win_col = col,
+		priority = default_opts.extmark.priority,
+	})
+end
+
 return M

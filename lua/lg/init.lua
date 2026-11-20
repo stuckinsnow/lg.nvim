@@ -15,7 +15,11 @@ local M = {}
 function M.setup(opts)
 	opts = opts or {}
 	spinners.setup(opts)
-	paint.setup(opts.paint or {})
+	local paint_opts = vim.tbl_extend("force", {}, opts.paint or {})
+	if opts.signs ~= nil and paint_opts.signs == nil then
+		paint_opts.signs = opts.signs
+	end
+	paint.setup(paint_opts)
 	session.setup(opts.session or {})
 	local win_opts = vim.tbl_extend("force", {}, opts.window or {})
 	if opts.verbose ~= nil and win_opts.verbose == nil then
