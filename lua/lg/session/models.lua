@@ -13,21 +13,7 @@ function M.init(c)
 	ctx = c
 end
 
--- ── Ephemeral override (used by the quick-chat subagent) ───────────
-local ephemeral_override = nil
-
-function M.set_override(o)
-	ephemeral_override = o
-end
-
-function M.clear_override()
-	ephemeral_override = nil
-end
-
 function M.current_model()
-	if ephemeral_override then
-		return ephemeral_override.model
-	end
 	local sm = ctx.get_models()
 	if sm then
 		return sm.currentModelId
@@ -36,9 +22,6 @@ function M.current_model()
 end
 
 function M.current_provider()
-	if ephemeral_override then
-		return ephemeral_override.provider
-	end
 	return ctx.get_provider()
 end
 

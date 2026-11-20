@@ -244,12 +244,6 @@ Visual select → prompt → edit in one step. Paints the selection, opens a pro
 
 `<leader>aq` or `:LgQuickEdit`
 
-## Quick Chat
-
-Visual select → prompt → answer. Like quick edit but read-only — the AI answers questions about the selected code without making any edits.
-
-`lg.quick_chat()`
-
 ## Context Paint
 
 Paint regions as read-only context (not editable). These are sent alongside editable regions to give the AI more information without allowing it to modify them.

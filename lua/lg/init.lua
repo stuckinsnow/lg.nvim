@@ -122,10 +122,6 @@ function M.quick_edit()
 	require("lg.quick-edit").quick_edit()
 end
 
-function M.quick_chat()
-	require("lg.quick-chat").quick_chat()
-end
-
 -- ── Clear ──────────────────────────────────────────────────────────
 
 function M.clear()

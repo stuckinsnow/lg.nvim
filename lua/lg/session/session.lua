@@ -1159,14 +1159,6 @@ function M.send_devlens_subagent(prompt, on_done)
 	subagent.send_devlens(prompt, on_done)
 end
 
-function M.send_quick_chat(prompt, on_done)
-	subagent.send_quick_chat(prompt, on_done, function(o)
-		models.set_override(o)
-	end, function()
-		models.clear_override()
-	end)
-end
-
 function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 	subagent.send_mode_subagent(
 		{ mode_id = "reviewer", scope = "hints", tools = "core,hint", label = "Reviewing (subagent)" },

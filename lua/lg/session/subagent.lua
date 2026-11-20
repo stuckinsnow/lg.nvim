@@ -300,34 +300,6 @@ function M.send_devlens(prompt, on_done)
 	})
 end
 
-function M.send_quick_chat(prompt, on_done, set_override, clear_override)
-	local model_id = "github-copilot/auto"
-	set_override({ provider = "opencode", model = model_id })
-
-	M.run({
-		prompt = { { type = "text", text = prompt } },
-		model_id = model_id,
-		label = "Quick chat (Copilot auto)",
-		finish_subagent = false,
-		on_text = function(text)
-			require("lg.ui.window").append_agent_text(text)
-		end,
-		on_done = function()
-			clear_override()
-			if on_done then
-				on_done()
-			end
-		end,
-		on_fail = function()
-			clear_override()
-			status.stop("Quick chat failed")
-			if on_done then
-				on_done()
-			end
-		end,
-	})
-end
-
 --- Generic mode subagent (hint, suggest, help, info).
 --- @param config { mode_id: string, scope?: string, label: string, track_tool_errors?: boolean }
 function M.send_mode_subagent(config, prompt, regions, context_regions, on_done)
