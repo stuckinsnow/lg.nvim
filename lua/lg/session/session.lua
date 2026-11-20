@@ -413,7 +413,7 @@ function M._setup_event_handlers()
 		if M._on_done then
 			local cb = M._on_done
 			M._on_done = nil
-			cb()
+			cb(ev.error or "unknown")
 		else
 			_busy = false
 			flush_send_queue()
@@ -933,39 +933,51 @@ function M.compact()
 		if not sid then
 			return
 		end
-		status.start("Compacting…")
-		local win = require("lg.ui.window")
-		local spin = require("lg.spinner.spinners").start({})
-		_busy = true
 
-		-- antigravity exposes compact as an advertised slash command, run by
-		-- sending it as prompt text. Kiro uses its extension method.
-		if opts.provider == "antigravity" then
-			M._on_done = function()
+		local function do_compact()
+			status.start("Compacting…")
+			local win = require("lg.ui.window")
+			local spin = require("lg.spinner.spinners").start({})
+			_busy = true
+
+			-- antigravity exposes compact as an advertised slash command, run by
+			-- sending it as prompt text. Kiro uses its extension method.
+			if opts.provider == "antigravity" then
+				M._on_done = function(err)
+					spin:stop()
+					_busy = false
+					if not err then
+						status.stop("Compacted")
+						win.add_status("Context compacted")
+					end
+					flush_send_queue()
+				end
+				client.prompt(sid, { { type = "text", text = "/compact" } })
+				return
+			end
+
+			M.rpc("_kiro/session/compact", function(resp)
 				spin:stop()
 				_busy = false
-				status.stop("Compacted")
-				win.add_status("Context compacted")
+				client.set_mode(sid, resolve_mode("lg"))
+				if resp and resp.ok then
+					status.stop("Compacted")
+					win.add_status("Context compacted")
+				else
+					local err = (resp and resp.error) or "compact failed"
+					status.stop("Compact failed")
+					win.add_status("Compact failed: " .. err)
+				end
 				flush_send_queue()
-			end
-			client.prompt(sid, { { type = "text", text = "/compact" } })
-			return
+			end)
 		end
 
-		M.rpc("_kiro/session/compact", function(resp)
-			spin:stop()
-			_busy = false
-			client.set_mode(sid, resolve_mode("lg"))
-			if resp and resp.ok then
-				status.stop("Compacted")
-				win.add_status("Context compacted")
-			else
-				local err = (resp and resp.error) or "compact failed"
-				status.stop("Compact failed")
-				win.add_status("Compact failed: " .. err)
-			end
-			flush_send_queue()
-		end)
+		if _busy then
+			table.insert(_send_queue, do_compact)
+			status.update("Queued compact (waiting for current request)…")
+		else
+			do_compact()
+		end
 	end)
 end
 
