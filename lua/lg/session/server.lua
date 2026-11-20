@@ -408,18 +408,21 @@ function M.handle_message(data)
 			return nil, function() return result end
 		end
 		return M.do_read_buffer(path, msg.start_line, msg.end_line)
-	elseif msg.method == "approve_command" then
+	elseif msg.method == "run_command" then
 		local cmd = msg.command
 		if not cmd or cmd == "" then
 			return vim.json.encode({ ok = false, error = "command required" })
 		end
+		local timeout = tonumber(msg.timeout_seconds) or 60
 		local result = nil
 		require("lg.ui.approval").select({ "Allow", "Deny" }, { prompt = "Run: " .. cmd }, function(_, idx)
-			if idx == 1 then
-				result = vim.json.encode({ ok = true })
-			else
-				result = vim.json.encode({ ok = false, error = "Command rejected by user" })
+			if idx ~= 1 then
+				result = vim.json.encode({ ok = false, rejected = true, error = "Command rejected by user" })
+				return
 			end
+			require("lg.ui.term").run(cmd, timeout, function(res)
+				result = vim.json.encode(res)
+			end)
 		end)
 		return nil, function() return result end
 	elseif msg.method == "paint_regions" then

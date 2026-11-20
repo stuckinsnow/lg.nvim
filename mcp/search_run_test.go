@@ -74,22 +74,24 @@ func TestHandleGrepAndGlob(t *testing.T) {
 }
 
 func TestHandleRunApproval(t *testing.T) {
-	dir := t.TempDir()
-	orig, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(orig) })
-
-	// Approved command runs and returns output.
 	sock := startFakeNeovim(t, func(req map[string]any) any {
-		if req["method"] == "approve_command" && req["command"] == "echo hi-lg" {
-			return map[string]any{"ok": true}
+		if req["method"] != "run_command" {
+			return map[string]any{"ok": false, "error": "unexpected method"}
 		}
-		return map[string]any{"ok": false, "error": "Command rejected by user"}
+		switch req["command"] {
+		case "echo hi-lg":
+			return map[string]any{"ok": true, "exit_code": 0, "output": "hi-lg"}
+		case "false":
+			return map[string]any{"ok": true, "exit_code": 1, "output": "boom"}
+		case "sleep 99":
+			return map[string]any{"ok": true, "timed_out": true, "output": "partial"}
+		default:
+			return map[string]any{"ok": false, "rejected": true, "error": "Command rejected by user"}
+		}
 	})
 	nvim.SockPath = sock
 
+	// Approved success
 	args, _ := json.Marshal(map[string]any{
 		"name":      "lg_run",
 		"arguments": map[string]any{"command": "echo hi-lg"},
@@ -99,25 +101,49 @@ func TestHandleRunApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := raw.(protocol.ToolResult)
-	if res.IsError || strings.TrimSpace(res.Content[0].Text) != "hi-lg" {
+	if res.IsError || res.Content[0].Text != "hi-lg" {
 		t.Fatalf("expected approved output 'hi-lg', got %+v", res)
 	}
 
-	// Rejected command must NOT execute.
-	marker := filepath.Join(dir, "should-not-exist")
+	// Non-zero exit code
 	args, _ = json.Marshal(map[string]any{
 		"name":      "lg_run",
-		"arguments": map[string]any{"command": "touch " + marker},
+		"arguments": map[string]any{"command": "false"},
 	})
 	raw, err = handleToolCall(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	res = raw.(protocol.ToolResult)
-	if !res.IsError || !strings.Contains(res.Content[0].Text, "rejected") {
-		t.Fatalf("expected rejection error, got %+v", res)
+	if !res.IsError || !strings.Contains(res.Content[0].Text, "exit code 1") || !strings.Contains(res.Content[0].Text, "boom") {
+		t.Fatalf("expected exit code 1 with output, got %+v", res)
 	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("rejected command still executed!")
+
+	// Timed out
+	args, _ = json.Marshal(map[string]any{
+		"name":      "lg_run",
+		"arguments": map[string]any{"command": "sleep 99", "timeout_seconds": 5},
+	})
+	raw, err = handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res = raw.(protocol.ToolResult)
+	if !res.IsError || !strings.Contains(res.Content[0].Text, "timed out after 5s") {
+		t.Fatalf("expected timeout error, got %+v", res)
+	}
+
+	// Rejected
+	args, _ = json.Marshal(map[string]any{
+		"name":      "lg_run",
+		"arguments": map[string]any{"command": "rm -rf /"},
+	})
+	raw, err = handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res = raw.(protocol.ToolResult)
+	if !res.IsError || !strings.Contains(res.Content[0].Text, "Do NOT retry") {
+		t.Fatalf("expected rejection error, got %+v", res)
 	}
 }

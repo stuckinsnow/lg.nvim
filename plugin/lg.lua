@@ -40,6 +40,10 @@ vim.api.nvim_create_user_command("LgToggle", function()
   require("lg").toggle_window()
 end, { desc = "Toggle lg side panel" })
 
+vim.api.nvim_create_user_command("LgTerm", function()
+  require("lg.ui.term").toggle()
+end, { desc = "Toggle lg terminal" })
+
 vim.api.nvim_create_user_command("LgTestChat", function()
   local w = require("lg.window")
   w.add_prompt("is this code ok?")

@@ -84,7 +84,7 @@ func TestFormatToolCall(t *testing.T) {
 				RawInput: json.RawMessage(`{"command":"go test ./..."}`),
 			},
 			cwd:  "/repo",
-			want: "Run mcp_lg_lg_run go test ./...",
+			want: "Run mcp_lg_run go test ./...",
 		},
 		{
 			name: "mcp lg_grep with pattern",
@@ -93,7 +93,16 @@ func TestFormatToolCall(t *testing.T) {
 				RawInput: json.RawMessage(`{"pattern":"activity|notification"}`),
 			},
 			cwd:  "/repo",
-			want: "Run mcp_lg_lg_grep activity|notification",
+			want: "Run mcp_lg_grep activity|notification",
+		},
+		{
+			name: "mcp lg_write_file deduplicates lg_lg_",
+			update: protocol.SessionUpdate{
+				Title:    "Run mcp_lg_lg_write_file",
+				RawInput: json.RawMessage(`{"path":"/repo/internal/ui/model.go"}`),
+			},
+			cwd:  "/repo",
+			want: "Run mcp_lg_write_file internal/ui/model.go",
 		},
 	}
 	for _, c := range cases {

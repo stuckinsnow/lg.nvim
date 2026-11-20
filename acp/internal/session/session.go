@@ -245,6 +245,7 @@ func formatToolCall(update protocol.SessionUpdate, cwd string) string {
 	if title == "" {
 		title = update.ToolCallID
 	}
+	title = strings.ReplaceAll(title, "lg_lg_", "lg_")
 	detail := toolCallDetail(update, cwd)
 	if detail == "" || strings.Contains(title, detail) {
 		return title

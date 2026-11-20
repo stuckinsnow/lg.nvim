@@ -212,29 +212,6 @@ func handleRun(raw json.RawMessage) protocol.ToolResult {
 		return toolErr("command is required")
 	}
 
-	// Every terminal command must be explicitly approved by the user in Neovim.
-	resp, err := nvim.SendToNeovim(map[string]any{
-		"method":  "approve_command",
-		"command": args.Command,
-	})
-	if err != nil {
-		return toolErr("approval failed: " + err.Error())
-	}
-	var approval struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal(resp, &approval); err != nil {
-		return toolErr("invalid approval response: " + string(resp))
-	}
-	if !approval.OK {
-		msg := approval.Error
-		if msg == "" {
-			msg = "Command rejected by user"
-		}
-		return toolErr(msg + ". Do NOT retry this command.")
-	}
-
 	timeout := args.TimeoutSeconds
 	if timeout <= 0 {
 		timeout = defaultRunTimeout
@@ -243,52 +220,60 @@ func handleRun(raw json.RawMessage) protocol.ToolResult {
 		timeout = maxRunTimeout
 	}
 
-	cwd, err := os.Getwd()
+	// Neovim prompts for approval and runs the command in a visible terminal
+	// split so the user and agent see the exact same output.
+	resp, err := nvim.SendToNeovim(map[string]any{
+		"method":          "run_command",
+		"command":         args.Command,
+		"timeout_seconds": timeout,
+	})
 	if err != nil {
-		return toolErr("getwd failed: " + err.Error())
+		return toolErr("run failed: " + err.Error())
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "sh", "-c", args.Command)
-	cmd.Dir = cwd
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	runErr := cmd.Run()
-	output := out.Bytes()
-	truncated := false
-	if len(output) > maxRunOutputBytes {
-		output = output[:maxRunOutputBytes]
-		truncated = true
+	var res struct {
+		OK       bool   `json:"ok"`
+		Rejected bool   `json:"rejected"`
+		TimedOut bool   `json:"timed_out"`
+		ExitCode int    `json:"exit_code"`
+		Output   string `json:"output"`
+		Error    string `json:"error"`
 	}
-
-	text := string(output)
-	if truncated {
-		text += "\n... (output truncated)"
+	if err := json.Unmarshal(resp, &res); err != nil {
+		return toolErr("invalid run response: " + string(resp))
 	}
-
-	if runErr != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return toolErr(fmt.Sprintf("command timed out after %ds\n%s", timeout, text))
+	if res.Rejected {
+		msg := res.Error
+		if msg == "" {
+			msg = "Command rejected by user"
 		}
-		var exitErr *exec.ExitError
-		if errors.As(runErr, &exitErr) {
-			if text == "" {
-				text = fmt.Sprintf("exit code %d", exitErr.ExitCode())
-			} else {
-				text = fmt.Sprintf("exit code %d\n%s", exitErr.ExitCode(), text)
-			}
-			return protocol.ToolResult{
-				Content: []protocol.TextContent{{Type: "text", Text: text}},
-				IsError: true,
-			}
+		return toolErr(msg + ". Do NOT retry this command.")
+	}
+	if !res.OK {
+		msg := res.Error
+		if msg == "" {
+			msg = "command failed"
 		}
-		return toolErr("command failed: " + runErr.Error())
+		return toolErr(msg)
 	}
 
+	text := res.Output
+	if len(text) > maxRunOutputBytes {
+		text = text[:maxRunOutputBytes] + "\n... (output truncated)"
+	}
+	if res.TimedOut {
+		return toolErr(fmt.Sprintf("command timed out after %ds\n%s", timeout, text))
+	}
+	if res.ExitCode != 0 {
+		if text == "" {
+			text = fmt.Sprintf("exit code %d", res.ExitCode)
+		} else {
+			text = fmt.Sprintf("exit code %d\n%s", res.ExitCode, text)
+		}
+		return protocol.ToolResult{
+			Content: []protocol.TextContent{{Type: "text", Text: text}},
+			IsError: true,
+		}
+	}
 	if text == "" {
 		text = "(no output)"
 	}
