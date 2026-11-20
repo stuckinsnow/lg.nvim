@@ -38,6 +38,34 @@ func Defs() []protocol.ToolDef {
 		Required:             []string{"hints"},
 		AdditionalProperties: &f,
 	}
+	suggestProps := map[string]any{
+		"file":        map[string]string{"type": "string", "description": "File path (absolute or relative to project root)"},
+		"line":        map[string]string{"type": "integer", "description": "Start line (1-based)"},
+		"end_line":    map[string]string{"type": "integer", "description": "End line (1-based, inclusive)"},
+		"match":       map[string]string{"type": "string", "description": "Text to match on the line to auto-calculate exact underline range. Preferred over column."},
+		"column":      map[string]string{"type": "integer", "description": "Start column (1-based). Omit if using match."},
+		"end_column":  map[string]string{"type": "integer", "description": "End column (1-based, exclusive). Omit if using match."},
+		"message":     map[string]string{"type": "string", "description": "Short summary shown as inline diagnostic text"},
+		"detail":      map[string]string{"type": "string", "description": "Full detail shown on hover (markdown supported). Include a fenced code block showing the recommended replacement code."},
+		"replacement": map[string]string{"type": "string", "description": "Exact full-line replacement text for lines line..end_line (preserving indentation). Enables one-keystroke code action (gra) to apply the suggestion."},
+		"severity":    map[string]string{"type": "string", "description": "One of: error, warning, info, hint"},
+	}
+	suggestSchema := protocol.ToolSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"hints": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":                 "object",
+					"properties":           suggestProps,
+					"required":             []string{"file", "line", "message", "severity"},
+					"additionalProperties": false,
+				},
+			},
+		},
+		Required:             []string{"hints"},
+		AdditionalProperties: &f,
+	}
 	getHintsSchema := protocol.ToolSchema{
 		Type: "object",
 		Properties: map[string]any{
@@ -55,8 +83,8 @@ func Defs() []protocol.ToolDef {
 		},
 		{
 			Name:        "lg_suggest",
-			Description: "Publish code suggestions as diagnostics in the editor. Each suggestion appears as an underline — the hover message MUST contain a markdown code block showing the recommended replacement code. Use this to propose concrete code changes without editing anything.",
-			InputSchema: hintSchema,
+			Description: "Publish code suggestions as diagnostics in the editor. Include a markdown code block in detail for hover AND exact full-line code in replacement (for lines line..end_line, preserving indentation) so the user can apply it via code action (gra).",
+			InputSchema: suggestSchema,
 		},
 		{
 			Name:        "get_hints",

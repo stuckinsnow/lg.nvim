@@ -78,7 +78,7 @@ function M.open(cb, on_cancel, info)
 				has_auto_paint = text:match("@INFO") ~= nil,
 				has_git = text:match("@GIT") ~= nil,
 				has_devlens = text:match("@DEVLENS") ~= nil,
-				has_hint = text:match("@HINT") ~= nil,
+				has_hint = text:match("@REVIEW") ~= nil,
 				has_annotate = text:match("@ANNOTATE") ~= nil,
 				has_sub = text:match("@SUB") ~= nil,
 				has_suggest = text:match("@SUGGEST") ~= nil,

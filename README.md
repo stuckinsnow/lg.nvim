@@ -199,7 +199,7 @@ server name, and these tools are themselves named `lg_write_file` /
 
 ## Prompt Prefixes
 
-Start a prompt with a prefix such as `@HINT`, `@ASK` or `@INFO` to change what
+Start a prompt with a prefix such as `@REVIEW`, `@ASK` or `@INFO` to change what
 lg does with it, for example review the code instead of editing it, or add LSP
 info as context. Type `@` in the prompt window to list them.
 
@@ -220,18 +220,19 @@ Use `#` shortcuts to reference files or gather local code context:
 
 These are available as blink.cmp completions when typing `@` or `#` in the prompt.
 
-## AI Hints (`@HINT`)
+## AI Review / Hints (`@REVIEW`)
 
-`@HINT` switches to a dedicated reviewer agent mode that can only annotate code, not edit it. The AI analyzes your code and publishes findings as native Neovim diagnostics:
+`@REVIEW` switches to a dedicated reviewer agent mode that can only annotate code, not edit it. The AI analyzes your code and publishes findings as native Neovim diagnostics:
 
 - Squiggly underlines on the exact expression (uses string matching for precise column ranges)
-- Hover messages with explanations
-- Navigate findings with `[d` / `]d`
+- Hover messages with explanations (signed with `- ai`)
+- Code actions (`gra`) to apply `@SUGGEST` / `@HELP` replacements or dismiss hints
+- Navigate findings with `[d` / `]d` or the location list (`:lopen`)
 - Clear with `<leader>aH`
 
 The hint system uses a separate LSP server (`lg-lsp`) that starts automatically. The AI calls the `lg_hint` MCP tool → hint MCP forwards to the LSP via unix socket → LSP publishes `textDocument/publishDiagnostics`.
 
-Example: `@HINT find potential null pointer issues in this code`
+Example: `@REVIEW find potential null pointer issues in this code`
 
 ## Chat Mode
 

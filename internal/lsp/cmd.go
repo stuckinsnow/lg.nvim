@@ -117,22 +117,7 @@ func Run(_ []string) {
 				Range lsptype.Range `json:"range"`
 			}
 			json.Unmarshal(msg.Params, &p)
-			var actions []map[string]any
-			hints.Mu.Lock()
-			for i, d := range hints.Diags[p.TextDocument.URI] {
-				if d.Range.Start.Line <= p.Range.End.Line && d.Range.End.Line >= p.Range.Start.Line {
-					actions = append(actions, map[string]any{
-						"title": "Dismiss: " + hints.Truncate(d.Message, 60),
-						"kind":  "quickfix",
-						"command": map[string]any{
-							"title":     "Dismiss hint",
-							"command":   "lg.dismissHint",
-							"arguments": []any{p.TextDocument.URI, i},
-						},
-					})
-				}
-			}
-			hints.Mu.Unlock()
+			actions := codeActionsFor(p.TextDocument.URI, p.Range)
 			transport.Send(lsptype.Message{JSONRPC: "2.0", ID: msg.ID, Result: actions})
 
 		case "workspace/executeCommand":
@@ -152,6 +137,9 @@ func Run(_ []string) {
 					if d, ok2 := hints.Details[uri]; ok2 && idx < len(d) {
 						hints.Details[uri] = append(d[:idx], d[idx+1:]...)
 					}
+					if r, ok2 := hints.Replacements[uri]; ok2 && idx < len(r) {
+						hints.Replacements[uri] = append(r[:idx], r[idx+1:]...)
+					}
 					params, _ := json.Marshal(lsptype.PublishDiagnosticsParams{URI: uri, Diagnostics: hints.Diags[uri]})
 					transport.Send(lsptype.Message{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 				}
@@ -167,4 +155,47 @@ func Run(_ []string) {
 	}
 
 	os.Remove(sockPath)
+}
+
+func codeActionsFor(uri string, rng lsptype.Range) []map[string]any {
+	var actions []map[string]any
+	hints.Mu.Lock()
+	defer hints.Mu.Unlock()
+	repls := hints.Replacements[uri]
+	for i, d := range hints.Diags[uri] {
+		if d.Range.Start.Line <= rng.End.Line && d.Range.End.Line >= rng.Start.Line {
+			if i < len(repls) && repls[i].NewText != "" {
+				actions = append(actions, map[string]any{
+					"title":       "Apply: " + hints.Truncate(d.Message, 60),
+					"kind":        "quickfix",
+					"isPreferred": true,
+					"edit": map[string]any{
+						"changes": map[string][]map[string]any{
+							uri: {
+								{
+									"range":   repls[i].Range,
+									"newText": repls[i].NewText,
+								},
+							},
+						},
+					},
+					"command": map[string]any{
+						"title":     "Dismiss hint",
+						"command":   "lg.dismissHint",
+						"arguments": []any{uri, i},
+					},
+				})
+			}
+			actions = append(actions, map[string]any{
+				"title": "Dismiss: " + hints.Truncate(d.Message, 60),
+				"kind":  "quickfix",
+				"command": map[string]any{
+					"title":     "Dismiss hint",
+					"command":   "lg.dismissHint",
+					"arguments": []any{uri, i},
+				},
+			})
+		}
+	}
+	return actions
 }

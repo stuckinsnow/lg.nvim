@@ -14,8 +14,14 @@ import (
 
 // ── Hint socket server ─────────────────────────────────────────────
 
+type Replacement struct {
+	Range   lsptype.Range
+	NewText string
+}
+
 var Diags = map[string][]lsptype.Diagnostic{}
-var Details = map[string][]string{} // parallel to Diags — hover content
+var Details = map[string][]string{}           // parallel to Diags — hover content
+var Replacements = map[string][]Replacement{} // parallel to Diags — code action edits
 var Mu sync.Mutex
 
 func SeverityToLSP(s string) int {
@@ -56,6 +62,7 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 	matched = 0
 	grouped := map[string][]lsptype.Diagnostic{}
 	groupedDetails := map[string][]string{}
+	groupedReplacements := map[string][]Replacement{}
 	for _, h := range hintList {
 		line := h.Line - 1
 		if line < 0 {
@@ -157,11 +164,28 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 			detail += "\n\n- ai"
 		}
 		groupedDetails[uri] = append(groupedDetails[uri], detail)
+
+		var repl Replacement
+		if h.Replacement != "" {
+			endChar := endCol
+			if lines := readFile(h.File); lines != nil && endLine < len(lines) {
+				endChar = len(lines[endLine])
+			}
+			repl = Replacement{
+				Range: lsptype.Range{
+					Start: lsptype.Position{Line: line, Character: 0},
+					End:   lsptype.Position{Line: endLine, Character: endChar},
+				},
+				NewText: strings.TrimSuffix(h.Replacement, "\n"),
+			}
+		}
+		groupedReplacements[uri] = append(groupedReplacements[uri], repl)
 	}
 	Mu.Lock()
 	for uri, diags := range grouped {
 		existing := Diags[uri]
 		existingDetails := Details[uri]
+		existingRepls := Replacements[uri]
 		for i, d := range diags {
 			dup := false
 			for _, e := range existing {
@@ -177,10 +201,16 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 					detail = groupedDetails[uri][i]
 				}
 				existingDetails = append(existingDetails, detail)
+				var repl Replacement
+				if i < len(groupedReplacements[uri]) {
+					repl = groupedReplacements[uri][i]
+				}
+				existingRepls = append(existingRepls, repl)
 			}
 		}
 		Diags[uri] = existing
 		Details[uri] = existingDetails
+		Replacements[uri] = existingRepls
 	}
 	for uri := range grouped {
 		params, _ := json.Marshal(lsptype.PublishDiagnosticsParams{URI: uri, Diagnostics: Diags[uri]})

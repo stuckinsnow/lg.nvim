@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bufio"
+	"bytes"
 
 	"lg/internal/lsp/hints"
 	"lg/internal/lsp/lsptype"
@@ -358,6 +359,75 @@ func TestGetHints(t *testing.T) {
 	}
 
 	os.Remove(sockPath)
+}
+
+func TestSuggestCodeAction(t *testing.T) {
+	tmpFile := t.TempDir() + "/sample.go"
+	if err := os.WriteFile(tmpFile, []byte("package main\n\tfoo()\n\tbar()\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	hints.Mu.Lock()
+	hints.Diags = map[string][]lsptype.Diagnostic{}
+	hints.Details = map[string][]string{}
+	hints.Replacements = map[string][]hints.Replacement{}
+	hints.Mu.Unlock()
+
+	var buf bytes.Buffer
+	transport.Writer = bufio.NewWriter(&buf)
+
+	hints.Publish([]lsptype.Hint{
+		{
+			File:        tmpFile,
+			Line:        2,
+			EndLine:     2,
+			Match:       "foo()",
+			Message:     "replace foo with baz",
+			Detail:      "```go\n\tbaz()\n```",
+			Replacement: "\tbaz()",
+			Severity:    "hint",
+		},
+		{
+			File:     tmpFile,
+			Line:     3,
+			EndLine:  3,
+			Match:    "bar()",
+			Message:  "just a note",
+			Severity: "info",
+		},
+	})
+
+	uri := hints.FileToURI(tmpFile)
+
+	// Line 2 (0-based 1) has a replacement: Apply + Dismiss
+	actions := codeActionsFor(uri, lsptype.Range{
+		Start: lsptype.Position{Line: 1, Character: 0},
+		End:   lsptype.Position{Line: 1, Character: 5},
+	})
+	if len(actions) != 2 {
+		t.Fatalf("expected 2 code actions (Apply + Dismiss), got %d: %#v", len(actions), actions)
+	}
+	if !strings.HasPrefix(actions[0]["title"].(string), "Apply: ") {
+		t.Errorf("expected Apply action first, got %q", actions[0]["title"])
+	}
+	edit := actions[0]["edit"].(map[string]any)
+	changes := edit["changes"].(map[string][]map[string]any)[uri]
+	if len(changes) != 1 || changes[0]["newText"] != "\tbaz()" {
+		t.Fatalf("unexpected edit changes: %#v", changes)
+	}
+	rng := changes[0]["range"].(lsptype.Range)
+	if rng.Start.Line != 1 || rng.Start.Character != 0 || rng.End.Line != 1 || rng.End.Character != len("\tfoo()") {
+		t.Errorf("expected full-line range (1,0)-(1,%d), got %+v", len("\tfoo()"), rng)
+	}
+
+	// Line 3 (0-based 2) has no replacement: Dismiss only
+	actions2 := codeActionsFor(uri, lsptype.Range{
+		Start: lsptype.Position{Line: 2, Character: 0},
+		End:   lsptype.Position{Line: 2, Character: 5},
+	})
+	if len(actions2) != 1 || !strings.HasPrefix(actions2[0]["title"].(string), "Dismiss: ") {
+		t.Fatalf("expected only Dismiss action, got %#v", actions2)
+	}
 }
 
 func TestGetHintsFilter(t *testing.T) {

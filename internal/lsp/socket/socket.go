@@ -55,8 +55,10 @@ func Start(sockPath string) {
 							hints.Mu.Lock()
 							diags := hints.Diags[uri]
 							details := hints.Details[uri]
+							repls := hints.Replacements[uri]
 							kept := make([]lsptype.Diagnostic, 0, len(diags))
 							keptDetails := make([]string, 0, len(details))
+							keptRepls := make([]hints.Replacement, 0, len(repls))
 							removed := 0
 							for i, d := range diags {
 								if d.Range.Start.Line <= line0 && d.Range.End.Line >= line0 {
@@ -67,14 +69,19 @@ func Start(sockPath string) {
 								if i < len(details) {
 									keptDetails = append(keptDetails, details[i])
 								}
+								if i < len(repls) {
+									keptRepls = append(keptRepls, repls[i])
+								}
 							}
 							if removed > 0 {
 								if len(kept) == 0 {
 									delete(hints.Diags, uri)
 									delete(hints.Details, uri)
+									delete(hints.Replacements, uri)
 								} else {
 									hints.Diags[uri] = kept
 									hints.Details[uri] = keptDetails
+									hints.Replacements[uri] = keptRepls
 								}
 								params, _ := json.Marshal(lsptype.PublishDiagnosticsParams{URI: uri, Diagnostics: kept})
 								transport.Send(lsptype.Message{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
@@ -94,7 +101,8 @@ func Start(sockPath string) {
 								if !seen[uri] {
 									seen[uri] = true
 									delete(hints.Diags, uri)
-								delete(hints.Details, uri)
+									delete(hints.Details, uri)
+									delete(hints.Replacements, uri)
 									params, _ := json.Marshal(lsptype.PublishDiagnosticsParams{URI: uri, Diagnostics: []lsptype.Diagnostic{}})
 									transport.Send(lsptype.Message{JSONRPC: "2.0", Method: "textDocument/publishDiagnostics", Params: params})
 								}
@@ -106,6 +114,7 @@ func Start(sockPath string) {
 							}
 							hints.Diags = map[string][]lsptype.Diagnostic{}
 							hints.Details = map[string][]string{}
+							hints.Replacements = map[string][]hints.Replacement{}
 						}
 						hints.Mu.Unlock()
 						c.Write([]byte(`{"ok":true}` + "\n"))

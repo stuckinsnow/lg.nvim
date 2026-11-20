@@ -1,6 +1,6 @@
 # Prompt prefixes
 
-You type a prefix such as `@HINT` at the start of a prompt to change what lg
+You type a prefix such as `@REVIEW` at the start of a prompt to change what lg
 does with it. Typing `@` in the prompt window lists them (blink.cmp
 completion). This page describes each prefix by what you see in the editor.
 
@@ -15,10 +15,10 @@ the AI edits the painted regions directly.
 | _(none)_    | Yes, painted regions only   | The buffer                                                          | Yes          |
 | `@ASK`      | No                          | Chat panel                                                          | No           |
 | `@INFO`     | No                          | Highlighted regions, quickfix list, chat panel                      | No           |
-| `@HINT`     | No                          | Diagnostics in the buffer                                           | No           |
+| `@REVIEW`   | No                          | Diagnostics in the buffer and location list                         | No           |
 | `@ANNOTATE` | Yes                         | The buffer, plus annotation diagnostics and the location list       | No           |
-| `@SUGGEST`  | No                          | Diagnostics with suggested code on hover                            | No           |
-| `@HELP`     | No                          | Highlighted regions, quickfix list, diagnostics with suggested code | No           |
+| `@SUGGEST`  | No                          | Diagnostics with hover preview, `gra` apply action, location list   | No           |
+| `@HELP`     | No                          | Highlighted regions, quickfix list, suggestions + location list     | No           |
 | `@SHELL`    | No                          | Chat panel (runs shell commands you approve)                        | No           |
 | `@GIT`      | Yes, after the git analysis | Chat panel, then the buffer                                         | No           |
 | `@DEVLENS`  | Yes                         | The buffer                                                          | No           |
@@ -26,7 +26,7 @@ the AI edits the painted regions directly.
 | `#file_lsp` | Yes                         | The buffer                                                          | Yes          |
 | `@DIAG`     | Yes                         | The buffer                                                          | Yes          |
 | `@TSC`      | Yes                         | The buffer                                                          | Yes          |
-| `@SUB`      | Modifier                    | Runs `@HINT`, `@SUGGEST` or `@HELP` in the background               | No           |
+| `@SUB`      | Modifier                    | Runs `@REVIEW`, `@SUGGEST` or `@HELP` in the background             | No           |
 
 ## Asking and reviewing (no edits)
 
@@ -55,21 +55,23 @@ What you can do with the highlights:
 
 Runs as a separate session, so it doesn't block the main one.
 
-### `@HINT`
+### `@REVIEW`
 
 Code review. The AI publishes its findings as **diagnostics** (the same
-markers your LSP uses), so they show up inline and in `vim.diagnostic`
-lists. Use the "Dismiss" code action to drop one, or "AI hints" in the clear
-menu to drop all of them.
+markers your LSP uses), so they show up inline, in `vim.diagnostic` lists,
+and in the current window's **location list** (`:lopen`). Use the "Dismiss"
+code action (`gra`) to drop one, or "AI hints" in the clear menu to drop all
+of them.
 
 If the AI finishes without publishing anything, lg retries once.
 
 ### `@ANNOTATE`
 
 A normal edit that also explains itself. The AI makes the edits you ask for,
-then calls `lg_annotate` (part of `lg-mcp`, so it works on every provider) to
-publish an annotation for each change as a diagnostic: what changed and why,
-with more detail on hover.
+then calls `lg_annotate` (part of `lg-mcp`, so it works on every provider;
+blocked on normal turns unless `@ANNOTATE` is used) to publish an annotation
+for each change as a diagnostic: what changed and why, with more detail on
+hover.
 
 With painted regions it runs as a paint edit. Without paint (or from the chat
 panel) it runs in chat mode. If you only ask it to annotate ("annotate my
@@ -84,18 +86,21 @@ Example: `@ANNOTATE comment out the debug logging`
 
 ### `@SUGGEST`
 
-Like `@HINT`, but each diagnostic carries concrete replacement code. Hover
-over a diagnostic to see the suggested code. Nothing is applied to the buffer.
+Like `@REVIEW`, but each diagnostic carries concrete replacement code. Hover
+(`K`) over a diagnostic to preview the suggested code, or trigger code actions
+(`gra`) and choose **Apply** to replace the lines and dismiss the suggestion.
+New suggestions are also added to the **location list** (`:lopen`).
 
 ### `@HELP`
 
 `@INFO` and `@SUGGEST` combined. The AI highlights the regions that need
 changes (also added to the quickfix list) and publishes a suggestion
-diagnostic for each one.
+diagnostic for each one (added to the **location list**, with hover preview
+and `gra` apply action).
 
 ### `@SUB`
 
-Put it in front of `@HINT`, `@SUGGEST` or `@HELP` (`@SUB @HINT ...`) to run
+Put it in front of `@REVIEW`, `@SUGGEST` or `@HELP` (`@SUB @REVIEW ...`) to run
 that review in a separate background session, so the main session stays free.
 Without `@SUB`, lg asks whether to queue or use a background session when the
 main session is busy.
@@ -138,6 +143,6 @@ example `@DIAG #lsp fix the auth bug`.
 ## When prefixes are combined
 
 Only one of these runs per prompt. lg checks them in this order and uses the
-first one it finds: `@DEVLENS`, `@SHELL`, `@GIT`, `@ASK`, `@HINT`, `@ANNOTATE`, `@SUGGEST`,
+first one it finds: `@DEVLENS`, `@SHELL`, `@GIT`, `@ASK`, `@REVIEW`, `@ANNOTATE`, `@SUGGEST`,
 `@HELP`, `@INFO`. The context prefixes (`#lsp`, `#file_lsp`, `@DIAG`, `@TSC`)
 apply to the normal edit that runs when none of those are present.

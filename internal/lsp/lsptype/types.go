@@ -44,9 +44,10 @@ type Hint struct {
 	Column    int    `json:"column"`
 	EndColumn int    `json:"end_column"`
 	Match     string `json:"match"`
-	Message   string `json:"message"`
-	Detail    string `json:"detail"`
-	Severity  string `json:"severity"`
+	Message     string `json:"message"`
+	Detail      string `json:"detail"`
+	Replacement string `json:"replacement,omitempty"`
+	Severity    string `json:"severity"`
 }
 
 type HintRequest struct {

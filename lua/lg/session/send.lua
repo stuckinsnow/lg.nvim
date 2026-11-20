@@ -92,9 +92,17 @@ end
 
 local annotate_severity = { "E", "W", "I", "N" }
 
+local function snapshot_diag_keys()
+	local keys = {}
+	for _, d in ipairs(ai_diagnostics()) do
+		keys[diag_key(d)] = true
+	end
+	return keys
+end
+
 --- Put the diagnostics published since `before_keys` into the location list.
 --- @return integer count
-local function annotations_to_loclist(before_keys, win)
+local function annotations_to_loclist(before_keys, win, title)
 	local items = {}
 	for _, d in ipairs(ai_diagnostics()) do
 		if not before_keys[diag_key(d)] then
@@ -120,7 +128,7 @@ local function annotations_to_loclist(before_keys, win)
 		if not vim.api.nvim_win_is_valid(win) then
 			win = code_window()
 		end
-		vim.fn.setloclist(win, {}, " ", { title = "lg annotations", items = items })
+		vim.fn.setloclist(win, {}, " ", { title = title or "lg annotations", items = items })
 	end
 	return #items
 end
@@ -323,12 +331,14 @@ function M.send(opts)
 
 		if flags.has_hint then
 			prompt = prompt:gsub("@SUB%s*", "")
-			prompt = prompt:gsub("@HINT%s*", "")
-			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@HINT " .. prompt)
+			prompt = prompt:gsub("@REVIEW%s*", "")
+			window.add_prompt((flags.has_sub and "@SUB " or "") .. "@REVIEW " .. prompt)
 			status.start("Reviewing" .. (flags.has_sub and " (subagent)" or "") .. "...")
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
+			local target_win = code_window()
+			local before_keys = snapshot_diag_keys()
 			local before = count_ai_diagnostics()
 			local function run_hint(hint_fn)
 				local function check_and_retry()
@@ -346,18 +356,19 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = count_ai_diagnostics() - before
+										local n2 = annotations_to_loclist(before_keys, target_win, "lg hints")
 										if n2 <= 0 then
 											status.flash("Retry failed — no hints")
 										end
-										status.stop("Review done — " .. math.max(n2, 0) .. " hint(s)")
+										status.stop("Review done — " .. n2 .. " hint(s)" .. (n2 > 0 and " (:lopen)" or ""))
 										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
-							status.stop("Review done — " .. n .. " hint(s)")
+							local added = annotations_to_loclist(before_keys, target_win, "lg hints")
+							status.stop("Review done — " .. math.max(added, n) .. " hint(s)" .. (added > 0 and " (:lopen)" or ""))
 							clear_paint(regions)
 						end
 					end, 500)
@@ -384,6 +395,8 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
+			local target_win = code_window()
+			local before_keys = snapshot_diag_keys()
 			local before = count_ai_diagnostics()
 			local function run_suggest(suggest_fn)
 				local function check_and_retry()
@@ -401,18 +414,19 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = count_ai_diagnostics() - before
+										local n2 = annotations_to_loclist(before_keys, target_win, "lg suggestions")
 										if n2 <= 0 then
 											status.flash("Retry failed — no suggestions")
 										end
-										status.stop("Suggestions done — " .. math.max(n2, 0) .. " suggestion(s)")
+										status.stop("Suggestions done — " .. n2 .. " suggestion(s)" .. (n2 > 0 and " (:lopen)" or ""))
 										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
-							status.stop("Suggestions done — " .. n .. " suggestion(s)")
+							local added = annotations_to_loclist(before_keys, target_win, "lg suggestions")
+							status.stop("Suggestions done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:lopen)" or ""))
 							clear_paint(regions)
 						end
 					end, 500)
@@ -440,6 +454,8 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
+			local target_win = code_window()
+			local before_keys = snapshot_diag_keys()
 			local before = count_ai_diagnostics()
 			local function run_help(help_fn)
 				local function check_and_retry()
@@ -457,18 +473,19 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = count_ai_diagnostics() - before
+										local n2 = annotations_to_loclist(before_keys, target_win, "lg help")
 										if n2 <= 0 then
 											status.flash("Retry failed — no suggestions")
 										end
-										status.stop("Help done — " .. math.max(n2, 0) .. " suggestion(s)")
+										status.stop("Help done — " .. n2 .. " suggestion(s)" .. (n2 > 0 and " (:lopen)" or ""))
 										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
-							status.stop("Help done — " .. n .. " suggestion(s)")
+							local added = annotations_to_loclist(before_keys, target_win, "lg help")
+							status.stop("Help done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:lopen)" or ""))
 							clear_paint(regions)
 						end
 					end, 500)
@@ -689,7 +706,7 @@ function M.send(opts)
 			has_auto_paint = text and text:match("@INFO") ~= nil,
 			has_git = text and text:match("@GIT") ~= nil,
 			has_devlens = text and text:match("@DEVLENS") ~= nil,
-			has_hint = text and text:match("@HINT") ~= nil,
+			has_hint = text and text:match("@REVIEW") ~= nil,
 			has_annotate = text and text:match("@ANNOTATE") ~= nil,
 			has_suggest = text and text:match("@SUGGEST") ~= nil,
 			has_shell = text and text:match("@SHELL") ~= nil,

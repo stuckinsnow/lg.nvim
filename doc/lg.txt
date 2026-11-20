@@ -74,14 +74,17 @@ Type these at the start of your prompt. Combine freely:
   `@INFO`       AI highlights regions and explains what to do — no code
               written. Use `<leader>aA` to convert to real paint.
 
-  `@HINT`       AI reviews code and publishes findings as native Neovim
-              diagnostics (squiggly underlines + hover). Read-only.
+  `@REVIEW`     AI reviews code and publishes findings as native Neovim
+              diagnostics (squiggly underlines + hover + `:lopen`). Read-only.
 
   `@ANNOTATE`   AI makes the edit, then annotates each change as a
               diagnostic and fills the location list (`:lopen`).
 
-  `@SUGGEST`    AI publishes code suggestions as diagnostics — hover to
-              see recommended code.
+  `@SUGGEST`    AI publishes code suggestions as diagnostics — hover (`K`) to
+              preview, `gra` code action to apply, `:lopen` to browse.
+
+  `@HELP`       Highlights regions that need changes (quickfix) and publishes
+              suggestions (hover, `gra` apply, `:lopen`). Read-only.
 
   `@GIT`        Spawns a cheap subagent to analyze git history, injects
               the result as context into the main session.
@@ -96,7 +99,7 @@ Type these at the start of your prompt. Combine freely:
 
   `@TSC`        Run `tsc --noEmit` and include type errors as context.
 
-  `@SUB`        Run next prefix as a subagent (e.g. `@SUB HINT`).
+  `@SUB`        Run next prefix as a subagent (e.g. `@SUB @REVIEW`).
               Doesn't block the main session.
 
 Autocomplete: type `@` or `#` in the prompt and blink.cmp will suggest actions,
@@ -116,7 +119,7 @@ edits files via the `lg_write_file` MCP tool with inline diff review.
 ==============================================================================
 6. AI HINTS                                                       *lg-hints*
 
-`@HINT` switches to a reviewer agent that can only annotate, not edit.
+`@REVIEW` switches to a reviewer agent that can only annotate, not edit.
 
   - Squiggly underlines on exact expressions
   - Hover messages with explanations
@@ -125,7 +128,7 @@ edits files via the `lg_write_file` MCP tool with inline diff review.
 
 Uses a separate LSP server (`lg-lsp`) started automatically.
 
-Example: `@HINT find potential null pointer issues in this code`
+Example: `@REVIEW find potential null pointer issues in this code`
 
 ==============================================================================
 7. GIT SUBAGENT                                                     *lg-git*

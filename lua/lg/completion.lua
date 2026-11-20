@@ -9,11 +9,11 @@ local at_items = {
   { label = "@DIAG", detail = "Check LSP diagnostics in open buffers before editing" },
   { label = "@INFO", detail = "AI highlights, and explains in chat only" },
   { label = "@TSC", detail = "Run tsc --noEmit and include type errors as context" },
-  { label = "@HINT", detail = "AI reviews code and publishes findings as editor diagnostics" },
+  { label = "@REVIEW", detail = "AI reviews code and publishes findings as editor diagnostics" },
   { label = "@ANNOTATE", detail = "AI makes the edit, then annotates its changes as diagnostics + location list" },
   { label = "@SUGGEST", detail = "AI publishes code suggestions as diagnostics — hover to see recommended code" },
   { label = "@HELP", detail = "AI highlights regions + publishes code suggestions for each" },
-  { label = "@SUB", detail = "Run next prefix as a subagent (e.g. @SUB HINT) — doesn't block main session" },
+  { label = "@SUB", detail = "Run next prefix as a subagent (e.g. @SUB @REVIEW) — doesn't block main session" },
   { label = "@ASK", detail = "Read-only chat — AI answers questions but cannot edit any files" },
   { label = "@SHELL", detail = "Spawn a shell subagent — runs commands with manual approval" },
 }
@@ -58,8 +58,8 @@ function M:get_completions(ctx, callback)
   local result = {}
   for _, item in ipairs(source) do
     if not line:find(item.label, 1, true) then
-      -- @SUB only shows when @HINT or @SUGGEST is already present
-      if item.label == "@SUB" and not (line:find("@HINT", 1, true) or line:find("@SUGGEST", 1, true) or line:find("@HELP", 1, true)) then
+      -- @SUB only shows when @REVIEW, @SUGGEST, or @HELP is already present
+      if item.label == "@SUB" and not (line:find("@REVIEW", 1, true) or line:find("@SUGGEST", 1, true) or line:find("@HELP", 1, true)) then
         goto continue
       end
       table.insert(result, {
