@@ -182,6 +182,20 @@ local _busy = false
 local _has_history = false
 local _chat_active = false
 
+local _tool_hint_sent = false
+local ANTIGRAVITY_TOOL_HINT = "[Use read_buffer, lg_grep, lg_glob, lg_write_file, paint_edit, and lg_run instead of built-in file/shell tools.]\n\n"
+
+local function maybe_prepend_tool_hint(messages)
+	if opts.provider ~= "antigravity" or _has_history or _tool_hint_sent then
+		return messages
+	end
+	_tool_hint_sent = true
+	if messages[1] and messages[1].type == "text" then
+		messages[1] = { type = "text", text = ANTIGRAVITY_TOOL_HINT .. messages[1].text }
+	end
+	return messages
+end
+
 local function flush_send_queue()
 	if #_send_queue == 0 then
 		return
@@ -675,7 +689,7 @@ function M.send(prompt, regions, context_regions, on_done, lsp_context, tsc_cont
 			if _planner_active then
 				_planner_used = true
 			end
-			client.prompt(sid, messages)
+			client.prompt(sid, maybe_prepend_tool_hint(messages))
 		end
 
 		if _busy then
@@ -725,7 +739,7 @@ function M.send_chat(prompt, on_done)
 			if _planner_active then
 				_planner_used = true
 			end
-			client.prompt(sid, messages)
+			client.prompt(sid, maybe_prepend_tool_hint(messages))
 		end
 
 		if _busy then
@@ -770,7 +784,7 @@ function M.send_mode(config, prompt, regions, context_regions, on_done)
 				flush_send_queue()
 			end
 
-			client.prompt(sid, messages)
+			client.prompt(sid, maybe_prepend_tool_hint(messages))
 		end
 
 		if _busy then
@@ -787,6 +801,7 @@ function M.reset()
 	_send_queue = {}
 	_busy = false
 	_has_history = false
+	_tool_hint_sent = false
 	_chat_active = false
 	M._on_done = nil
 	M._session_count = 0
@@ -804,6 +819,7 @@ function M.clear()
 	_send_queue = {}
 	_busy = false
 	_has_history = false
+	_tool_hint_sent = false
 	_chat_active = false
 	M._on_done = nil
 	M._session_count = 0
