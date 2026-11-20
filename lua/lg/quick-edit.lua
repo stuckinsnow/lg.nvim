@@ -68,6 +68,33 @@ function M.quick_edit()
 			end
 
 			local spin = spinners.start({ region })
+			if flags.has_suggest or flags.has_hint or flags.has_help then
+				local send_mod = require("lg.session.send")
+				local target_win = vim.api.nvim_get_current_win()
+				local before_keys = send_mod.snapshot_diag_keys()
+				local sub_fn, title
+				if flags.has_suggest then
+					prompt = prompt:gsub("@SUGGEST%s*", "")
+					sub_fn = session.send_suggest_subagent
+					title = "lg suggestions"
+				elseif flags.has_hint then
+					prompt = prompt:gsub("@REVIEW%s*", "")
+					sub_fn = session.send_hint_subagent
+					title = "lg hints"
+				else
+					prompt = prompt:gsub("@HELP%s*", "")
+					sub_fn = session.send_help_subagent
+					title = "lg help"
+				end
+				sub_fn(prompt, { region }, {}, function()
+					vim.defer_fn(function()
+						spin:stop()
+						clear_highlight(buf, start_line, end_line)
+						send_mod.annotations_to_loclist(before_keys, target_win, title)
+					end, 500)
+				end)
+				return
+			end
 			session.send_oneshot(prompt, { region }, {}, function()
 				vim.schedule(function()
 					spin:stop()

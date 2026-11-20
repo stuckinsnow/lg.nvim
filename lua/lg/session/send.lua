@@ -133,6 +133,9 @@ local function annotations_to_loclist(before_keys, win, title)
 	return #items
 end
 
+M.snapshot_diag_keys = snapshot_diag_keys
+M.annotations_to_loclist = annotations_to_loclist
+
 local ANNOTATE_INSTRUCTIONS = table.concat({
 	"ANNOTATE: do the user's request as normal (make the edits it asks for). Then call the lg_annotate tool ONCE",
 	"with an annotation for each meaningful change you made, so the user can review your changes in the editor:",
