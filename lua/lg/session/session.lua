@@ -499,7 +499,7 @@ function M._setup_event_handlers()
 	end)
 
 	client.on("fs_read", function(ev)
-		status.update("Reading: " .. vim.fn.fnamemodify(ev.text or "", ":t"))
+		status.update("Reading", vim.fn.fnamemodify(ev.text or "", ":~:."))
 	end)
 
 	client.on("agent_switched", function(ev)

@@ -120,17 +120,14 @@ local function render_status()
 	local svr = require("lg.session.server")
 	local mcp = svr.get_sock_path() and ok_icon or fail_icon
 
-	-- Hint MCP: lg-hint.sock (lg-lsp listening for lg-hint-mcp)
-	local hint = vim.uv.fs_stat("/dev/shm/lg-hint.sock") and ok_icon or fail_icon
-
-	-- LSP: lg-hint client attached
-	local lsp = #vim.lsp.get_clients({ name = "lg-hint" }) > 0 and ok_icon or fail_icon
+	-- LSP: lg-hint client attached and its hint socket listening
+	local lsp_ok = #vim.lsp.get_clients({ name = "lg-hint" }) > 0 and vim.uv.fs_stat("/dev/shm/lg-hint.sock") ~= nil
+	local lsp = lsp_ok and ok_icon or fail_icon
 
 	local devlens = devlens_up and ok_icon or fail_icon
 
 	local plan = session.is_planner_active() and ok_icon or fail_icon
-	local line =
-		string.format("acp %s  mcp %s  hint-mcp %s  lsp %s  lens %s  plan %s", acp, mcp, hint, lsp, devlens, plan)
+	local line = string.format("acp %s  mcp %s  lsp %s  lens %s  plan %s", acp, mcp, lsp, devlens, plan)
 
 	if state.context_pct then
 		line = line .. string.format("  󱙺 %.0f%%", state.context_pct)
