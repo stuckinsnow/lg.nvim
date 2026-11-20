@@ -1,17 +1,24 @@
 # lg
 
-https://github.com/user-attachments/assets/bf60cf75-cad0-404c-b550-132866b736fd
+An AI coding client for Neovim, driven over ACP. Two main ways to work, with a third that's a spin off from the second:
 
-An AI coding client for Neovim, driven over ACP. Two ways to work:
+https://github.com/user-attachments/assets/00f47e4e-a797-49b8-b6c3-caf924175763
 
-- **Paint mode** — visually select regions and let the AI edit **only** those
-  regions, nothing else in the file.
-- **Chat mode** — a normal agentic chat panel with no region scoping. The AI
-  reads, writes and creates files across the project, with edits landing as
-  inline diffs in your buffers.
+- **Paint mode** - visually select regions and let the AI edit **only** those
+  regions, nothing else in the file. This is different to copilot in that the agent can still browse files in the project and reason. You can also spawn subagents (not shown in the video). 
+
+
+https://github.com/user-attachments/assets/6007f1f9-dc79-4699-9887-fc2d908345d8
+
+- **Chat mode** - a normal agentic chat panel with no region scoping. The AI
+  reads, writes and creates files across the project; note, it does not literally write to the file, instead it lands as an inline diff in your buffer. You approve the diff, and the code changes in the buffer, but it is not saved to file. 
+
+https://github.com/user-attachments/assets/f82be7e4-a0ce-4d6e-8214-b21ee071c197
+
+- **Chat mode 2** - Similar to above, except it's more in the style of a cli. You type 'y' (to accept a file change, etc.) and hit ctrl-s, instead of hitting escape (to exit insert mode) and return. 
 
 Both share one session, so you can scope an edit tightly, then open the chat and
-keep the same conversation going.
+keep the same conversation going. Howver, there's also a one-shot mode which edits the selected line range but opens it in a new session. 
 
 Supports **kiro-cli**, **opencode**, and **antigravity (`agy`)** as providers.
 
