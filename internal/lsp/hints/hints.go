@@ -152,7 +152,11 @@ func Publish(hintList []lsptype.Hint) (total int, matched int, failures []string
 			Source:   "ai",
 			Message:  h.Message,
 		})
-		groupedDetails[uri] = append(groupedDetails[uri], h.Detail)
+		detail := strings.TrimRight(h.Detail, "\n")
+		if detail != "" && detail != h.Message && !strings.HasSuffix(strings.TrimSpace(detail), "- ai") {
+			detail += "\n\n- ai"
+		}
+		groupedDetails[uri] = append(groupedDetails[uri], detail)
 	}
 	Mu.Lock()
 	for uri, diags := range grouped {

@@ -353,6 +353,9 @@ func TestGetHints(t *testing.T) {
 	if !strings.Contains(h.Detail, "check != nil") {
 		t.Errorf("expected detail to contain suggestion code, got %q", h.Detail)
 	}
+	if !strings.HasSuffix(h.Detail, "\n\n- ai") {
+		t.Errorf("expected detail to end with - ai signature, got %q", h.Detail)
+	}
 
 	os.Remove(sockPath)
 }

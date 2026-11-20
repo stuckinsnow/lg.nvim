@@ -241,7 +241,7 @@ local function connect(on_ready)
 
 		M._setup_event_handlers()
 
-		client.create_session(vim.fn.getcwd(), mcp_servers(), function(resp)
+		client.create_session(vim.fn.getcwd(), mcp_servers("core,hint"), function(resp)
 			if resp.error then
 				if not _connect_retried then
 					_connect_retried = true
