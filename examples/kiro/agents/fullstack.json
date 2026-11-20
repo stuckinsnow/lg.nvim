@@ -20,7 +20,6 @@
   },
   "tools": [
     "read",
-    "shell",
     "grep",
     "glob",
     "code",

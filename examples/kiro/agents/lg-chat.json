@@ -19,6 +19,7 @@
     "thinking",
     "@lg/read_buffer",
     "@lg/lg_write_file",
+    "@lg/lg_run",
     "@lg/get_diagnostics",
     "@lg/lg_annotate",
     "@devlens"

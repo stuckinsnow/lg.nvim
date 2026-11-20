@@ -205,6 +205,18 @@ local function render_context()
 	end
 	return lines, hls
 end
+local function is_noisy_tool(text)
+	local lower = (text or ""):lower()
+	return lower:find("read_buffer", 1, true) ~= nil
+		or lower:find("read_file", 1, true) ~= nil
+		or lower:find("reading ", 1, true) == 1
+		or lower:find("grep", 1, true) ~= nil
+		or lower:find("glob", 1, true) ~= nil
+		or lower:find("get_painted_regions", 1, true) ~= nil
+		or lower:find("get_diagnostics", 1, true) ~= nil
+		or lower:find("get_hints", 1, true) ~= nil
+end
+
 local function render_chat()
 	local lines = {}
 	local tool_lines = {}
@@ -234,9 +246,11 @@ local function render_chat()
 				table.insert(lines, l)
 			end
 		elseif entry.type == "tool" then
-			table.insert(lines, "")
-			table.insert(lines, "⚙ " .. entry.text)
-			tool_lines[#lines] = true
+			if opts.verbose ~= false or not is_noisy_tool(entry.text) then
+				table.insert(lines, "")
+				table.insert(lines, "⚙ " .. entry.text)
+				tool_lines[#lines] = true
+			end
 		elseif entry.type == "cost" then
 			table.insert(lines, "")
 			table.insert(lines, " " .. entry.text)
@@ -260,6 +274,7 @@ function M.setup(user_opts)
 		width = 60,
 		position = "right",
 		chat_height_pct = 60,
+		verbose = true,
 	}, user_opts or {})
 end
 

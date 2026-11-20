@@ -17,7 +17,11 @@ function M.setup(opts)
 	spinners.setup(opts)
 	paint.setup(opts.paint or {})
 	session.setup(opts.session or {})
-	window.setup(opts.window or {})
+	local win_opts = vim.tbl_extend("force", {}, opts.window or {})
+	if opts.verbose ~= nil and win_opts.verbose == nil then
+		win_opts.verbose = opts.verbose
+	end
+	window.setup(win_opts)
 	require("lg.ui.hunk").setup(opts.hunk or {})
 
 	server.start()

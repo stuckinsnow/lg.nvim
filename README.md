@@ -131,7 +131,7 @@ configure the same set in whichever provider you use.
 | Agent        | Role                            | Whitelisted tools                                                                                  |
 | ------------ | ------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `lg`         | Paint edit (default)            | `grep`, `glob`, `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `get_hints`, `lg_annotate` |
-| `lg-chat`    | Chat edit via inline diff       | `grep`, `glob`, `read_buffer`, `lg_write_file`, `get_diagnostics`, `lg_annotate`, devlens          |
+| `lg-chat`    | Chat edit via inline diff       | `grep`, `glob`, `read_buffer`, `lg_write_file`, `lg_run`, `get_diagnostics`, `lg_annotate`, devlens |
 | `lg-plan`    | Planning, no writes             | `grep`, `glob`, `read_buffer`, `handoff_to_chat`                                                   |
 | `lg-oneshot` | Isolated quick edit             | `grep`, `glob`, all `lg` tools, all `lg-git` tools                                                 |
 | `lg-info`    | Info paint (highlight only)     | `read`, `grep`, `glob`, `lg_paint_regions`                                                         |
@@ -139,9 +139,9 @@ configure the same set in whichever provider you use.
 | `suggester`  | Code suggestions (read-only)    | `read`, `grep`, `glob`, `lg_suggest`                                                               |
 | `helper`     | Highlight + suggest (read-only) | `read`, `grep`, `glob`, `lg_paint_regions`, `lg_hint`, `lg_suggest`                                |
 | `asker`      | Read-only Q&A                   | `read`, `grep`, `glob`, `get_hints`                                                                |
-| `lg-shell`   | Shell with manual approval      | `read`, shell                                                                                      |
+| `lg-shell`   | Shell with manual approval      | `read`, `lg_run`                                                                                   |
 | `devlens`    | React component inspection      | `read`, `grep`, `glob`, devlens                                                                    |
-| `fullstack`  | Full agentic mode               | `read`, shell, `grep`, `glob`, all `lg` + `lg-git` tools, `get_hints`                              |
+| `fullstack`  | Full agentic mode               | `read`, `grep`, `glob`, all `lg` + `lg-git` tools, `get_hints`                                     |
 
 The providers name and restrict tools differently:
 

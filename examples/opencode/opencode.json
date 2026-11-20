@@ -49,6 +49,7 @@
         "glob": "allow",
         "lg_read_buffer": "allow",
         "lg_lg_write_file": "allow",
+        "lg_lg_run": "allow",
         "lg_lg_annotate": "allow",
         "lg_get_diagnostics": "allow",
         "devlens_*": "allow"
@@ -133,11 +134,11 @@
     },
     "lg-shell": {
       "description": "Shell subagent — runs commands with user approval",
-      "prompt": "You have shell access. Run the commands the user asked for. Be concise — just show what you ran and the result.",
+      "prompt": "Use lg_run to run the shell commands the user asked for. Be concise — just show what you ran and the result.",
       "permission": {
         "*": "deny",
         "read": "allow",
-        "bash": "allow"
+        "lg_lg_run": "allow"
       }
     },
     "devlens": {
@@ -157,7 +158,6 @@
       "permission": {
         "*": "deny",
         "read": "allow",
-        "bash": "allow",
         "grep": "allow",
         "glob": "allow",
         "task": "allow",

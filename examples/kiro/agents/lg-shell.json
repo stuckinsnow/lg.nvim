@@ -1,10 +1,17 @@
 {
   "name": "lg-shell",
   "description": "Shell subagent — runs commands with user approval",
-  "prompt": "You have shell access. Run the commands the user asked for. Be concise — just show what you ran and the result.",
+  "prompt": "Use lg_run to run the shell commands the user asked for. Be concise — just show what you ran and the result.",
+  "mcpServers": {
+    "lg": {
+      "command": "/path/to/lg/mcp/lg-mcp",
+      "args": [],
+      "env": { "LG_SOCK": "/dev/shm/lg.sock" }
+    }
+  },
   "tools": [
     "read",
-    "shell",
+    "@lg/lg_run",
     "thinking"
   ],
   "useLegacyMcpJson": false,
