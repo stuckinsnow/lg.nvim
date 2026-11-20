@@ -61,6 +61,7 @@ function M.add(bufnr, start_line, end_line)
 	-- Dedup: skip if exact same region already exists
 	for _, r in ipairs(regions) do
 		if r.bufnr == bufnr and r.start_line == start_line and r.end_line == end_line then
+			signs.redraw(bufnr)
 			return
 		end
 	end
@@ -70,6 +71,7 @@ function M.add(bufnr, start_line, end_line)
 		start_line = start_line,
 		end_line = end_line,
 	})
+	signs.redraw(bufnr)
 end
 
 --- Get all regions with their current line content
@@ -133,6 +135,7 @@ function M.repaint(bufnr)
 			end
 		end
 	end
+	signs.redraw(bufnr)
 end
 
 --- Remove a specific region from the table
@@ -147,9 +150,11 @@ function M.remove(region)
 end
 
 function M.clear()
+	local signs = require("lg.ui.signs")
 	for _, r in ipairs(regions) do
 		if vim.api.nvim_buf_is_valid(r.bufnr) then
 			vim.api.nvim_buf_clear_namespace(r.bufnr, ns, 0, -1)
+			signs.redraw(r.bufnr)
 		end
 	end
 	regions = {}
@@ -165,6 +170,7 @@ function M.clear_last()
 		for _, mark in ipairs(marks) do
 			vim.api.nvim_buf_del_extmark(r.bufnr, ns, mark[1])
 		end
+		require("lg.ui.signs").redraw(r.bufnr)
 	end
 end
 
