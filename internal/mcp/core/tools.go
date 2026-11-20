@@ -4,7 +4,6 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"lg/internal/mcp/nvim"
@@ -86,10 +85,6 @@ func Call(name string, rawArgs json.RawMessage) (any, bool, error) {
 				Content: []protocol.TextContent{{Type: "text", Text: "invalid arguments: " + err.Error()}},
 				IsError: true,
 			}, true, nil
-		}
-		dir := args.Path[:max(0, strings.LastIndex(args.Path, "/"))]
-		if dir != "" {
-			os.MkdirAll(dir, 0755)
 		}
 		resp, err := nvim.SendToNeovim(map[string]any{"method": "edit_file", "path": args.Path, "old_text": args.OldText, "new_text": args.NewText})
 		if err != nil {
@@ -288,15 +283,15 @@ func Defs() []protocol.ToolDef {
 		},
 		{
 			Name:        "lg_write_file",
-			Description: "Edit a file by replacing a text snippet. Shows an inline diff for user review. Only the changed portion is needed — not the whole file. If the user rejects, do NOT retry.",
+			Description: "Edit an existing file by replacing a text snippet, or create a new file. Shows an inline diff or creation prompt for user review. For edits, pass only the changed portion in old_text/new_text. For new files, omit old_text (or pass \"\") and provide the full file content in new_text. If the user rejects, do NOT retry.",
 			InputSchema: protocol.ToolSchema{
 				Type: "object",
 				Properties: map[string]any{
 					"path":     map[string]string{"type": "string", "description": "Absolute file path"},
-					"old_text": map[string]string{"type": "string", "description": "Exact text to find and replace (include enough context for a unique match)"},
-					"new_text": map[string]string{"type": "string", "description": "Replacement text"},
+					"old_text": map[string]string{"type": "string", "description": "Exact text to find and replace (include enough context for a unique match). Omit or leave empty when creating a new file."},
+					"new_text": map[string]string{"type": "string", "description": "Replacement text, or full file content when creating a new file"},
 				},
-				Required:             []string{"path", "old_text", "new_text"},
+				Required:             []string{"path", "new_text"},
 				AdditionalProperties: &f,
 			},
 		},

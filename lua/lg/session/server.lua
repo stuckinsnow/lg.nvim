@@ -304,16 +304,17 @@ function M.handle_message(data)
 		old_text = old_text or ""
 		local hunk = require("lg.ui.hunk")
 		local resolved_early = vim.fn.fnamemodify(path, ":p")
-		local is_new_file = not vim.uv.fs_stat(resolved_early)
+		local stat = vim.uv.fs_stat(resolved_early)
+		local is_new_file = not stat
 		local result = nil
 
 		if is_new_file then
 			-- New file: prompt first, create on accept
 			local short = vim.fn.fnamemodify(resolved_early, ":~:.")
-			vim.fn.mkdir(vim.fn.fnamemodify(resolved_early, ":h"), "p")
 			vim.schedule(function()
 				require("lg.ui.approval").select({ "Accept", "Reject" }, { prompt = "Create file: " .. short }, function(_, idx)
 					if idx == 1 then
+						vim.fn.mkdir(vim.fn.fnamemodify(resolved_early, ":h"), "p")
 						local target_win = require("lg.util").find_editor_win()
 						if target_win then
 							vim.api.nvim_win_call(target_win, function()
@@ -333,6 +334,10 @@ function M.handle_message(data)
 				end)
 			end)
 			return nil, function() return result end
+		end
+
+		if old_text == "" and stat.size > 0 then
+			return vim.json.encode({ error = "old_text is required when editing an existing file" })
 		end
 
 		hunk.propose_write(path, old_text, new_text, function(accepted, reason)

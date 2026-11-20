@@ -374,3 +374,49 @@ func TestReadBufferTildeExpansion(t *testing.T) {
 		t.Errorf("expected nvim config content, got: %s", data)
 	}
 }
+
+func TestWriteFileCreateWithoutOldText(t *testing.T) {
+	var gotReq map[string]any
+	sock := startFakeNeovim(t, func(req map[string]any) any {
+		gotReq = req
+		return map[string]any{"ok": true, "status": "created"}
+	})
+	nvim.SockPath = sock
+
+	args, _ := json.Marshal(map[string]any{
+		"name": "lg_write_file",
+		"arguments": map[string]any{
+			"path":     "/tmp/nonexistent-dir-test/new_file.go",
+			"new_text": "package main\n",
+		},
+	})
+	result, err := handleToolCall(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotReq["method"] != "edit_file" || gotReq["old_text"] != "" || gotReq["new_text"] != "package main\n" {
+		t.Fatalf("unexpected nvim request: %#v", gotReq)
+	}
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "Edit created: /tmp/nonexistent-dir-test/new_file.go") {
+		t.Errorf("unexpected result: %s", data)
+	}
+}
+
+func TestWriteFileSchemaOptionalOldText(t *testing.T) {
+	for _, d := range Defs() {
+		if d.Name != "lg_write_file" {
+			continue
+		}
+		for _, r := range d.InputSchema.Required {
+			if r == "old_text" {
+				t.Fatalf("old_text should be optional in lg_write_file schema, got required=%v", d.InputSchema.Required)
+			}
+		}
+		if !strings.Contains(strings.ToLower(d.Description), "create a new file") {
+			t.Errorf("lg_write_file description should mention creating a new file: %q", d.Description)
+		}
+		return
+	}
+	t.Fatal("lg_write_file tool definition not found")
+}
