@@ -137,8 +137,6 @@ func (s *Session) handleMessage(msg *protocol.Message) {
 		s.handlePermission(msg)
 	case "fs/read_text_file":
 		s.handleFSRead(msg)
-	case "fs/write_text_file":
-		s.handleFSWrite(msg)
 	default:
 		// Never leave an agent-to-client request unanswered: the agent would wait forever.
 		if msg.IsRequest() {
@@ -411,32 +409,6 @@ func sliceLines(content string, line, limit int) string {
 		end = start + limit
 	}
 	return strings.Join(lines[start:end], "")
-}
-
-func (s *Session) handleFSWrite(msg *protocol.Message) {
-	if msg.ID == nil {
-		return
-	}
-	var params protocol.FSWriteParams
-	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		return
-	}
-
-	if s.Guard != nil {
-		if reason := s.Guard.CheckAccess(params.Path); reason != "" {
-			log.Printf("acp: fs_write denied %s (%s)", params.Path, reason)
-			s.events <- Event{Type: "fs_write_denied", SessionID: s.ID, Text: params.Path + " — " + reason}
-			s.proc.Write(protocol.FSWriteResponse(msg.ID))
-			return
-		}
-	}
-
-	if err := os.WriteFile(params.Path, []byte(params.Content), 0644); err != nil {
-		log.Printf("acp: write %s: %v", params.Path, err)
-	}
-
-	s.proc.Write(protocol.FSWriteResponse(msg.ID))
-	s.events <- Event{Type: "fs_write", SessionID: s.ID, Text: params.Path}
 }
 
 func (s *Session) handlePromptResponse(rpcID int, msg *protocol.Message, started time.Time) {

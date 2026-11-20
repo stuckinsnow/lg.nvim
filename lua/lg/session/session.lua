@@ -498,23 +498,6 @@ function M._setup_event_handlers()
 		status.update("Reading: " .. vim.fn.fnamemodify(ev.text or "", ":t"))
 	end)
 
-	client.on("fs_write", function(ev)
-		local path = ev.text or ""
-		status.update("Writing: " .. vim.fn.fnamemodify(path, ":t"))
-		vim.schedule(function()
-			local resolved = vim.fn.fnamemodify(path, ":p")
-			for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-				if vim.api.nvim_buf_is_loaded(buf) then
-					local bname = vim.api.nvim_buf_get_name(buf)
-					if bname == resolved or bname == path then
-						vim.bo[buf].autoread = true
-						vim.cmd("checktime " .. buf)
-					end
-				end
-			end
-		end)
-	end)
-
 	client.on("agent_switched", function(ev)
 		if ev.session_id ~= main_session_id then
 			return

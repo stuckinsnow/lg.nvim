@@ -238,9 +238,3 @@ type FSReadParams struct {
 	Line  int    `json:"line,omitempty"`
 	Limit int    `json:"limit,omitempty"`
 }
-
-// FSWriteParams wraps fs/write_text_file params.
-type FSWriteParams struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-}

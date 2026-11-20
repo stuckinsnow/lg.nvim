@@ -75,10 +75,6 @@ func FSReadResponse(id *RPCID, content string) Message {
 	return Message{JSONRPC: "2.0", ID: id, Result: result}
 }
 
-func FSWriteResponse(id *RPCID) Message {
-	return Message{JSONRPC: "2.0", ID: id, Result: json.RawMessage("null")}
-}
-
 // GenericRequest builds an arbitrary JSON-RPC request with the given method and params.
 func GenericRequest(id int, method string, params map[string]any) Message {
 	if params == nil {
