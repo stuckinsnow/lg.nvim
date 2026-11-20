@@ -227,6 +227,15 @@ func handleToolCall(params json.RawMessage) (any, error) {
 	case "lg_annotate":
 		return handleAnnotate(call.Arguments), nil
 
+	case "lg_grep":
+		return handleGrep(call.Arguments), nil
+
+	case "lg_glob":
+		return handleGlob(call.Arguments), nil
+
+	case "lg_run":
+		return handleRun(call.Arguments), nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", call.Name)
 	}
@@ -350,6 +359,9 @@ func handleToolsList() any {
 				},
 			},
 			annotateToolDef(),
+			grepToolDef(),
+			globToolDef(),
+			runToolDef(),
 		},
 	}
 }

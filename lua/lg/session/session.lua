@@ -316,7 +316,12 @@ function M._setup_event_handlers()
 		if ev.session_id ~= main_session_id then
 			return
 		end
-		status.flash("Tool failed: " .. (ev.text or "unknown"))
+		if M._restoring then
+			return
+		end
+		local msg = ev.text or "unknown"
+		status.flash("Tool failed: " .. msg)
+		require("lg.ui.window").add_status("Tool failed: " .. msg)
 	end)
 
 	-- The agent logged an error (e.g. usage limit) without ending the turn.

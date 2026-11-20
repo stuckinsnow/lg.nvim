@@ -6,6 +6,7 @@ import (
 	"lg-acp/internal/protocol"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -169,11 +170,11 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 			s.events <- Event{Type: "text", SessionID: s.ID, Text: update.Content.Text}
 		}
 	case "tool_call":
-		title := update.Title
-		if title == "" {
-			title = update.ToolCallID
+		cwd := ""
+		if s.Guard != nil {
+			cwd = s.Guard.cwd
 		}
-		s.events <- Event{Type: "tool_call", SessionID: s.ID, Text: title}
+		s.events <- Event{Type: "tool_call", SessionID: s.ID, Text: formatToolCall(update, cwd)}
 	case "tool_call_update":
 		if update.Status == "failed" || update.Status == "error" {
 			errMsg := update.Message
@@ -234,6 +235,76 @@ func (s *Session) handleUpdate(msg *protocol.Message) {
 	default:
 		s.events <- Event{Type: "update", SessionID: s.ID, Data: params.Update}
 	}
+}
+
+// formatToolCall builds a concise label for an ACP tool_call update. When the
+// agent only sends a generic title (e.g. "Run mcp_lg_read_buffer"), it appends
+// the target path and line range from rawInput or locations.
+func formatToolCall(update protocol.SessionUpdate, cwd string) string {
+	title := update.Title
+	if title == "" {
+		title = update.ToolCallID
+	}
+	detail := toolCallDetail(update, cwd)
+	if detail == "" || strings.Contains(title, detail) {
+		return title
+	}
+	return title + " " + detail
+}
+
+func toolCallDetail(update protocol.SessionUpdate, cwd string) string {
+	if len(update.RawInput) > 0 {
+		var in struct {
+			Path      string `json:"path"`
+			File      string `json:"file"`
+			FilePath  string `json:"file_path"`
+			StartLine int    `json:"start_line"`
+			EndLine   int    `json:"end_line"`
+			Pattern   string `json:"pattern"`
+			Command   string `json:"command"`
+		}
+		if json.Unmarshal(update.RawInput, &in) == nil {
+			if in.Command != "" {
+				return in.Command
+			}
+			p := in.Path
+			if p == "" {
+				p = in.File
+			}
+			if p == "" {
+				p = in.FilePath
+			}
+			if p != "" {
+				p = trimCWD(p, cwd)
+				if in.StartLine > 0 && in.EndLine > 0 {
+					return p + ":" + strconv.Itoa(in.StartLine) + "-" + strconv.Itoa(in.EndLine)
+				}
+				if in.StartLine > 0 {
+					return p + ":" + strconv.Itoa(in.StartLine)
+				}
+				return p
+			}
+			if in.Pattern != "" {
+				return in.Pattern
+			}
+		}
+	}
+	if len(update.Locations) > 0 && update.Locations[0].Path != "" {
+		p := trimCWD(update.Locations[0].Path, cwd)
+		if update.Locations[0].Line > 0 {
+			return p + ":" + strconv.Itoa(update.Locations[0].Line)
+		}
+		return p
+	}
+	return ""
+}
+
+func trimCWD(p, cwd string) string {
+	if cwd == "" {
+		return p
+	}
+	prefix := strings.TrimRight(cwd, "/") + "/"
+	return strings.TrimPrefix(p, prefix)
 }
 
 // changedModel returns the model confirmed by a config update, if present.

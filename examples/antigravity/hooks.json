@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ \"$LG_ACP\" = 1 ]; then printf '{\"decision\":\"deny\",\"reason\":\"Direct file reads, edits, and shell commands are disabled in lg; use read_buffer, paint_edit, or lg_write_file.\"}'; else printf '{\"decision\":\"allow\"}'; fi"
+            "command": "if [ \"$LG_ACP\" = 1 ]; then printf '{\"decision\":\"deny\",\"reason\":\"Direct file reads, edits, and shell commands are disabled in lg; use read_buffer, lg_grep, lg_glob, paint_edit, lg_write_file, or lg_run.\"}'; else printf '{\"decision\":\"allow\"}'; fi"
           }
         ]
       }

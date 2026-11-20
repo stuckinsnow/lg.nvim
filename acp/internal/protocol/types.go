@@ -123,14 +123,22 @@ type SessionUpdateParams struct {
 	Update    json.RawMessage `json:"update"`
 }
 
+// ToolLocation is a file/line reference attached to an ACP tool_call update.
+type ToolLocation struct {
+	Path string `json:"path,omitempty"`
+	Line int    `json:"line,omitempty"`
+}
+
 // SessionUpdate is the inner update payload.
 type SessionUpdate struct {
-	SessionUpdate string        `json:"sessionUpdate"`
-	Content       *ContentBlock `json:"content,omitempty"`
-	Title         string        `json:"title,omitempty"`
-	ToolCallID    string        `json:"toolCallId,omitempty"`
-	Status        string        `json:"status,omitempty"`
-	Message       string        `json:"message,omitempty"`
+	SessionUpdate string          `json:"sessionUpdate"`
+	Content       *ContentBlock   `json:"content,omitempty"`
+	Title         string          `json:"title,omitempty"`
+	ToolCallID    string          `json:"toolCallId,omitempty"`
+	Status        string          `json:"status,omitempty"`
+	Message       string          `json:"message,omitempty"`
+	RawInput      json.RawMessage `json:"rawInput,omitempty"`
+	Locations     []ToolLocation  `json:"locations,omitempty"`
 
 	// current_mode_update
 	CurrentModeID string `json:"currentModeId,omitempty"`

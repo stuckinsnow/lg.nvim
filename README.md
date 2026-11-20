@@ -118,7 +118,7 @@ talk to Neovim over it. Hints use a second socket at `/dev/shm/lg-hint.sock`.
 
 | Server    | Binary                                      | Tools it exposes                                                                                                              |
 | --------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `lg`      | `mcp/lg-mcp`                                | `read_buffer`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat`, `lg_annotate` |
+| `lg`      | `mcp/lg-mcp`                                | `read_buffer`, `lg_grep`, `lg_glob`, `lg_run`, `paint_edit`, `get_painted_regions`, `get_diagnostics`, `lg_write_file`, `lg_paint_regions`, `handoff_to_chat`, `lg_annotate` |
 | `lg-git`  | `git-mcp/lg-git-mcp`                        | `git_log`, `git_show`, `git_diff`, `git_blame`                                                                                |
 | `lg-hint` | `hint-mcp/lg-hint-mcp`                      | `lg_hint`, `lg_suggest`, `get_hints`                                                                                          |
 | `devlens` | external devlens server (private, optional) | React component inspection                                                                                                    |

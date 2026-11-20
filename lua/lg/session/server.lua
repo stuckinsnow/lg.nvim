@@ -408,6 +408,20 @@ function M.handle_message(data)
 			return nil, function() return result end
 		end
 		return M.do_read_buffer(path, msg.start_line, msg.end_line)
+	elseif msg.method == "approve_command" then
+		local cmd = msg.command
+		if not cmd or cmd == "" then
+			return vim.json.encode({ ok = false, error = "command required" })
+		end
+		local result = nil
+		require("lg.ui.approval").select({ "Allow", "Deny" }, { prompt = "Run: " .. cmd }, function(_, idx)
+			if idx == 1 then
+				result = vim.json.encode({ ok = true })
+			else
+				result = vim.json.encode({ ok = false, error = "Command rejected by user" })
+			end
+		end)
+		return nil, function() return result end
 	elseif msg.method == "paint_regions" then
 		local ns_auto = vim.api.nvim_create_namespace("lg_auto_paint")
 		local regions = msg.regions or {}
