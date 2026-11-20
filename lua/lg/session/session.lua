@@ -47,20 +47,21 @@ end
 --- MCP servers to attach to new sessions. Kiro and OpenCode load lg's tools
 --- from their own agent config. antigravity has no agent files, so lg passes
 --- its servers through ACP session/new. User-configured servers take priority.
-local function mcp_servers()
+--- @param tools? string comma-separated lg mcp tool groups (default "core")
+local function mcp_servers(tools)
 	local servers = vim.deepcopy(opts.mcp_servers or {})
 	if opts.provider ~= "antigravity" then
 		return servers
 	end
 	local bin = require("lg.bin")
 	-- agy acp has a preload race when multiple MCP servers are sent in
-	-- session/new, dropping servers unpredictably. Attach the unified lg mcp
-	-- server (core + hint + git) as a single server.
+	-- session/new, dropping servers unpredictably. Attach a single lg mcp
+	-- server scoped to the session's tool groups.
 	local path = bin.find("lg")
 	if path and servers.lg == nil then
 		servers.lg = {
 			command = path,
-			args = { "mcp" },
+			args = { "mcp", "--tools=" .. (tools or "core") },
 			env = { LG_SOCK = "/dev/shm/lg.sock", LG_HINT_SOCK = "/dev/shm/lg-hint.sock" },
 		}
 	end
@@ -499,7 +500,7 @@ function M._setup_event_handlers()
 	end)
 
 	client.on("fs_read", function(ev)
-		status.update("Reading", vim.fn.fnamemodify(ev.text or "", ":~:."))
+		status.update("Read: " .. vim.fn.fnamemodify(ev.text or "", ":t"))
 	end)
 
 	client.on("agent_switched", function(ev)
@@ -1140,7 +1141,7 @@ end
 
 function M.send_hint_subagent(prompt, regions, context_regions, on_done)
 	subagent.send_mode_subagent(
-		{ mode_id = "reviewer", scope = "hints", label = "Reviewing (subagent)" },
+		{ mode_id = "reviewer", scope = "hints", tools = "core,hint", label = "Reviewing (subagent)" },
 		prompt,
 		regions,
 		context_regions,
@@ -1150,7 +1151,7 @@ end
 
 function M.send_suggest_subagent(prompt, regions, context_regions, on_done)
 	subagent.send_mode_subagent(
-		{ mode_id = "suggester", scope = "suggestions", label = "Suggesting (subagent)" },
+		{ mode_id = "suggester", scope = "suggestions", tools = "core,hint", label = "Suggesting (subagent)" },
 		prompt,
 		regions,
 		context_regions,
@@ -1160,7 +1161,7 @@ end
 
 function M.send_help_subagent(prompt, regions, context_regions, on_done)
 	subagent.send_mode_subagent(
-		{ mode_id = "helper", scope = "help", label = "Help (subagent)" },
+		{ mode_id = "helper", scope = "help", tools = "core,hint", label = "Help (subagent)" },
 		prompt,
 		regions,
 		context_regions,

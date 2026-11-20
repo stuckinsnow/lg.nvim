@@ -9,19 +9,11 @@ local function has_noice()
   return pcall(require, "noice.message")
 end
 
-local function format_active()
-  local Format = require("noice.text.format")
-  local msg = Format.format(active.message, "lsp_progress")
-  if active.detail and active.detail ~= "" then
-    msg:append("\n  " .. active.detail, "Comment")
-  end
-  return msg
-end
-
 local function update_loop()
   if not active or active.stopped then return end
+  local Format = require("noice.text.format")
   local Manager = require("noice.message.manager")
-  Manager.add(format_active())
+  Manager.add(Format.format(active.message, "lsp_progress"))
   vim.defer_fn(update_loop, 200)
 end
 
@@ -40,17 +32,15 @@ function M.start(text)
     message = text or "Processing...",
   }
 
-  active = { message = msg, detail = nil, stopped = false }
+  active = { message = msg, stopped = false }
   update_loop()
 end
 
---- Update spinner text (and optional second-line detail)
+--- Update spinner text
 --- @param text string
---- @param detail? string
-function M.update(text, detail)
+function M.update(text)
   if not active or active.stopped then return end
   active.message.opts.progress.message = text
-  active.detail = detail
 end
 
 --- Stop spinner with final message
@@ -58,12 +48,12 @@ end
 function M.stop(text)
   if not active or not has_noice() then return end
   active.stopped = true
-  active.detail = nil
   active.message.opts.progress.message = text or "Done"
 
+  local Format = require("noice.text.format")
   local Manager = require("noice.message.manager")
   local Router = require("noice.message.router")
-  Manager.add(format_active())
+  Manager.add(Format.format(active.message, "lsp_progress"))
   Router.update()
 
   local msg = active.message

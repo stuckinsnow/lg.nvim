@@ -171,9 +171,7 @@ function M.do_read_buffer(path, start_line, end_line)
 		lines = {}
 		for i = start_line, end_line do lines[#lines + 1] = all_lines[i] end
 	end
-	local rel = vim.fn.fnamemodify(path, ":~:.")
-	local range = (start_line > 1 or end_line < total) and (":" .. start_line .. "-" .. end_line) or ""
-	require("lg.status").update("Tool: read_buffer", rel .. range)
+	require("lg.status").update("Read: " .. vim.fn.fnamemodify(path, ":t"))
 	if follow_reads then
 		local ns = vim.api.nvim_create_namespace("lg_follow_read")
 		local target_win = require("lg.util").find_editor_win()

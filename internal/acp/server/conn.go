@@ -185,7 +185,7 @@ func (c *conn) handle(req Request) {
 
 	case "destroy_session":
 		if sess := mgr.GetSession(req.SessionID); sess != nil {
-			sess.Cancel()
+			sess.Close()
 			mgr.RemoveSession(req.SessionID)
 		}
 		c.writeLine(Response{OK: true})

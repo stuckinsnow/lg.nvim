@@ -70,14 +70,30 @@ func (s *Session) RPCCall(method string, params map[string]any, onDone func(msg 
 	return s.proc.Write(protocol.GenericRequest(id, method, params))
 }
 
-// Cancel sends session/cancel.
+// Cancel cancels the in-flight turn via session/cancel while keeping the
+// session active and usable for subsequent prompts.
 func (s *Session) Cancel() {
 	s.mu.Lock()
 	if s.State == StateCancelled || s.State == StateCompleted {
 		s.mu.Unlock()
 		return
 	}
+	clear(s.onDone)
+	s.mu.Unlock()
+	if s.ID != "" {
+		s.proc.Write(protocol.SessionCancelNotification(s.ID))
+	}
+}
+
+// Close permanently tears down the session (used by destroy_session).
+func (s *Session) Close() {
+	s.mu.Lock()
+	if s.State == StateCancelled || s.State == StateCompleted {
+		s.mu.Unlock()
+		return
+	}
 	s.State = StateCancelled
+	clear(s.onDone)
 	s.mu.Unlock()
 	if s.ID != "" {
 		s.proc.Write(protocol.SessionCancelNotification(s.ID))

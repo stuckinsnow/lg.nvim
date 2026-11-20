@@ -39,7 +39,7 @@ function M.run(config)
 		local agent_text = ""
 		local tool_error = nil
 
-		client.create_session(vim.fn.getcwd(), M._mcp_servers and M._mcp_servers() or {}, function(resp)
+		client.create_session(vim.fn.getcwd(), M._mcp_servers and M._mcp_servers(config.tools) or {}, function(resp)
 			if resp.error then
 				status.stop(config.label .. " failed")
 				if config.on_fail then
@@ -269,6 +269,7 @@ function M.send_git(prompt, on_done)
 	M.run({
 		prompt = { { type = "text", text = prompt } },
 		model_id = model_id,
+		tools = "git",
 		label = "Git analysis (" .. model_id .. ")",
 		on_done = function(text)
 			on_done(text)
@@ -343,6 +344,7 @@ function M.send_mode_subagent(config, prompt, regions, context_regions, on_done)
 
 	M.run({
 		mode_id = config.mode_id,
+		tools = config.tools,
 		prompt = messages,
 		label = config.label,
 		track_tool_errors = config.track_tool_errors,
