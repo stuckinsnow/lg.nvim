@@ -191,14 +191,6 @@ local function render_context()
 		table.insert(lines, "  📎 " .. vim.fn.fnamemodify(f, ":~:."))
 		table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
 	end
-	local attached_imgs = require("lg.tools.context").get_images()
-	if #attached_imgs > 0 then
-		local image = require("lg.tools.image")
-		for i, img in ipairs(attached_imgs) do
-			table.insert(lines, string.format("  🖼 Image #%d (%s)", i, image.format_size(img.size)))
-			table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
-		end
-	end
 	local dlens = require("lg.tools.context").get_devlens()
 	for _, d in ipairs(dlens) do
 		local label = "  🔍 DevLens: " .. table.concat(d.tokens, ", ")
@@ -283,16 +275,24 @@ function M.setup(user_opts)
 	}, user_opts or {})
 end
 
-function M.add_prompt(prompt)
+local function format_attached_images()
 	local imgs = require("lg.tools.context").get_images()
-	if #imgs > 0 then
-		local image = require("lg.tools.image")
-		local sizes = {}
-		for _, img in ipairs(imgs) do
-			table.insert(sizes, image.format_size(img.size))
-		end
-		local label = #imgs == 1 and "1 image attached" or (#imgs .. " images attached")
-		prompt = prompt .. "\n🖼 [" .. label .. " (" .. table.concat(sizes, ", ") .. ")]"
+	if #imgs == 0 then
+		return nil
+	end
+	local image = require("lg.tools.image")
+	local sizes = {}
+	for _, img in ipairs(imgs) do
+		table.insert(sizes, image.format_size(img.size))
+	end
+	local label = #imgs == 1 and "1 image attached" or (#imgs .. " images attached")
+	return label .. " (" .. table.concat(sizes, ", ") .. ")"
+end
+
+function M.add_prompt(prompt)
+	local img_label = format_attached_images()
+	if img_label then
+		prompt = prompt .. "\n🖼 [" .. img_label .. "]"
 	end
 	table.insert(state.history, { type = "prompt", text = prompt })
 	M.refresh()
@@ -499,7 +499,12 @@ local function update_prompt_winbar()
 		local escaped = state.pending_approval.prompt:gsub("%%", "%%%%")
 		vim.wo[state.wins.prompt].winbar = "%#LgApproval# ⚠ " .. escaped .. " [y/n] %*"
 	else
-		vim.wo[state.wins.prompt].winbar = ""
+		local img_label = format_attached_images()
+		if img_label then
+			vim.wo[state.wins.prompt].winbar = "%#LgFile# 🖼 " .. img_label .. " [Alt-x clear] %*"
+		else
+			vim.wo[state.wins.prompt].winbar = ""
+		end
 	end
 end
 
@@ -552,8 +557,12 @@ function M.submit()
 
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	local text = vim.trim(table.concat(lines, "\n"))
-	if text == "" then
+	local has_images = #require("lg.tools.context").get_images() > 0
+	if text == "" and not has_images then
 		return
+	end
+	if text == "" then
+		text = "See attached image(s)."
 	end
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
@@ -693,6 +702,37 @@ local function setup_prompt_keymaps(buf)
 		local cr = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
 		vim.api.nvim_feedkeys(cr, "n", false)
 	end, { buffer = buf, desc = "Approve/reject or newline" })
+	local function paste_image(fallback_text)
+		local image = require("lg.tools.image")
+		local img, err = image.read_clipboard()
+		if img then
+			if not require("lg.tools.context").add_image(img) then
+				vim.notify("lg: image already attached", vim.log.levels.INFO)
+				return
+			end
+			M.refresh()
+			return
+		end
+		if fallback_text then
+			local text = vim.fn.getreg("+")
+			if text ~= "" then
+				vim.api.nvim_paste(text, false, -1)
+				return
+			end
+		end
+		vim.notify("lg: " .. (err or "no image in clipboard"), vim.log.levels.WARN)
+	end
+	vim.keymap.set("i", "<C-v>", function() paste_image(true) end, { buffer = buf, desc = "Paste clipboard image (or text)" })
+	vim.keymap.set({ "n", "i" }, "<M-v>", function() paste_image(false) end, { buffer = buf, desc = "Paste clipboard image" })
+	vim.keymap.set({ "n", "i" }, "<M-x>", function()
+		local ctx = require("lg.tools.context")
+		if #ctx.get_images() == 0 then
+			return
+		end
+		ctx.clear_images()
+		M.refresh()
+		vim.notify("lg: cleared attached images", vim.log.levels.INFO)
+	end, { buffer = buf, desc = "Clear attached images" })
 end
 
 local _opening = false

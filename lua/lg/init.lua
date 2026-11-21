@@ -395,12 +395,21 @@ function M.paste_image()
 		return
 	end
 	local ctx = require("lg.tools.context")
-	ctx.add_image(img)
+	if not ctx.add_image(img) then
+		vim.notify("lg: image already attached", vim.log.levels.INFO)
+		return
+	end
 	window.refresh()
 	vim.notify(
 		string.format("lg: attached image #%d (%s) for next prompt", #ctx.get_images(), image.format_size(img.size)),
 		vim.log.levels.INFO
 	)
+end
+
+function M.clear_images()
+	require("lg.tools.context").clear_images()
+	window.refresh()
+	vim.notify("lg: cleared attached images", vim.log.levels.INFO)
 end
 
 return M

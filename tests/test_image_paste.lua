@@ -27,7 +27,8 @@ check("pick_mime falls back to jpeg", image._pick_mime("UTF8_STRING\nimage/jpeg\
 check("pick_mime returns nil for text only", image._pick_mime("UTF8_STRING\ntext/plain\n"), nil)
 
 context.clear()
-context.add_image({ data = "aGVsbG8=", mime_type = "image/png", size = 5 })
+check("first image added", context.add_image({ data = "aGVsbG8=", mime_type = "image/png", size = 5 }), true)
+check("duplicate image rejected", context.add_image({ data = "aGVsbG8=", mime_type = "image/png", size = 5 }), false)
 check("image stored in context", #context.get_images(), 1)
 
 local window = require("lg.ui.window")

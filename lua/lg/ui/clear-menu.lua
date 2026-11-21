@@ -20,6 +20,13 @@ function M.open()
 			end,
 		},
 		{
+			icon = "󰋩",
+			label = "Attached images",
+			fn = function()
+				lg.clear_images()
+			end,
+		},
+		{
 			icon = "󰕍",
 			label = "Last paint",
 			fn = function()

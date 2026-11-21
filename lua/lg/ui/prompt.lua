@@ -88,6 +88,14 @@ function M.open(cb, on_cancel, info)
 		local image = require("lg.tools.image")
 		local img, err = image.read_clipboard()
 		if img then
+			for _, list in ipairs({ context.get_images(), pasted_images }) do
+				for _, existing in ipairs(list) do
+					if existing.data == img.data and existing.mime_type == img.mime_type then
+						vim.notify("lg: image already attached", vim.log.levels.INFO)
+						return
+					end
+				end
+			end
 			table.insert(pasted_images, img)
 			refresh_title()
 			vim.notify(

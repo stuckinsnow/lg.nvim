@@ -83,8 +83,15 @@ function M.get_devlens() return devlens end
 --- @type { data: string, mime_type: string, size: integer }[]
 local images = {}
 
+--- @return boolean added false if an identical image is already attached
 function M.add_image(img)
+  for _, existing in ipairs(images) do
+    if existing.data == img.data and existing.mime_type == img.mime_type then
+      return false
+    end
+  end
   table.insert(images, img)
+  return true
 end
 
 function M.get_images() return images end

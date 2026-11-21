@@ -4,12 +4,19 @@ local M = {}
 
 local function append_images(parts)
 	local images = require("lg.tools.context").take_images()
+	if #images == 0 then
+		return
+	end
 	for _, img in ipairs(images) do
 		table.insert(parts, {
 			type = "image",
 			mimeType = img.mime_type,
 			data = img.data,
 		})
+	end
+	local ok, win = pcall(require, "lg.ui.window")
+	if ok and win.refresh then
+		vim.schedule(win.refresh)
 	end
 end
 
