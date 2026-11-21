@@ -60,3 +60,7 @@ end, { range = true, desc = "Quick edit: paint + prompt + isolated session" })
 vim.api.nvim_create_user_command("LgBuild", function()
   require("lg.bin").build()
 end, { desc = "Build lg's Go binaries" })
+
+vim.api.nvim_create_user_command("LgPasteImage", function()
+  require("lg").paste_image()
+end, { desc = "Attach clipboard image to next lg prompt" })

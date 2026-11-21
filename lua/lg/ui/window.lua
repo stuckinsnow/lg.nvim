@@ -186,10 +186,18 @@ local function render_context()
 			end
 		end
 	end
-	local imgs = require("lg.tools.context").get_files()
-	for _, img in ipairs(imgs) do
-		table.insert(lines, "  📎 " .. vim.fn.fnamemodify(img, ":~:."))
+	local files = require("lg.tools.context").get_files()
+	for _, f in ipairs(files) do
+		table.insert(lines, "  📎 " .. vim.fn.fnamemodify(f, ":~:."))
 		table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
+	end
+	local attached_imgs = require("lg.tools.context").get_images()
+	if #attached_imgs > 0 then
+		local image = require("lg.tools.image")
+		for i, img in ipairs(attached_imgs) do
+			table.insert(lines, string.format("  🖼 Image #%d (%s)", i, image.format_size(img.size)))
+			table.insert(hls, { #lines - 1, 0, -1, "LgFile" })
+		end
 	end
 	local dlens = require("lg.tools.context").get_devlens()
 	for _, d in ipairs(dlens) do
@@ -276,6 +284,16 @@ function M.setup(user_opts)
 end
 
 function M.add_prompt(prompt)
+	local imgs = require("lg.tools.context").get_images()
+	if #imgs > 0 then
+		local image = require("lg.tools.image")
+		local sizes = {}
+		for _, img in ipairs(imgs) do
+			table.insert(sizes, image.format_size(img.size))
+		end
+		local label = #imgs == 1 and "1 image attached" or (#imgs .. " images attached")
+		prompt = prompt .. "\n🖼 [" .. label .. " (" .. table.concat(sizes, ", ") .. ")]"
+	end
 	table.insert(state.history, { type = "prompt", text = prompt })
 	M.refresh()
 end

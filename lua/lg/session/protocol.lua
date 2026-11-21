@@ -2,6 +2,17 @@
 
 local M = {}
 
+local function append_images(parts)
+	local images = require("lg.tools.context").take_images()
+	for _, img in ipairs(images) do
+		table.insert(parts, {
+			type = "image",
+			mimeType = img.mime_type,
+			data = img.data,
+		})
+	end
+end
+
 --- Build the prompt content array for session/prompt
 --- @param regions table[] editable regions from paint.get_all()
 --- @param context_regions table[] read-only regions from context.get_all()
@@ -34,6 +45,7 @@ function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_
 		table.insert(parts, { type = "text", text = table.concat(ctx, "\n") })
 		-- User message
 		table.insert(parts, { type = "text", text = user_prompt })
+		append_images(parts)
 		return parts
 	end
 
@@ -117,6 +129,7 @@ function M.build_prompt(regions, context_regions, user_prompt, lsp_context, tsc_
 
 	-- User message
 	table.insert(parts, { type = "text", text = user_prompt })
+	append_images(parts)
 
 	return parts
 end

@@ -387,4 +387,20 @@ function M.usage()
 	require("lg.usage").show()
 end
 
+function M.paste_image()
+	local image = require("lg.tools.image")
+	local img, err = image.read_clipboard()
+	if not img then
+		vim.notify("lg: " .. (err or "no image in clipboard"), vim.log.levels.WARN)
+		return
+	end
+	local ctx = require("lg.tools.context")
+	ctx.add_image(img)
+	window.refresh()
+	vim.notify(
+		string.format("lg: attached image #%d (%s) for next prompt", #ctx.get_images(), image.format_size(img.size)),
+		vim.log.levels.INFO
+	)
+end
+
 return M

@@ -13,6 +13,12 @@ function M.open(path)
 	end
 	local actions = {
 		{
+			label = "Paste image (clipboard)",
+			fn = function()
+				require("lg").paste_image()
+			end,
+		},
+		{
 			label = "Paste path",
 			fn = function()
 				vim.ui.input({ prompt = "File path: ", completion = "file" }, function(p)

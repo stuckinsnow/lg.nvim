@@ -16,16 +16,27 @@ local M = {}
 --- @field has_suggest boolean
 --- @field has_ask boolean
 
-local function title(info)
-	return " lg prompt (ctrl-s to send, q/esc to cancel) " .. (info and ("│ " .. info .. " ") or "")
+local function title(info, img_count)
+	local img_part = (img_count and img_count > 0)
+			and ("│ " .. img_count .. (img_count == 1 and " img " or " imgs "))
+		or ""
+	return " lg prompt (ctrl-s send, ctrl-v img, q/esc cancel) "
+		.. img_part
+		.. (info and ("│ " .. info .. " ") or "")
 end
+
+local _win_meta = {}
 
 --- Update the status shown after the title of an open prompt window
 --- @param win integer
 --- @param info string
 function M.set_info(win, info)
 	if vim.api.nvim_win_is_valid(win) then
-		vim.api.nvim_win_set_config(win, { title = title(info), title_pos = "center" })
+		local meta = _win_meta[win]
+		if meta then
+			meta.info = info
+		end
+		vim.api.nvim_win_set_config(win, { title = title(info, meta and meta.img_count or 0), title_pos = "center" })
 	end
 end
 
@@ -41,6 +52,12 @@ function M.open(cb, on_cancel, info)
 	local width = math.floor(ui.width * 0.6)
 	local height = 8
 
+	local context = require("lg.tools.context")
+	local pasted_images = {}
+	local function total_images()
+		return #context.get_images() + #pasted_images
+	end
+
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].filetype = "markdown"
@@ -54,9 +71,40 @@ function M.open(cb, on_cancel, info)
 		col = math.floor((ui.width - width) / 2),
 		style = "minimal",
 		border = "rounded",
-		title = title(info),
+		title = title(info, total_images()),
 		title_pos = "center",
 	})
+	_win_meta[win] = { info = info, img_count = total_images() }
+
+	local function refresh_title()
+		local meta = _win_meta[win]
+		if meta and vim.api.nvim_win_is_valid(win) then
+			meta.img_count = total_images()
+			vim.api.nvim_win_set_config(win, { title = title(meta.info, meta.img_count), title_pos = "center" })
+		end
+	end
+
+	local function paste_image(fallback_text)
+		local image = require("lg.tools.image")
+		local img, err = image.read_clipboard()
+		if img then
+			table.insert(pasted_images, img)
+			refresh_title()
+			vim.notify(
+				string.format("lg: attached image #%d (%s)", total_images(), image.format_size(img.size)),
+				vim.log.levels.INFO
+			)
+			return
+		end
+		if fallback_text then
+			local text = vim.fn.getreg("+")
+			if text ~= "" then
+				vim.api.nvim_paste(text, false, -1)
+				return
+			end
+		end
+		vim.notify("lg: " .. (err or "no image in clipboard"), vim.log.levels.WARN)
+	end
 
 	vim.wo[win].wrap = true
 	vim.wo[win].linebreak = true
@@ -65,11 +113,19 @@ function M.open(cb, on_cancel, info)
 	local function submit()
 		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		local text = vim.trim(table.concat(lines, "\n"))
+		local n_imgs = total_images()
 		vim.cmd("stopinsert")
+		_win_meta[win] = nil
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
 		require("lg.kitty").clear()
-		if text ~= "" then
+		if text ~= "" or n_imgs > 0 then
+			for _, img in ipairs(pasted_images) do
+				context.add_image(img)
+			end
+			if text == "" then
+				text = "See attached image(s)."
+			end
 			cb(text, {
 				has_file_lsp = text:match("#file_lsp") ~= nil,
 				has_lsp = text:match("#lsp") ~= nil and not text:match("#file_lsp"),
@@ -89,6 +145,7 @@ function M.open(cb, on_cancel, info)
 	end
 
 	local function cancel()
+		_win_meta[win] = nil
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, { force = true })
 		require("lg.kitty").clear()
@@ -101,6 +158,8 @@ function M.open(cb, on_cancel, info)
 	vim.keymap.set("n", "<Esc>", cancel, { buffer = buf })
 	vim.keymap.set("n", "<CR>", submit, { buffer = buf })
 	vim.keymap.set({ "n", "i" }, "<C-s>", submit, { buffer = buf })
+	vim.keymap.set("i", "<C-v>", function() paste_image(true) end, { buffer = buf, desc = "Paste clipboard image (or text)" })
+	vim.keymap.set({ "n", "i" }, "<M-v>", function() paste_image(false) end, { buffer = buf, desc = "Paste clipboard image" })
 	return win
 end
 

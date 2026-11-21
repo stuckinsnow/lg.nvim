@@ -80,6 +80,26 @@ end
 
 function M.get_devlens() return devlens end
 
+--- @type { data: string, mime_type: string, size: integer }[]
+local images = {}
+
+function M.add_image(img)
+  table.insert(images, img)
+end
+
+function M.get_images() return images end
+
+--- Return and clear all attached images (one-shot per prompt).
+function M.take_images()
+  local out = images
+  images = {}
+  return out
+end
+
+function M.clear_images()
+  images = {}
+end
+
 function M.clear()
   local signs = require("lg.ui.signs")
   for _, r in ipairs(regions) do
@@ -91,6 +111,7 @@ function M.clear()
   regions = {}
   files = {}
   devlens = {}
+  images = {}
 end
 
 function M.clear_last()
