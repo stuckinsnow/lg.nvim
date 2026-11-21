@@ -11,13 +11,6 @@ import (
 	"path/filepath"
 )
 
-type sessionEntry struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Date    string `json:"date"`
-	Preview string `json:"preview"`
-}
-
 func listOpencodeSessions(cwd string) (json.RawMessage, error) {
 	home, _ := os.UserHomeDir()
 	dbPath := filepath.Join(home, ".local", "share", "opencode", "opencode.db")
