@@ -5,6 +5,7 @@ local context = require("lg.tools.context")
 local session = require("lg.session.session")
 local window = require("lg.ui.window")
 local status = require("lg.status")
+local loclist = require("lg.ui.loclist")
 
 local spinners = require("lg.spinner.spinners")
 
@@ -48,93 +49,6 @@ end
 function M.clear_lsp_context()
 	pending_lsp_context = nil
 end
-
---- Count diagnostics published by the lg-hint LSP
-local function count_ai_diagnostics()
-	local n = 0
-	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
-		local ns = vim.lsp.diagnostic.get_namespace(client.id, false)
-		if ns then
-			n = n + #vim.diagnostic.get(nil, { namespace = ns })
-		end
-	end
-	return n
-end
-
---- Snapshot all lg-hint diagnostics as a list of { bufnr, diag }.
-local function ai_diagnostics()
-	local out = {}
-	for _, client in ipairs(vim.lsp.get_clients({ name = "lg-hint" })) do
-		local ns = vim.lsp.diagnostic.get_namespace(client.id, false)
-		if ns then
-			for _, d in ipairs(vim.diagnostic.get(nil, { namespace = ns })) do
-				out[#out + 1] = d
-			end
-		end
-	end
-	return out
-end
-
-local function diag_key(d)
-	return table.concat({ d.bufnr, d.lnum, d.col, d.message }, "\0")
-end
-
---- First normal file window in the current tab (target for the location list).
-local function code_window()
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		local b = vim.api.nvim_win_get_buf(win)
-		if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
-			return win
-		end
-	end
-	return vim.api.nvim_get_current_win()
-end
-
-local annotate_severity = { "E", "W", "I", "N" }
-
-local function snapshot_diag_keys()
-	local keys = {}
-	for _, d in ipairs(ai_diagnostics()) do
-		keys[diag_key(d)] = true
-	end
-	return keys
-end
-
---- Put the diagnostics published since `before_keys` into the location list.
---- @return integer count
-local function annotations_to_loclist(before_keys, win, title)
-	local items = {}
-	for _, d in ipairs(ai_diagnostics()) do
-		if not before_keys[diag_key(d)] then
-			items[#items + 1] = {
-				bufnr = d.bufnr,
-				lnum = d.lnum + 1,
-				col = d.col + 1,
-				end_lnum = d.end_lnum and (d.end_lnum + 1) or nil,
-				end_col = d.end_col and (d.end_col + 1) or nil,
-				text = "AI - " .. d.message,
-				type = annotate_severity[d.severity] or "I",
-			}
-		end
-	end
-	table.sort(items, function(a, b)
-		local fa, fb = vim.api.nvim_buf_get_name(a.bufnr), vim.api.nvim_buf_get_name(b.bufnr)
-		if fa ~= fb then
-			return fa < fb
-		end
-		return a.lnum < b.lnum
-	end)
-	if #items > 0 then
-		if not vim.api.nvim_win_is_valid(win) then
-			win = code_window()
-		end
-		vim.fn.setloclist(win, {}, " ", { title = title or "lg annotations", items = items })
-	end
-	return #items
-end
-
-M.snapshot_diag_keys = snapshot_diag_keys
-M.annotations_to_loclist = annotations_to_loclist
 
 local ANNOTATE_INSTRUCTIONS = table.concat({
 	"ANNOTATE: do the user's request as normal (make the edits it asks for). Then call the lg_annotate tool ONCE",
@@ -340,13 +254,13 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
-			local target_win = code_window()
-			local before_keys = snapshot_diag_keys()
-			local before = count_ai_diagnostics()
+			local target_win = loclist.code_window()
+			local before_keys = loclist.snapshot()
+			local before = loclist.count()
 			local function run_hint(hint_fn)
 				local function check_and_retry()
 					vim.defer_fn(function()
-						local n = count_ai_diagnostics() - before
+						local n = loclist.count() - before
 						if not retried and n <= 0 then
 							retried = true
 							status.flash("No hints published — retrying")
@@ -359,7 +273,7 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = annotations_to_loclist(before_keys, target_win, "lg hints")
+										local n2 = loclist.populate(before_keys, target_win, "lg hints")
 										if n2 <= 0 then
 											status.flash("Retry failed — no hints")
 										end
@@ -370,7 +284,7 @@ function M.send(opts)
 							)
 						else
 							spin:stop()
-							local added = annotations_to_loclist(before_keys, target_win, "lg hints")
+							local added = loclist.populate(before_keys, target_win, "lg hints")
 							status.stop("Review done — " .. math.max(added, n) .. " hint(s)" .. (added > 0 and " (:lopen)" or ""))
 							clear_paint(regions)
 						end
@@ -398,13 +312,13 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
-			local target_win = code_window()
-			local before_keys = snapshot_diag_keys()
-			local before = count_ai_diagnostics()
+			local target_win = loclist.code_window()
+			local before_keys = loclist.snapshot()
+			local before = loclist.count()
 			local function run_suggest(suggest_fn)
 				local function check_and_retry()
 					vim.defer_fn(function()
-						local n = count_ai_diagnostics() - before
+						local n = loclist.count() - before
 						if not retried and n <= 0 then
 							retried = true
 							status.flash("No suggestions published — retrying")
@@ -417,7 +331,7 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = annotations_to_loclist(before_keys, target_win, "lg suggestions")
+										local n2 = loclist.populate(before_keys, target_win, "lg suggestions")
 										if n2 <= 0 then
 											status.flash("Retry failed — no suggestions")
 										end
@@ -428,7 +342,7 @@ function M.send(opts)
 							)
 						else
 							spin:stop()
-							local added = annotations_to_loclist(before_keys, target_win, "lg suggestions")
+							local added = loclist.populate(before_keys, target_win, "lg suggestions")
 							status.stop("Suggestions done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:lopen)" or ""))
 							clear_paint(regions)
 						end
@@ -457,13 +371,13 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
-			local target_win = code_window()
-			local before_keys = snapshot_diag_keys()
-			local before = count_ai_diagnostics()
+			local target_win = loclist.code_window()
+			local before_keys = loclist.snapshot()
+			local before = loclist.count()
 			local function run_help(help_fn)
 				local function check_and_retry()
 					vim.defer_fn(function()
-						local n = count_ai_diagnostics() - before
+						local n = loclist.count() - before
 						if not retried and n <= 0 then
 							retried = true
 							status.flash("No suggestions published — retrying")
@@ -476,7 +390,7 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = annotations_to_loclist(before_keys, target_win, "lg help")
+										local n2 = loclist.populate(before_keys, target_win, "lg help")
 										if n2 <= 0 then
 											status.flash("Retry failed — no suggestions")
 										end
@@ -487,7 +401,7 @@ function M.send(opts)
 							)
 						else
 							spin:stop()
-							local added = annotations_to_loclist(before_keys, target_win, "lg help")
+							local added = loclist.populate(before_keys, target_win, "lg help")
 							status.stop("Help done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:lopen)" or ""))
 							clear_paint(regions)
 						end
@@ -589,20 +503,8 @@ function M.send(opts)
 				local display_prompt = final_prompt:gsub("@ANNOTATE%s*", "")
 				window.add_prompt("@ANNOTATE " .. display_prompt)
 				local use_chat = opts.from_chat or #regions == 0
-				local target_win = code_window()
-				local before_keys = {}
-				for _, d in ipairs(ai_diagnostics()) do
-					before_keys[diag_key(d)] = true
-				end
-				local function new_count()
-					local n = 0
-					for _, d in ipairs(ai_diagnostics()) do
-						if not before_keys[diag_key(d)] then
-							n = n + 1
-						end
-					end
-					return n
-				end
+				local target_win = loclist.code_window()
+				local before_keys = loclist.snapshot()
 				local spin = spinners.start(regions)
 				session.set_annotate_active(true)
 				local body = ANNOTATE_INSTRUCTIONS .. "\n\nUser request:\n" .. display_prompt
@@ -624,7 +526,7 @@ function M.send(opts)
 					session.set_annotate_active(false)
 					spin:stop()
 					window.refresh()
-					local n = annotations_to_loclist(before_keys, target_win)
+					local n = loclist.populate(before_keys, target_win)
 					if n > 0 then
 						status.stop("Annotated — " .. n .. " annotation(s) in location list (:lopen)")
 					else
@@ -633,7 +535,7 @@ function M.send(opts)
 				end
 				send_one(body, function()
 					vim.defer_fn(function()
-						if new_count() > 0 then
+						if loclist.count_new(before_keys) > 0 then
 							finish()
 							return
 						end
