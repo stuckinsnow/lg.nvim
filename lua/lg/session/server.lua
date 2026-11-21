@@ -482,7 +482,7 @@ function M.handle_message(data)
 					end
 					count = count + 1
 					table.insert(info_regions, { bufnr = bufnr, start_line = s_line, end_line = e_line })
-					local text = desc ~= "" and ("AI - " .. desc) or "AI"
+					local text = require("lg.ui.quickfix").format_text(desc)
 					table.insert(qf_items, { filename = path, lnum = s_line, text = text, bufnr = 0 })
 					if not first_file then
 						first_file = path

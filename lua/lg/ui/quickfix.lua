@@ -4,6 +4,18 @@ local M = {}
 
 local severity_map = { "E", "W", "I", "N" }
 
+--- Format a quickfix entry text. Uses loccy.format when loccy.nvim is installed.
+--- @param msg? string
+--- @return string
+function M.format_text(msg)
+	msg = msg or ""
+	local ok, loccy = pcall(require, "loccy")
+	if ok and loccy.format then
+		return loccy.format("AI", msg)
+	end
+	return msg ~= "" and ("AI - " .. msg) or "AI"
+end
+
 --- Snapshot all diagnostics published by the lg-hint LSP.
 --- @return vim.Diagnostic[]
 function M.diagnostics()
@@ -73,7 +85,7 @@ function M.populate(before_keys, title)
 				col = d.col + 1,
 				end_lnum = d.end_lnum and (d.end_lnum + 1) or nil,
 				end_col = d.end_col and (d.end_col + 1) or nil,
-				text = "AI - " .. d.message,
+				text = M.format_text(d.message),
 				type = severity_map[d.severity] or "I",
 			}
 		end
