@@ -1,6 +1,6 @@
 -- Run inside Neovim with :luafile test_annotate.lua
 -- Publishes a test annotation at the cursor line via lg-hint.sock (with both message & markdown detail)
--- and adds it to the current window's location list.
+-- and adds it to the quickfix list.
 
 local buf = vim.api.nvim_get_current_buf()
 local file = vim.api.nvim_buf_get_name(buf)
@@ -51,7 +51,7 @@ pipe:connect("/dev/shm/lg-hint.sock", function(err)
 					vim.notify("test_annotate: read error: " .. rerr, vim.log.levels.ERROR)
 					return
 				end
-				vim.fn.setloclist(0, {
+				vim.fn.setqflist({
 					{
 						bufnr = buf,
 						lnum = line,

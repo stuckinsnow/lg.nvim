@@ -5,7 +5,7 @@ local context = require("lg.tools.context")
 local session = require("lg.session.session")
 local window = require("lg.ui.window")
 local status = require("lg.status")
-local loclist = require("lg.ui.loclist")
+local quickfix = require("lg.ui.quickfix")
 
 local spinners = require("lg.spinner.spinners")
 
@@ -254,13 +254,12 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
-			local target_win = loclist.code_window()
-			local before_keys = loclist.snapshot()
-			local before = loclist.count()
+			local before_keys = quickfix.snapshot()
+			local before = quickfix.count()
 			local function run_hint(hint_fn)
 				local function check_and_retry()
 					vim.defer_fn(function()
-						local n = loclist.count() - before
+						local n = quickfix.count() - before
 						if not retried and n <= 0 then
 							retried = true
 							status.flash("No hints published — retrying")
@@ -273,19 +272,19 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = loclist.populate(before_keys, target_win, "lg hints")
+										local n2 = quickfix.populate(before_keys, "lg hints")
 										if n2 <= 0 then
 											status.flash("Retry failed — no hints")
 										end
-										status.stop("Review done — " .. n2 .. " hint(s)" .. (n2 > 0 and " (:lopen)" or ""))
+										status.stop("Review done — " .. n2 .. " hint(s)" .. (n2 > 0 and " (:copen)" or ""))
 										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
-							local added = loclist.populate(before_keys, target_win, "lg hints")
-							status.stop("Review done — " .. math.max(added, n) .. " hint(s)" .. (added > 0 and " (:lopen)" or ""))
+							local added = quickfix.populate(before_keys, "lg hints")
+							status.stop("Review done — " .. math.max(added, n) .. " hint(s)" .. (added > 0 and " (:copen)" or ""))
 							clear_paint(regions)
 						end
 					end, 500)
@@ -312,13 +311,12 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
-			local target_win = loclist.code_window()
-			local before_keys = loclist.snapshot()
-			local before = loclist.count()
+			local before_keys = quickfix.snapshot()
+			local before = quickfix.count()
 			local function run_suggest(suggest_fn)
 				local function check_and_retry()
 					vim.defer_fn(function()
-						local n = loclist.count() - before
+						local n = quickfix.count() - before
 						if not retried and n <= 0 then
 							retried = true
 							status.flash("No suggestions published — retrying")
@@ -331,19 +329,19 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = loclist.populate(before_keys, target_win, "lg suggestions")
+										local n2 = quickfix.populate(before_keys, "lg suggestions")
 										if n2 <= 0 then
 											status.flash("Retry failed — no suggestions")
 										end
-										status.stop("Suggestions done — " .. n2 .. " suggestion(s)" .. (n2 > 0 and " (:lopen)" or ""))
+										status.stop("Suggestions done — " .. n2 .. " suggestion(s)" .. (n2 > 0 and " (:copen)" or ""))
 										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
-							local added = loclist.populate(before_keys, target_win, "lg suggestions")
-							status.stop("Suggestions done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:lopen)" or ""))
+							local added = quickfix.populate(before_keys, "lg suggestions")
+							status.stop("Suggestions done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:copen)" or ""))
 							clear_paint(regions)
 						end
 					end, 500)
@@ -371,13 +369,12 @@ function M.send(opts)
 			local spin = spinners.start(regions)
 			local retried = false
 			local ctx_regions = context.get_all()
-			local target_win = loclist.code_window()
-			local before_keys = loclist.snapshot()
-			local before = loclist.count()
+			local before_keys = quickfix.snapshot()
+			local before = quickfix.count()
 			local function run_help(help_fn)
 				local function check_and_retry()
 					vim.defer_fn(function()
-						local n = loclist.count() - before
+						local n = quickfix.count() - before
 						if not retried and n <= 0 then
 							retried = true
 							status.flash("No suggestions published — retrying")
@@ -390,19 +387,19 @@ function M.send(opts)
 								function()
 									vim.defer_fn(function()
 										spin:stop()
-										local n2 = loclist.populate(before_keys, target_win, "lg help")
+										local n2 = quickfix.populate(before_keys, "lg help")
 										if n2 <= 0 then
 											status.flash("Retry failed — no suggestions")
 										end
-										status.stop("Help done — " .. n2 .. " suggestion(s)" .. (n2 > 0 and " (:lopen)" or ""))
+										status.stop("Help done — " .. n2 .. " suggestion(s)" .. (n2 > 0 and " (:copen)" or ""))
 										clear_paint(regions)
 									end, 500)
 								end
 							)
 						else
 							spin:stop()
-							local added = loclist.populate(before_keys, target_win, "lg help")
-							status.stop("Help done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:lopen)" or ""))
+							local added = quickfix.populate(before_keys, "lg help")
+							status.stop("Help done — " .. math.max(added, n) .. " suggestion(s)" .. (added > 0 and " (:copen)" or ""))
 							clear_paint(regions)
 						end
 					end, 500)
@@ -503,8 +500,7 @@ function M.send(opts)
 				local display_prompt = final_prompt:gsub("@ANNOTATE%s*", "")
 				window.add_prompt("@ANNOTATE " .. display_prompt)
 				local use_chat = opts.from_chat or #regions == 0
-				local target_win = loclist.code_window()
-				local before_keys = loclist.snapshot()
+				local before_keys = quickfix.snapshot()
 				local spin = spinners.start(regions)
 				session.set_annotate_active(true)
 				local body = ANNOTATE_INSTRUCTIONS .. "\n\nUser request:\n" .. display_prompt
@@ -526,16 +522,16 @@ function M.send(opts)
 					session.set_annotate_active(false)
 					spin:stop()
 					window.refresh()
-					local n = loclist.populate(before_keys, target_win)
+					local n = quickfix.populate(before_keys)
 					if n > 0 then
-						status.stop("Annotated — " .. n .. " annotation(s) in location list (:lopen)")
+						status.stop("Annotated — " .. n .. " annotation(s) in quickfix (:copen)")
 					else
 						status.flash("No annotations published")
 					end
 				end
 				send_one(body, function()
 					vim.defer_fn(function()
-						if loclist.count_new(before_keys) > 0 then
+						if quickfix.count_new(before_keys) > 0 then
 							finish()
 							return
 						end

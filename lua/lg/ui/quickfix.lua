@@ -1,4 +1,4 @@
---- Location list helpers for lg-hint LSP diagnostics (hints, suggestions, annotations)
+--- Quickfix list helpers for lg-hint LSP diagnostics (hints, suggestions, annotations)
 
 local M = {}
 
@@ -36,18 +36,6 @@ local function diag_key(d)
 	return table.concat({ d.bufnr, d.lnum, d.col, d.message }, "\0")
 end
 
---- First normal file window in the current tab (target for the location list).
---- @return integer
-function M.code_window()
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		local b = vim.api.nvim_win_get_buf(win)
-		if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
-			return win
-		end
-	end
-	return vim.api.nvim_get_current_win()
-end
-
 --- Snapshot keys of currently published lg-hint diagnostics.
 --- @return table<string, boolean>
 function M.snapshot()
@@ -71,12 +59,11 @@ function M.count_new(before_keys)
 	return n
 end
 
---- Put diagnostics published since `before_keys` (or all if nil) into the location list.
+--- Put diagnostics published since `before_keys` (or all if nil) into the quickfix list.
 --- @param before_keys? table<string, boolean>
---- @param win? integer
 --- @param title? string
 --- @return integer count
-function M.populate(before_keys, win, title)
+function M.populate(before_keys, title)
 	local items = {}
 	for _, d in ipairs(M.diagnostics()) do
 		if not before_keys or not before_keys[diag_key(d)] then
@@ -99,10 +86,7 @@ function M.populate(before_keys, win, title)
 		return a.lnum < b.lnum
 	end)
 	if #items > 0 then
-		if not win or not vim.api.nvim_win_is_valid(win) then
-			win = M.code_window()
-		end
-		vim.fn.setloclist(win, {}, " ", { title = title or "lg annotations", items = items })
+		vim.fn.setqflist({}, " ", { title = title or "lg annotations", items = items })
 	end
 	return #items
 end

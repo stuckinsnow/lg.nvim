@@ -181,7 +181,7 @@ func annotateToolDef() protocol.ToolDef {
 	f := false
 	return protocol.ToolDef{
 		Name: "lg_annotate",
-		Description: "Only use when explicitly requested (e.g. @ANNOTATE). Annotate code changes in the editor as inline diagnostics (hover for detail) and location-list entries. " +
+		Description: "Only use when explicitly requested (e.g. @ANNOTATE). Annotate code changes in the editor as inline diagnostics (hover for detail) and quickfix entries. " +
 			"Line numbers refer to the file AFTER your edits. Send ALL annotations in one call.",
 		InputSchema: protocol.ToolSchema{
 			Type: "object",

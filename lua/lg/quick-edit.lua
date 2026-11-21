@@ -69,9 +69,8 @@ function M.quick_edit()
 
 			local spin = spinners.start({ region })
 			if flags.has_suggest or flags.has_hint or flags.has_help then
-				local loclist = require("lg.ui.loclist")
-				local target_win = vim.api.nvim_get_current_win()
-				local before_keys = loclist.snapshot()
+				local quickfix = require("lg.ui.quickfix")
+				local before_keys = quickfix.snapshot()
 				local sub_fn, title
 				if flags.has_suggest then
 					prompt = prompt:gsub("@SUGGEST%s*", "")
@@ -90,7 +89,7 @@ function M.quick_edit()
 					vim.defer_fn(function()
 						spin:stop()
 						clear_highlight(buf, start_line, end_line)
-						loclist.populate(before_keys, target_win, title)
+						quickfix.populate(before_keys, title)
 					end, 500)
 				end)
 				return

@@ -15,10 +15,10 @@ the AI edits the painted regions directly.
 | _(none)_    | Yes, painted regions only   | The buffer                                                          | Yes          |
 | `@ASK`      | No                          | Chat panel                                                          | No           |
 | `@INFO`     | No                          | Highlighted regions, quickfix list, chat panel                      | No           |
-| `@REVIEW`   | No                          | Diagnostics in the buffer and location list                         | No           |
-| `@ANNOTATE` | Yes                         | The buffer, plus annotation diagnostics and the location list       | No           |
-| `@SUGGEST`  | No                          | Diagnostics with hover preview, `gra` apply action, location list   | No           |
-| `@HELP`     | No                          | Highlighted regions, quickfix list, suggestions + location list     | No           |
+| `@REVIEW`   | No                          | Diagnostics in the buffer and quickfix list                         | No           |
+| `@ANNOTATE` | Yes                         | The buffer, plus annotation diagnostics and the quickfix list       | No           |
+| `@SUGGEST`  | No                          | Diagnostics with hover preview, `gra` apply action, quickfix list   | No           |
+| `@HELP`     | No                          | Highlighted regions, suggestions, and quickfix list                 | No           |
 | `@SHELL`    | No                          | Chat panel (runs shell commands you approve)                        | No           |
 | `@GIT`      | Yes, after the git analysis | Chat panel, then the buffer                                         | No           |
 | `@DEVLENS`  | Yes                         | The buffer                                                          | No           |
@@ -59,7 +59,7 @@ Runs as a separate session, so it doesn't block the main one.
 
 Code review. The AI publishes its findings as **diagnostics** (the same
 markers your LSP uses), so they show up inline, in `vim.diagnostic` lists,
-and in the current window's **location list** (`:lopen`). Use the "Dismiss"
+and in the **quickfix list** (`:copen`). Use the "Dismiss"
 code action (`gra`) to drop one, or "AI hints" in the clear menu to drop all
 of them.
 
@@ -77,10 +77,9 @@ With painted regions it runs as a paint edit. Without paint (or from the chat
 panel) it runs in chat mode. If you only ask it to annotate ("annotate my
 uncommitted changes"), it skips editing and only annotates.
 
-When it finishes, the new annotations go into the current window's
-**location list** (title `lg annotations`), so `:lopen` / `:lnext` walk
-through them. If the AI forgets to annotate, lg asks it once more (without
-redoing the edits).
+When it finishes, the new annotations go into the **quickfix list**
+(title `lg annotations`), so `:copen` / `:cnext` walk through them. If the AI
+forgets to annotate, lg asks it once more (without redoing the edits).
 
 Example: `@ANNOTATE comment out the debug logging`
 
@@ -89,14 +88,13 @@ Example: `@ANNOTATE comment out the debug logging`
 Like `@REVIEW`, but each diagnostic carries concrete replacement code. Hover
 (`K`) over a diagnostic to preview the suggested code, or trigger code actions
 (`gra`) and choose **Apply** to replace the lines and dismiss the suggestion.
-New suggestions are also added to the **location list** (`:lopen`).
+New suggestions are also added to the **quickfix list** (`:copen`).
 
 ### `@HELP`
 
 `@INFO` and `@SUGGEST` combined. The AI highlights the regions that need
-changes (also added to the quickfix list) and publishes a suggestion
-diagnostic for each one (added to the **location list**, with hover preview
-and `gra` apply action).
+changes and publishes a suggestion diagnostic for each one (added to the
+**quickfix list**, with hover preview and `gra` apply action).
 
 ### `@SUB`
 

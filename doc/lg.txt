@@ -75,16 +75,16 @@ Type these at the start of your prompt. Combine freely:
               written. Use `<leader>aA` to convert to real paint.
 
   `@REVIEW`     AI reviews code and publishes findings as native Neovim
-              diagnostics (squiggly underlines + hover + `:lopen`). Read-only.
+              diagnostics (squiggly underlines + hover + `:copen`). Read-only.
 
   `@ANNOTATE`   AI makes the edit, then annotates each change as a
-              diagnostic and fills the location list (`:lopen`).
+              diagnostic and fills the quickfix list (`:copen`).
 
   `@SUGGEST`    AI publishes code suggestions as diagnostics — hover (`K`) to
-              preview, `gra` code action to apply, `:lopen` to browse.
+              preview, `gra` code action to apply, `:copen` to browse.
 
   `@HELP`       Highlights regions that need changes (quickfix) and publishes
-              suggestions (hover, `gra` apply, `:lopen`). Read-only.
+              suggestions (hover, `gra` apply, `:copen`). Read-only.
 
   `@GIT`        Spawns a cheap subagent to analyze git history, injects
               the result as context into the main session.
