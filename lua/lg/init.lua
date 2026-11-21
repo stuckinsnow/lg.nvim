@@ -26,6 +26,7 @@ function M.setup(opts)
 		win_opts.verbose = opts.verbose
 	end
 	window.setup(win_opts)
+	require("lg.terminal").setup(opts.terminal_split ~= nil and opts.terminal_split or win_opts.terminal_split)
 	require("lg.ui.hunk").setup(opts.hunk or {})
 
 	server.start()

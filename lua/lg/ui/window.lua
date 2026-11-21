@@ -2,6 +2,7 @@
 
 local paint = require("lg.ui.paint")
 local session = require("lg.session.session")
+local terminal = require("lg.terminal")
 
 local M = {}
 
@@ -839,12 +840,22 @@ function M.open()
 	end
 
 	_opening = false
+	terminal.on_open()
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = aug,
+		pattern = tostring(state.wins.status),
+		once = true,
+		callback = function()
+			terminal.on_close()
+		end,
+	})
 	M.refresh()
 
 	pcall(vim.api.nvim_set_current_win, state.wins.prompt)
 end
 
 function M.close()
+	terminal.on_close()
 	M.close_subagent()
 	for _, key in ipairs({ "prompt", "chat", "context", "regions", "status" }) do
 		if win_valid(state.wins[key]) then

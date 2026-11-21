@@ -338,5 +338,6 @@ lg.setup({
     width = 50,
     position = "right",  -- "right" or "left"
   },
+  terminal_split = "horizontal", -- snacks.nvim terminal split while sidebar is open ("horizontal" | "vertical" | false)
 })
 ```
